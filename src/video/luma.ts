@@ -3,9 +3,11 @@
  * `Uint8Array(width × height)`. The tracker works on this plane only; the
  * sample videos come from a grayscale camera, so chroma carries nothing.
  *
- * Handles every planar/semi-planar YUV layout WebCodecs can report (plane 0
- * is always Y) including strides wider than the visible width, and converts
- * RGB outputs (rare, some hardware paths) with BT.601 weights.
+ * Handles the 8-bit planar/semi-planar YUV layouts WebCodecs can report
+ * (plane 0 is always Y) including strides wider than the visible width, and
+ * converts RGB outputs (rare, some hardware paths) with BT.601 weights.
+ * 10/12-bit formats (two bytes per sample) are refused explicitly rather than
+ * read as bytes; `parseMp4Index` already rejects those profiles at intake.
  */
 
 export interface LumaScratch {
@@ -19,7 +21,7 @@ export interface LumaPlane {
   gray: Uint8Array;
 }
 
-const YUV_FORMATS = new Set(['I420', 'I420A', 'I422', 'I444', 'NV12', 'I420P10', 'I420P12']);
+const YUV_FORMATS = new Set(['I420', 'I420A', 'I422', 'I444', 'NV12']);
 const RGB_FORMATS = new Set(['RGBA', 'RGBX', 'BGRA', 'BGRX']);
 
 export function createLumaScratch(): LumaScratch {
@@ -58,7 +60,9 @@ export async function copyLuma(
   } else if (RGB_FORMATS.has(format)) {
     rgbToLuma(bytes, plane0.offset, plane0.stride, width, height, gray, format.startsWith('BGR'));
   } else {
-    throw new Error(`unsupported decoded pixel format ${format}`);
+    throw new Error(
+      `unsupported decoded pixel format ${format} (only 8-bit 4:2:0/4:2:2/4:4:4 and RGB frames are read)`,
+    );
   }
   return { width, height, gray };
 }

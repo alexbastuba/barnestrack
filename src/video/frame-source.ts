@@ -144,7 +144,11 @@ export class FrameSource {
     return this.bitmaps.keys();
   }
 
-  /** The decoded picture for display. The bitmap belongs to the cache: do not close it. */
+  /**
+   * The decoded picture for display. The bitmap belongs to the cache and a
+   * later seek may close it once it is evicted: draw it right away, or clone
+   * it (`createImageBitmap(bitmap)`) to keep it. Never close it yourself.
+   */
   async getFrame(presIndex: number): Promise<ImageBitmap> {
     const started = performance.now();
     this.checkIndex(presIndex);
@@ -192,7 +196,12 @@ export class FrameSource {
     return best;
   }
 
-  /** Samples to feed, in decode order, for a window ending at the target's group. */
+  /**
+   * Samples to feed, in decode order, for a window ending at the target's group.
+   * Pictures that are displayed before the keyframe but decoded after it (the
+   * leading pictures of an open group) reference the previous group and are
+   * left out; they cannot be decoded from this keyframe.
+   */
   windowFor(presIndex: number): FrameEntry[] {
     const key = this.index.frames[this.keyframeBefore(presIndex)]!;
     const target = this.index.frames[presIndex]!;
@@ -202,7 +211,9 @@ export class FrameSource {
         ? this.decodeOrder.length - 1
         : this.index.frames[nextKey]!.decodeIndex - 1;
     const endDi = Math.min(groupEndDi, Math.max(target.decodeIndex, key.decodeIndex + this.lookahead));
-    return this.decodeOrder.slice(key.decodeIndex, endDi + 1);
+    return this.decodeOrder
+      .slice(key.decodeIndex, endDi + 1)
+      .filter((f) => f.presIndex >= key.presIndex);
   }
 
   close(): void {
@@ -336,6 +347,9 @@ export class FrameSource {
         for (const { frame, data } of batch) {
           if (window.error) throw window.error;
           await waitForQueue(decoder, QUEUE_DEPTH);
+          if (decoder.state !== 'configured') {
+            throw window.error ?? new Error(`decoder ${decoder.state} while decoding the window for frame ${req.presIndex}`);
+          }
           decoder.decode(encodedChunkFor(frame, data));
         }
       }

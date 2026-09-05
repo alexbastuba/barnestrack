@@ -18,12 +18,18 @@ _None recorded yet._
   ffmpeg -i in.avi -c:v libx264 -pix_fmt yuv420p -g 15 -bf 0 out.mp4
   ```
 
-- **H.264 features outside the sample videos.** Frame identity orders same-timestamp frames by the
-  bitstream's picture order count (POC type 0, frame pictures; see below). Streams using POC type 1
-  or field (interlaced) coding fall back to ordering ties by decode order, and the index records a
-  warning saying so. Open-GOP streams (a non-IDR keyframe whose following frames reference the
-  previous group) are not handled specially: frames that cannot be decoded from their keyframe
-  window surface as a decode error, never as a silently substituted frame.
+- **H.264 features outside the sample videos.** Only 8-bit 4:2:0 H.264 is accepted: the High 10,
+  High 4:2:2 and High 4:4:4 Predictive profiles are rejected at intake with a re-encode hint
+  (`-pix_fmt yuv420p`), and a decoder that still hands back a 10/12-bit frame stops the pass with
+  an "unsupported decoded pixel format" error rather than reading two-byte samples as bytes.
+  Frame identity orders same-timestamp frames by the bitstream's picture order count (POC type 0,
+  frame pictures; see below). Streams using POC type 1 or field (interlaced) coding fall back to
+  ordering ties by decode order, and the index records a warning saying so; a
+  `memory_management_control_operation` 5 (a POC reset without an IDR, which x264 never emits) is
+  not detected and would only affect the order within a tied pair. In an open-GOP stream (a non-IDR
+  keyframe whose leading pictures reference the previous group) the scrubber cannot reach those
+  leading pictures from their keyframe: it reports "frame N was not produced by the decoder" for
+  them and decodes the rest of the group normally; it never substitutes a neighbouring frame.
 
 ## Findings about the sample data
 

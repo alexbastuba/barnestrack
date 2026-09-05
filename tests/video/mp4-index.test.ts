@@ -102,13 +102,21 @@ describe.skipIf(!hasFfmpeg)('parseMp4Index on a synthetic B-pyramid clip', () =>
     expectTimesMatchFixture(index, ffprobePtsSeconds(clip.path));
   });
 
-  it('reports no timebase anomalies for a clean clip', () => {
+  it('reports no timebase anomalies for a clean clip and records the gap factor used', () => {
     expect(index.timebaseAnomalies).toEqual({
       duplicateTimestampPairs: 0,
       droppedFrameGaps: 0,
+      dropGapFactor: 1.5,
       driftSeconds: expect.closeTo(0, 9),
       nominalTick: 512,
     });
+  });
+
+  it('counts dropped gaps with the caller-supplied factor', async () => {
+    // Every 512-tick gap exceeds 0.5 × nominal, so all 59 gaps count.
+    const strict = await parseMp4Index(clip.buffer, { dropGapFactor: 0.5 });
+    expect(strict.timebaseAnomalies.droppedFrameGaps).toBe(59);
+    expect(strict.timebaseAnomalies.dropGapFactor).toBe(0.5);
   });
 
   it('exposes an avcC description that parses as one SPS and one PPS', () => {
@@ -208,6 +216,8 @@ describe.skipIf(!SAMPLE_DIR)('parseMp4Index on the sample videos (BARNESTRACK_SA
       it('measures the timebase anomalies', () => {
         expect(index.timebaseAnomalies.duplicateTimestampPairs).toBe(sample.duplicateTimestampPairs);
         expect(index.timebaseAnomalies.droppedFrameGaps).toBe(sample.droppedFrameGaps);
+        expect(index.timebaseAnomalies.dropGapFactor).toBe(1.5);
+        expect(index.warnings).toEqual([]);
         expect(index.timebaseAnomalies.driftSeconds).toBeCloseTo(sample.driftSeconds, 3);
         expect(index.editOffsetTicks).toBeGreaterThan(0);
       });

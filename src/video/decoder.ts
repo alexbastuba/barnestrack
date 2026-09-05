@@ -310,7 +310,13 @@ export function createSequentialDecoder(
         }
       }
       if (cancelled || fatal) return;
-      await decoder!.flush();
+      try {
+        await decoder!.flush();
+      } catch (e) {
+        // cancel() closes the decoder, which rejects an in-flight flush with AbortError.
+        if (!cancelled) throw e;
+        return;
+      }
       flushed = true;
       signal.notify();
     };

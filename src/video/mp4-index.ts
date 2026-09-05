@@ -45,8 +45,10 @@ export interface FrameEntry {
 export interface TimebaseAnomalies {
   /** Consecutive presentation-order frames with identical composition time. */
   duplicateTimestampPairs: number;
-  /** Consecutive frames whose presentation gap exceeds 1.5 × the nominal tick. */
+  /** Consecutive frames whose presentation gap exceeds `dropGapFactor` × the nominal tick. */
   droppedFrameGaps: number;
+  /** The factor the gap count was measured with (O11 `kinematics.dropGapFactor`). */
+  dropGapFactor: number;
   /** `durationSeconds − frameCount / nominalFps`: what nominal-rate arithmetic would be off by at the end. */
   driftSeconds: number;
   /** The most common sample duration, in timescale ticks. */
@@ -83,7 +85,19 @@ export interface Mp4Index {
 export interface ParseMp4IndexOptions {
   /** Default `poc`. `decode_order` reproduces a plain sort by composition time then sample number. */
   tieBreak?: TieBreakRule;
+  /**
+   * A presentation gap above this multiple of the nominal tick counts as a dropped frame.
+   * Default `DEFAULT_DROP_GAP_FACTOR`; callers pass the session's `kinematics.dropGapFactor`.
+   */
+  dropGapFactor?: number;
 }
+
+/**
+ * O11 provisional default. The single parameters module that will own every
+ * threshold lands with the analysis engine; until then this is the one place
+ * the value lives and it is recorded on the index it produced.
+ */
+export const DEFAULT_DROP_GAP_FACTOR = 1.5;
 
 export class UnsupportedVideoError extends Error {
   override readonly name = 'UnsupportedVideoError';
@@ -98,7 +112,12 @@ export class UnsupportedVideoError extends Error {
 
 const PARSE_CHUNK_BYTES = 1024 * 1024;
 const POC_SCAN_WINDOW_BYTES = 2 * 1024 * 1024;
-const DROPPED_GAP_FACTOR = 1.5;
+/** H.264 profile_idc values whose samples are 10/12-bit or not 4:2:0: High 10, High 4:2:2, High 4:4:4 Predictive. */
+const UNSUPPORTED_PROFILES = new Map<number, string>([
+  [110, 'High 10 (10-bit)'],
+  [122, 'High 4:2:2'],
+  [244, 'High 4:4:4 Predictive'],
+]);
 
 export async function parseMp4Index(
   input: ByteSourceInput,
@@ -106,6 +125,7 @@ export async function parseMp4Index(
 ): Promise<Mp4Index> {
   const source = toByteSource(input);
   const tieBreakWanted = options.tieBreak ?? 'poc';
+  const dropGapFactor = options.dropGapFactor ?? DEFAULT_DROP_GAP_FACTOR;
   const warnings: string[] = [];
 
   const { file, movie } = await parseMoov(source);
@@ -118,6 +138,14 @@ export async function parseMp4Index(
     throw new UnsupportedVideoError(
       `codec ${track.codec} is not H.264`,
       `The video codec is ${track.codec}; only H.264 (AVC) is supported.`,
+    );
+  }
+  const profileIdc = parseInt(track.codec.slice(5, 7), 16);
+  const unsupportedProfile = UNSUPPORTED_PROFILES.get(profileIdc);
+  if (unsupportedProfile) {
+    throw new UnsupportedVideoError(
+      `H.264 profile ${profileIdc} (${unsupportedProfile}) is not supported`,
+      `The video is H.264 ${unsupportedProfile}; only 8-bit 4:2:0 H.264 is supported. Re-encode with -pix_fmt yuv420p.`,
     );
   }
 
@@ -186,8 +214,16 @@ export async function parseMp4Index(
   if (frames[0] && !frames[0].isKeyframe) {
     warnings.push('the first frame in presentation order is not a keyframe');
   }
+  if (pictureOrder) {
+    const inversions = countPictureOrderInversions(frames);
+    if (inversions > 0) {
+      warnings.push(
+        `picture order disagrees with composition-time order at ${inversions} frame pairs; decoder output may not be monotone`,
+      );
+    }
+  }
 
-  const timebaseAnomalies = measureAnomalies(frames, nominalTick, durationSeconds, nominalFps);
+  const timebaseAnomalies = measureAnomalies(frames, nominalTick, durationSeconds, nominalFps, dropGapFactor);
 
   return {
     timescale,
@@ -281,20 +317,33 @@ function measureAnomalies(
   nominalTick: number,
   durationSeconds: number,
   nominalFps: number,
+  dropGapFactor: number,
 ): TimebaseAnomalies {
   let duplicateTimestampPairs = 0;
   let droppedFrameGaps = 0;
   for (let i = 1; i < frames.length; i++) {
     const gap = frames[i]!.cts - frames[i - 1]!.cts;
     if (gap === 0) duplicateTimestampPairs++;
-    else if (gap > DROPPED_GAP_FACTOR * nominalTick) droppedFrameGaps++;
+    else if (gap > dropGapFactor * nominalTick) droppedFrameGaps++;
   }
   return {
     duplicateTimestampPairs,
     droppedFrameGaps,
+    dropGapFactor,
     driftSeconds: durationSeconds - frames.length / nominalFps,
     nominalTick,
   };
+}
+
+/** Pairs of consecutive presentation-order frames whose (gop, poc) is not increasing. */
+function countPictureOrderInversions(frames: FrameEntry[]): number {
+  let inversions = 0;
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1]!;
+    const b = frames[i]!;
+    if (a.gop! > b.gop! || (a.gop === b.gop && a.poc! >= b.poc!)) inversions++;
+  }
+  return inversions;
 }
 
 /**

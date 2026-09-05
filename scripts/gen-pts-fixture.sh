@@ -4,7 +4,7 @@
 # the ground truth the sample-table parser is tested against (D35).
 #
 # Usage: scripts/gen-pts-fixture.sh <video.mp4> [<video.mp4> ...]
-# Requires ffprobe on PATH. Sample videos live in the upstream take-home repo
+# Requires ffprobe on PATH. Sample videos live in the public sample-data repository
 # (../rse-takehome-2026/data/barnes-maze/); only the timestamps are committed.
 set -euo pipefail
 

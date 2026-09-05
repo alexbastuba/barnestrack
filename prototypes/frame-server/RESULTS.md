@@ -4,7 +4,7 @@ How the sample-table frame identity, the sequential decoder, the tracking-pass w
 random-access frame source behave on the three sample videos. Everything below was measured on
 2026-09-05 with the evidence page in this folder, driven by `tests/browser/frame-server.spec.ts`
 in **Google Chrome 152.0.7977.76** (headed, `channel: 'chrome'`) on a **MacBook Pro, Apple M1 Pro,
-32 GB, macOS 15.5**. The sample videos live in the upstream take-home repository
+32 GB, macOS 15.5**. The sample videos live in the public sample-data repository
 (`../rse-takehome-2026/data/barnes-maze/`); nothing from them is committed here.
 
 Reproduce:
