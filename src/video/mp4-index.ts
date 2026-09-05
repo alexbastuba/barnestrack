@@ -1,13 +1,13 @@
 // Adapted from talmolab/vibes/video-player (BSD-3-Clause, commit d9410fa)
 // Adapted from talmolab/vibes/slp-viewer (BSD-3-Clause, commit d9410fa)
 /**
- * MP4 sample table → frame identity (D7).
+ * MP4 sample table → frame identity (D7, D45).
  *
  * A frame is its position in the video track's sample table sorted by
  * presentation time. Its time in seconds is `(cts − editOffsetTicks) /
  * timescale`, never `frameIndex / fps`. Ties in presentation time are ordered
  * by the bitstream's picture order count (the decoder's own display order),
- * then by decode order; see `h264-poc.ts` for why.
+ * then by decode order (D45); see `h264-poc.ts` for why.
  *
  * Borrowed from vibes: sorting the sample table by composition time with the
  * decode index kept alongside, the `avcC` → `description` extraction, and

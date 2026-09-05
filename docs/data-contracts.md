@@ -27,15 +27,18 @@ Current versions: `SESSION_SCHEMA_VERSION = 1`, `MAZE_MAP_SCHEMA_VERSION = 1`,
   automatic tracking layer never contains `filled` points — filling is a derived-layer cleaning
   step, always shown and always counted (D16, O10).
 
-## 1. Frame identity and time (D7)
+## 1. Frame identity and time (D7, D45)
 
 A frame's identity is its position in the MP4 sample table, sorted by presentation time — not a
-nominal-rate index. Its time in seconds comes from that same table (composition time minus the
-edit-list offset, over the track timescale). All three sample videos contain duplicate
-presentation timestamps and dropped-frame gaps; one drifts 0.43 s from `frame ÷ fps` by its end, so
-nominal-rate arithmetic is never used for frame time. Decoder output frames are identified by
-output order using synthetic, monotone timestamps — never by matching a decoded frame back to the
-sample table by timestamp value, which would collapse the duplicates.
+nominal-rate index. Frames that share a presentation time are ordered by the bitstream's picture
+order count (the decoder's own display order), then by decode order; streams whose picture order
+cannot be read fall back to decode order with a recorded warning (D45). Its time in seconds comes
+from that same table (composition time minus the edit-list offset, over the track timescale). All
+three sample videos contain duplicate presentation timestamps and dropped-frame gaps; one drifts
+0.43 s from `frame ÷ fps` by its end, so nominal-rate arithmetic is never used for frame time.
+Decoder output frames are identified by output order using synthetic, monotone timestamps — never
+by matching a decoded frame back to the sample table by timestamp value, which would collapse the
+duplicates.
 
 | Field        | Type   | Unit    | Notes                                            |
 | ------------ | ------ | ------- | ------------------------------------------------- |

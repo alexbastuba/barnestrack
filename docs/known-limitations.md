@@ -43,7 +43,7 @@ _None recorded yet._
   frames in the bitstream's picture-order-count (POC) order, which differs from their order in the
   sample table for 68 / 7 / 5 pairs (test50 / test51 / test53, measured with `ffmpeg -bsf:v
   trace_headers`). BarnesTrack therefore orders ties by POC, read from each sample's first slice
-  header, so that "frame N" means the same picture in the sequential tracking pass, in the
+  header (D45), so that "frame N" means the same picture in the sequential tracking pass, in the
   scrubber, and in ffprobe's output order. A plain sort by timestamp then decode order makes the
   decoder's output non-monotone at the first such pair (frame 174/175 of test50), which the
   prototype demonstrates on request (`prototypes/frame-server/RESULTS.md`).
