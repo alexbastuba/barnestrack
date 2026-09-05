@@ -36,11 +36,16 @@ export interface GrayFrame {
 
 export type GrayFrameConsumer = (frame: GrayFrame) => void;
 
-export interface SequentialDecoderOptions {
-  /** Encoded chunks allowed in the decoder queue before the feed waits. Default 8. */
-  maxQueueDepth?: number;
+export interface DecoderTuning {
   /** Passed to `VideoDecoder.configure`. Default false. */
   optimizeForLatency?: boolean;
+  /** Passed to `VideoDecoder.configure`. Default `no-preference`; `prefer-software` models a machine without a GPU. */
+  hardwareAcceleration?: HardwareAcceleration;
+}
+
+export interface SequentialDecoderOptions extends DecoderTuning {
+  /** Encoded chunks allowed in the decoder queue before the feed waits. Default 8. */
+  maxQueueDepth?: number;
   /** Called after every `progressEvery` output frames (default 15). */
   onProgress?: (presIndex: number) => void;
   progressEvery?: number;
@@ -74,13 +79,14 @@ export class DecodeOrderError extends Error {
 const DEFAULT_QUEUE_DEPTH = 8;
 const DEFAULT_PROGRESS_EVERY = 15;
 
-export function decoderConfig(index: Mp4Index, optimizeForLatency = false): VideoDecoderConfig {
+export function decoderConfig(index: Mp4Index, tuning: DecoderTuning = {}): VideoDecoderConfig {
   return {
     codec: index.codec,
     codedWidth: index.width,
     codedHeight: index.height,
     description: index.description,
-    optimizeForLatency,
+    optimizeForLatency: tuning.optimizeForLatency ?? false,
+    hardwareAcceleration: tuning.hardwareAcceleration ?? 'no-preference',
   };
 }
 
@@ -141,7 +147,7 @@ export function createSequentialDecoder(
   let decoder: VideoDecoder | null = null;
 
   async function run(): Promise<SequentialDecodeResult> {
-    const config = decoderConfig(index, options.optimizeForLatency ?? false);
+    const config = decoderConfig(index, options);
     await assertDecoderSupport(config);
 
     const decodeOrder = [...index.frames].sort((a, b) => a.decodeIndex - b.decodeIndex);

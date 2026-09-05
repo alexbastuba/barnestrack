@@ -6,3 +6,5 @@ notes/
 *.avi
 *.mov
 .DS_Store
+test-results/
+playwright-report/

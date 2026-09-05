@@ -63,6 +63,7 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
     (frame) => consumer.onFrame(frame),
     {
       optimizeForLatency: request.optimizeForLatency ?? false,
+      hardwareAcceleration: request.hardwareAcceleration ?? 'no-preference',
       progressEvery: PROGRESS_EVERY,
       onProgress: (presIndex) => {
         const elapsedS = (performance.now() - started) / 1000;

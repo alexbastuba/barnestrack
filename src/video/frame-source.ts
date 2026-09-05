@@ -23,19 +23,19 @@ import {
   encodedChunkFor,
   presIndexFromTimestamp,
   waitForQueue,
+  type DecoderTuning,
 } from './decoder.js';
 import { copyLuma, createLumaScratch, type LumaScratch } from './luma.js';
 import type { FrameEntry, Mp4Index } from './mp4-index.js';
 import { readSamplesBatched } from './sample-reader.js';
 
-export interface FrameSourceOptions {
+export interface FrameSourceOptions extends DecoderTuning {
   /** ImageBitmaps kept. Default 90 (six 15-frame groups). */
   cacheSize?: number;
   /** Gray planes kept. Default 16. */
   grayCacheSize?: number;
   /** Frames decoded past the target within its group. Default 30. */
   lookahead?: number;
-  optimizeForLatency?: boolean;
 }
 
 interface WindowRequest {
@@ -132,7 +132,7 @@ export class FrameSource {
     this.bitmaps = new Lru(options.cacheSize ?? DEFAULT_CACHE_SIZE, (b) => b.close());
     this.grays = new Lru(options.grayCacheSize ?? DEFAULT_GRAY_CACHE_SIZE);
     this.lookahead = options.lookahead ?? DEFAULT_LOOKAHEAD;
-    this.config = decoderConfig(index, options.optimizeForLatency ?? false);
+    this.config = decoderConfig(index, options);
     this.decodeOrder = [...index.frames].sort((a, b) => a.decodeIndex - b.decodeIndex);
   }
 

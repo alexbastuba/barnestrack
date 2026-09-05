@@ -15,6 +15,10 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      # ffmpeg with libx264 encodes the synthetic clips the video tests use (D35);
+      # the tests skip themselves with a message when it is missing.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck

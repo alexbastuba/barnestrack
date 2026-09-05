@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BarnesTrack frame server prototype</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1rem;
+        max-width: 72rem;
+        line-height: 1.4;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-top: 1.5rem;
+      }
+      .drop {
+        border: 2px dashed #666;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      .drop:focus-within,
+      .drop.over {
+        border-color: #0053a6;
+        outline: 2px solid #0053a6;
+      }
+      fieldset {
+        margin: 0.5rem 0;
+      }
+      table {
+        border-collapse: collapse;
+        margin: 0.5rem 0;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        border: 1px solid #999;
+        padding: 0.15rem 0.5rem;
+        text-align: left;
+      }
+      td.num {
+        text-align: right;
+      }
+      .verdicts li {
+        font-family: ui-monospace, monospace;
+        white-space: pre-wrap;
+      }
+      .pass::before {
+        content: '✔ ';
+      }
+      .fail::before {
+        content: '✘ ';
+      }
+      .pending::before {
+        content: '… ';
+      }
+      textarea {
+        width: 100%;
+        min-height: 12rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+      }
+      canvas {
+        border: 1px solid #999;
+        max-width: 100%;
+        image-rendering: pixelated;
+      }
+      [role='status'] {
+        margin: 0.5rem 0;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>BarnesTrack frame server prototype</h1>
+    <p>
+      Dev-only evidence page for chunk 1: parses the MP4 sample table, decodes every frame in a
+      worker, then checks random access against the sequential pass. Nothing leaves this machine.
+    </p>
+
+    <div class="drop" id="drop">
+      <label for="file">Video file (MP4, H.264): drop it here or choose it.</label>
+      <input type="file" id="file" accept="video/mp4,.mp4" />
+    </div>
+
+    <fieldset>
+      <legend>Options (fallback ladder and comparisons)</legend>
+      <label><input type="checkbox" id="optDecodeOrder" /> Order timestamp ties by decode order (the plain rule) instead of picture order count</label><br />
+      <label><input type="checkbox" id="optLatency" /> optimizeForLatency: true</label><br />
+      <label><input type="checkbox" id="optSoftware" /> hardwareAcceleration: prefer-software</label>
+    </fieldset>
+
+    <p role="status" aria-live="polite" id="status">Waiting for a file.</p>
+    <progress id="progress" max="1" value="0" hidden aria-label="Sequential decode progress"></progress>
+
+    <h2>Verdicts</h2>
+    <ul class="verdicts" id="verdicts" aria-live="polite"></ul>
+
+    <h2>Index</h2>
+    <div id="indexTable"></div>
+
+    <h2>Sequential pass (worker)</h2>
+    <div id="sequentialTable"></div>
+
+    <h2>Random access (main thread)</h2>
+    <div id="randomTable"></div>
+
+    <h2>Frame viewer</h2>
+    <label for="frameIndex">Frame index (presentation order)</label>
+    <input type="number" id="frameIndex" min="0" value="0" />
+    <button type="button" id="showFrame">Show frame</button>
+    <p id="frameInfo"></p>
+    <canvas id="frameCanvas" width="640" height="480" aria-label="Decoded video frame"></canvas>
+
+    <h2>Results JSON</h2>
+    <button type="button" id="copyJson">Copy JSON</button>
+    <textarea id="json" readonly aria-label="Results as JSON"></textarea>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
