@@ -124,6 +124,18 @@ Steps were still run to record their effect, all on test50:
    automatic fallback to `no-preference` if a browser rejects the hint. The frame source is faster
    too (median seek 4.7–5.9 ms vs 8.0–8.6 ms).
 
+## Re-run after the review fixes (commit 1e2c51a)
+
+The reviewer's findings changed the decoder's cancel path, the frame source's open-GOP window and
+the luma format check, so the full Playwright suite was run again at that commit (same machine,
+same Chrome): every verdict unchanged. Sequential 5539 / 741 / 905 frames at 464.8 / 837.5 /
+766.3 fps, main-thread JS heap 16.8 / 8.1 / 9.2 MB, renderer RSS 234 / 227 / 217 MB; random
+access 30/30 on each file with 6 duplicate-timestamp members, median seek 4.8 / 4.9 / 4.7 ms;
+t_s max |error| 0.438 / 0.333 / 0.438 µs; the index reports no warnings. Cancelling the pass at
+frames 2, 15, 400 and 730–739 of test51 (the last of these while the final flush is in progress)
+resolves `status: 'cancelled'` with the frames delivered so far, where the pre-fix code rejected
+with `AbortError` in the flush window.
+
 ## Verdicts against the acceptance criteria (§8 of the chunk prompt)
 
 | criterion                                                                 | test50 | test51 | test53 |
