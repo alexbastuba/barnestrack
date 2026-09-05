@@ -38,16 +38,32 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
 - `src/analysis/` pure metric/event/cleaning functions, no DOM or video dependency
 - `src/session/` session file read/write, IndexedDB autosave, correction application
 - `src/ui/` DOM + canvas UI: timeline, frame viewer, correction tools, exports
-- `prototypes/` throwaway spikes, not part of the shipped build
+- `prototypes/` dev-only evidence pages served by `npm run dev`, not part of the shipped build
+  (`prototypes/frame-server/` records the chunk-1 frame-server measurements in its `RESULTS.md`)
 - `scripts/` one-off maintenance/build scripts
-- `tests/` unit tests for everything in `src/analysis/`, `src/contracts/` and file I/O
+- `tests/` unit tests for everything in `src/analysis/`, `src/contracts/`, `src/video/` parsing and
+  file I/O; `tests/fixtures/` holds the ffprobe per-frame timestamps of the sample videos;
+  `tests/browser/` holds the Playwright specs
 - `docs/` data-contracts.md, decisions.md, known-limitations.md
 - `.claude/` agents and commands used to build this project (committed deliberately)
 - `AI_NOTES.md` written at the end; do not generate or pad it speculatively
 
 ## Workflow
 
-- A `/finish-chunk` command (added in chunk 1) runs the test suite, invokes the reviewer subagent
-  against the diff, and prompts for a known-limitations update before a chunk is reported done.
+- `.claude/agents/reviewer.md` is a fresh-context reviewer subagent that reads
+  `docs/decisions.md`, `docs/data-contracts.md`, the chunk's acceptance criteria and
+  `git diff <base>..HEAD`, and tries to break the chunk before approving (`VERDICT: APPROVE | REJECT`
+  plus findings with evidence and the smallest fix).
+- `.claude/commands/finish-chunk.md` (`/finish-chunk <base-commit>`) runs
+  `npm run lint && npm run typecheck && npm test && npm run build`, invokes the reviewer, fixes
+  REJECT findings in new commits and re-runs the reviewer once, prompts for a
+  `docs/known-limitations.md` update, and prints the chunk report.
+- `.claude/hooks/pre-commit-guard.sh` blocks commits that stage videos, files over 2 MB,
+  `notes/` or `.env*` paths, or key-shaped strings; `.claude/hooks/post-edit-check.sh` typechecks
+  and lints every edited `.ts` file.
 - Every chunk ends with the test suite green and `docs/known-limitations.md` reviewed for anything
   discovered during that chunk (D39, D40).
+- Browser-only behaviour (WebCodecs) is checked with `npx playwright test` against the installed
+  Google Chrome (`playwright.config.ts`, `tests/browser/`); it is not part of CI yet. Set
+  `BARNESTRACK_SAMPLE_DIR` to the upstream `data/barnes-maze/` folder to include the sample videos
+  in both Vitest and Playwright runs.
