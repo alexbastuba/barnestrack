@@ -18,10 +18,10 @@
  */
 import type { ByteSource } from './byte-source.js';
 import {
-  assertDecoderSupport,
   decoderConfig,
   encodedChunkFor,
   presIndexFromTimestamp,
+  resolveDecoderConfig,
   waitForQueue,
   type DecoderTuning,
 } from './decoder.js';
@@ -115,11 +115,11 @@ export class FrameSource {
   private readonly bitmaps: Lru<ImageBitmap>;
   private readonly grays: Lru<Uint8Array>;
   private readonly lookahead: number;
-  private readonly config: VideoDecoderConfig;
+  private config: VideoDecoderConfig;
   private readonly decodeOrder: FrameEntry[];
   private readonly scratch: LumaScratch = createLumaScratch();
   private decoder: VideoDecoder | null = null;
-  private supportChecked: Promise<void> | null = null;
+  private configResolved: Promise<void> | null = null;
   private inFlight: Promise<void> | null = null;
   private pending: WindowRequest | null = null;
   private closed = false;
@@ -262,8 +262,12 @@ export class FrameSource {
   }
 
   private async ensureDecoder(): Promise<VideoDecoder> {
-    if (!this.supportChecked) this.supportChecked = assertDecoderSupport(this.config);
-    await this.supportChecked;
+    if (!this.configResolved) {
+      this.configResolved = resolveDecoderConfig(this.config).then((resolved) => {
+        this.config = resolved;
+      });
+    }
+    await this.configResolved;
     if (!this.decoder || this.decoder.state === 'closed') {
       this.decoder = new VideoDecoder({
         output: (frame) => this.onOutput(frame),

@@ -8,14 +8,16 @@
  * increasing presentation order with no gaps or repeats: that is the check
  * that the duplicate-timestamp frames in the sample videos survive decoding
  * as distinct frames. Each frame's luma plane is copied out and the frame
- * closed immediately; nothing accumulates.
+ * closed as soon as the copy lands; a bounded number of copies overlap
+ * because reading a hardware-decoded frame back is the slow step, and the
+ * consumer still sees frames strictly in order.
  *
  * Borrowed from vibes: the decode-order feed with `type` from `is_sync` and
  * an awaited `flush()`; re-implemented with backpressure, synthetic
  * timestamps and luma extraction.
  */
 import type { ByteSource } from './byte-source.js';
-import { copyLuma, createLumaScratch } from './luma.js';
+import { copyLuma, createLumaScratch, type LumaPlane, type LumaScratch } from './luma.js';
 import type { FrameEntry, Mp4Index } from './mp4-index.js';
 import { readSamplesBatched } from './sample-reader.js';
 
@@ -28,8 +30,8 @@ export interface GrayFrame {
   width: number;
   height: number;
   /**
-   * Luma plane, row-major, tightly packed. The buffer is reused for the next
-   * frame: copy it if it must outlive the callback.
+   * Luma plane, row-major, tightly packed. The buffer is reused for a later
+   * frame once the callback returns: copy it if it must outlive the callback.
    */
   gray: Uint8Array;
 }
@@ -39,14 +41,25 @@ export type GrayFrameConsumer = (frame: GrayFrame) => void;
 export interface DecoderTuning {
   /** Passed to `VideoDecoder.configure`. Default false. */
   optimizeForLatency?: boolean;
-  /** Passed to `VideoDecoder.configure`. Default `no-preference`; `prefer-software` models a machine without a GPU. */
+  /**
+   * Passed to `VideoDecoder.configure`. Default `prefer-software`: the pass
+   * consumes CPU pixels, and on the reference Mac reading hardware-decoded
+   * frames back is the bottleneck (test50: ~270 fps hardware-allowed versus
+   * ~470 fps software; see prototypes/frame-server/RESULTS.md). It is also
+   * what a machine without a GPU does anyway. `no-preference` lets the
+   * browser choose. Falls back to `no-preference` if the browser rejects the hint.
+   */
   hardwareAcceleration?: HardwareAcceleration;
 }
+
+export const DEFAULT_HARDWARE_ACCELERATION: HardwareAcceleration = 'prefer-software';
 
 export interface SequentialDecoderOptions extends DecoderTuning {
   /** Encoded chunks allowed in the decoder queue before the feed waits. Default 8. */
   maxQueueDepth?: number;
-  /** Called after every `progressEvery` output frames (default 15). */
+  /** Luma copies allowed in flight at once (each holds one decoded frame open). Default 4. */
+  copyConcurrency?: number;
+  /** Called after every `progressEvery` delivered frames (default 15). */
   onProgress?: (presIndex: number) => void;
   progressEvery?: number;
 }
@@ -77,6 +90,7 @@ export class DecodeOrderError extends Error {
 }
 
 const DEFAULT_QUEUE_DEPTH = 8;
+const DEFAULT_COPY_CONCURRENCY = 4;
 const DEFAULT_PROGRESS_EVERY = 15;
 
 export function decoderConfig(index: Mp4Index, tuning: DecoderTuning = {}): VideoDecoderConfig {
@@ -86,18 +100,24 @@ export function decoderConfig(index: Mp4Index, tuning: DecoderTuning = {}): Vide
     codedHeight: index.height,
     description: index.description,
     optimizeForLatency: tuning.optimizeForLatency ?? false,
-    hardwareAcceleration: tuning.hardwareAcceleration ?? 'no-preference',
+    hardwareAcceleration: tuning.hardwareAcceleration ?? DEFAULT_HARDWARE_ACCELERATION,
   };
 }
 
-export async function assertDecoderSupport(config: VideoDecoderConfig): Promise<void> {
+/**
+ * Checks the config with `isConfigSupported`; a rejected `hardwareAcceleration`
+ * hint is retried as `no-preference` before giving up.
+ */
+export async function resolveDecoderConfig(config: VideoDecoderConfig): Promise<VideoDecoderConfig> {
   if (typeof VideoDecoder === 'undefined') {
     throw new Error('WebCodecs VideoDecoder is not available in this browser');
   }
-  const support = await VideoDecoder.isConfigSupported(config);
-  if (!support.supported) {
-    throw new Error(`the browser cannot decode ${config.codec} (${config.codedWidth}×${config.codedHeight})`);
+  if ((await VideoDecoder.isConfigSupported(config)).supported) return config;
+  if (config.hardwareAcceleration && config.hardwareAcceleration !== 'no-preference') {
+    const relaxed: VideoDecoderConfig = { ...config, hardwareAcceleration: 'no-preference' };
+    if ((await VideoDecoder.isConfigSupported(relaxed)).supported) return relaxed;
   }
+  throw new Error(`the browser cannot decode ${config.codec} (${config.codedWidth}×${config.codedHeight})`);
 }
 
 /** presIndex from a synthetic output timestamp; throws when it is not an exact multiple. */
@@ -135,6 +155,37 @@ export async function waitForQueue(decoder: VideoDecoder, maxDepth: number): Pro
   }
 }
 
+/** Wakes every waiter on `notify()`; waiters re-check their own condition. */
+class Signal {
+  private waiters: (() => void)[] = [];
+
+  wait(): Promise<void> {
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  notify(): void {
+    const waiters = this.waiters;
+    this.waiters = [];
+    for (const w of waiters) w();
+  }
+}
+
+interface LumaSlot {
+  scratch: LumaScratch;
+  gray: Uint8Array;
+}
+
+interface ArrivedFrame {
+  presIndex: number;
+  frame: VideoFrame;
+}
+
+interface CopyInFlight {
+  presIndex: number;
+  slot: LumaSlot;
+  done: Promise<LumaPlane>;
+}
+
 export function createSequentialDecoder(
   index: Mp4Index,
   source: ByteSource,
@@ -142,88 +193,131 @@ export function createSequentialDecoder(
   options: SequentialDecoderOptions = {},
 ): SequentialDecoder {
   const maxQueueDepth = options.maxQueueDepth ?? DEFAULT_QUEUE_DEPTH;
+  const copyConcurrency = Math.max(1, options.copyConcurrency ?? DEFAULT_COPY_CONCURRENCY);
   const progressEvery = options.progressEvery ?? DEFAULT_PROGRESS_EVERY;
   let cancelled = false;
   let decoder: VideoDecoder | null = null;
+  const signal = new Signal();
 
   async function run(): Promise<SequentialDecodeResult> {
-    const config = decoderConfig(index, options);
-    await assertDecoderSupport(config);
+    const config = await resolveDecoderConfig(decoderConfig(index, options));
 
     const decodeOrder = [...index.frames].sort((a, b) => a.decodeIndex - b.decodeIndex);
-    const scratch = createLumaScratch();
-    const gray = new Uint8Array(index.width * index.height);
+    const freeSlots: LumaSlot[] = Array.from({ length: copyConcurrency }, () => ({
+      scratch: createLumaScratch(),
+      gray: new Uint8Array(index.width * index.height),
+    }));
+    const arrived: ArrivedFrame[] = [];
+    const copies: CopyInFlight[] = [];
     const started = performance.now();
 
-    let expectedPresIndex = 0;
+    let nextArrival = 0;
     let delivered = 0;
+    let flushed = false;
     let fatal: Error | null = null;
-    let outputChain: Promise<void> = Promise.resolve();
-    let pendingOutputs = 0;
     let failRun: (error: Error) => void = () => {};
     const failed = new Promise<never>((_, reject) => {
       failRun = reject;
     });
-
-    const fail = (error: Error) => {
+    const fail = (error: unknown) => {
       if (fatal) return;
-      fatal = error;
-      failRun(error);
+      fatal = error instanceof Error ? error : new Error(String(error));
+      signal.notify();
+      failRun(fatal);
     };
 
-    const handleOutput = async (frame: VideoFrame) => {
-      try {
-        if (fatal || cancelled) return;
-        const presIndex = presIndexFromTimestamp(frame.timestamp);
-        if (presIndex !== expectedPresIndex) {
-          throw new DecodeOrderError(
-            `decoder output out of order: expected frame ${expectedPresIndex}, got ${presIndex}`,
-            expectedPresIndex,
-            presIndex,
-          );
-        }
-        const entry = index.frames[presIndex];
-        if (!entry) throw new Error(`decoder produced frame ${presIndex} beyond the index`);
-        const plane = await copyLuma(frame, scratch, gray);
-        onFrame({ presIndex, t_s: entry.t_s, width: plane.width, height: plane.height, gray });
-        expectedPresIndex++;
-        delivered++;
-        if (options.onProgress && delivered % progressEvery === 0) options.onProgress(presIndex);
-      } catch (e) {
-        fail(e instanceof Error ? e : new Error(String(e)));
-      } finally {
-        frame.close();
-        pendingOutputs--;
+    const startCopies = () => {
+      while (arrived.length > 0 && freeSlots.length > 0 && !fatal && !cancelled) {
+        const { presIndex, frame } = arrived.shift()!;
+        const slot = freeSlots.pop()!;
+        const done = copyLuma(frame, slot.scratch, slot.gray).finally(() => frame.close());
+        copies.push({ presIndex, slot, done });
       }
+      signal.notify();
     };
 
     decoder = new VideoDecoder({
       output: (frame) => {
-        pendingOutputs++;
-        outputChain = outputChain.then(() => handleOutput(frame));
+        try {
+          if (fatal || cancelled) {
+            frame.close();
+            return;
+          }
+          const presIndex = presIndexFromTimestamp(frame.timestamp);
+          if (presIndex !== nextArrival) {
+            throw new DecodeOrderError(
+              `decoder output out of order: expected frame ${nextArrival}, got ${presIndex}`,
+              nextArrival,
+              presIndex,
+            );
+          }
+          if (presIndex >= index.frameCount) {
+            throw new Error(`decoder produced frame ${presIndex} beyond the index`);
+          }
+          nextArrival++;
+          arrived.push({ presIndex, frame });
+          startCopies();
+        } catch (e) {
+          frame.close();
+          fail(e);
+        }
       },
-      error: (e) => fail(e instanceof Error ? e : new Error(String(e))),
+      error: (e) => fail(e),
     });
     decoder.configure(config);
 
-    try {
-      const feed = (async () => {
-        for await (const batch of readSamplesBatched(source, decodeOrder)) {
-          for (const { frame, data } of batch) {
-            if (cancelled || fatal) return;
-            await waitForQueue(decoder!, maxQueueDepth);
-            while (pendingOutputs > maxQueueDepth * 2 && !fatal && !cancelled) {
-              await outputChain;
-            }
-            if (cancelled || fatal) return;
-            decoder!.decode(encodedChunkFor(frame, data));
-          }
+    const deliver = async (): Promise<void> => {
+      while (!fatal && !cancelled) {
+        const copy = copies.shift();
+        if (!copy) {
+          if (flushed && arrived.length === 0) return;
+          await signal.wait();
+          continue;
         }
-        if (cancelled || fatal) return;
-        await decoder!.flush();
-        await outputChain;
-      })();
-      await Promise.race([feed, failed]);
+        let plane: LumaPlane;
+        try {
+          plane = await copy.done;
+        } catch (e) {
+          fail(e);
+          return;
+        }
+        if (fatal || cancelled) return;
+        const entry = index.frames[copy.presIndex]!;
+        try {
+          onFrame({ presIndex: copy.presIndex, t_s: entry.t_s, width: plane.width, height: plane.height, gray: copy.slot.gray });
+        } catch (e) {
+          fail(e);
+          return;
+        }
+        delivered++;
+        if (options.onProgress && delivered % progressEvery === 0) options.onProgress(copy.presIndex);
+        freeSlots.push(copy.slot);
+        startCopies();
+      }
+    };
+
+    const feed = async (): Promise<void> => {
+      const maxOutstanding = copyConcurrency * 2;
+      for await (const batch of readSamplesBatched(source, decodeOrder)) {
+        for (const { frame, data } of batch) {
+          if (cancelled || fatal) return;
+          await waitForQueue(decoder!, maxQueueDepth);
+          while (arrived.length + copies.length >= maxOutstanding && !fatal && !cancelled) {
+            await signal.wait();
+          }
+          if (cancelled || fatal) return;
+          decoder!.decode(encodedChunkFor(frame, data));
+        }
+      }
+      if (cancelled || fatal) return;
+      await decoder!.flush();
+      flushed = true;
+      signal.notify();
+    };
+
+    try {
+      const delivery = deliver();
+      await Promise.race([Promise.all([feed(), delivery]), failed]);
       if (fatal) throw fatal;
 
       const elapsedMs = performance.now() - started;
@@ -237,6 +331,8 @@ export function createSequentialDecoder(
       }
       return { status: 'done', frameCount: delivered, elapsedMs, fps: fpsOf(delivered, elapsedMs) };
     } finally {
+      for (const { frame } of arrived.splice(0)) frame.close();
+      await Promise.allSettled(copies.splice(0).map((c) => c.done));
       const d = decoder;
       decoder = null;
       if (d && d.state !== 'closed') d.close();
@@ -245,6 +341,7 @@ export function createSequentialDecoder(
 
   function cancel(): void {
     cancelled = true;
+    signal.notify();
     if (decoder && decoder.state !== 'closed') {
       try {
         decoder.close();

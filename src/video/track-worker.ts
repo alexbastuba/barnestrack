@@ -8,7 +8,13 @@
  * message; re-implemented around `createSequentialDecoder`.
  */
 import { byteSourceFromBlob } from './byte-source.js';
-import { DecodeOrderError, createSequentialDecoder, type GrayFrame, type SequentialDecoder } from './decoder.js';
+import {
+  DEFAULT_HARDWARE_ACCELERATION,
+  DecodeOrderError,
+  createSequentialDecoder,
+  type GrayFrame,
+  type SequentialDecoder,
+} from './decoder.js';
 import { fnv1a32 } from './frame-hash.js';
 import type { FrameConsumerKind, WorkerRequest, WorkerResponse } from './worker-protocol.js';
 
@@ -63,7 +69,7 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
     (frame) => consumer.onFrame(frame),
     {
       optimizeForLatency: request.optimizeForLatency ?? false,
-      hardwareAcceleration: request.hardwareAcceleration ?? 'no-preference',
+      hardwareAcceleration: request.hardwareAcceleration ?? DEFAULT_HARDWARE_ACCELERATION,
       progressEvery: PROGRESS_EVERY,
       onProgress: (presIndex) => {
         const elapsedS = (performance.now() - started) / 1000;

@@ -16,7 +16,7 @@ export interface StartMessage {
   consumer: FrameConsumerKind;
   /** Fallback-ladder knob (see prototype RESULTS.md); default false. */
   optimizeForLatency?: boolean;
-  /** `prefer-software` models a machine without a GPU; default `no-preference`. */
+  /** Default `prefer-software` (see `DecoderTuning`); `no-preference` lets the browser use hardware. */
   hardwareAcceleration?: HardwareAcceleration;
 }
 

@@ -298,9 +298,9 @@ async function analyse(file: File): Promise<void> {
   const verdicts: Verdict[] = [];
   const optDecodeOrder = $<HTMLInputElement>('optDecodeOrder').checked;
   const optimizeForLatency = $<HTMLInputElement>('optLatency').checked;
-  const hardwareAcceleration: HardwareAcceleration = $<HTMLInputElement>('optSoftware').checked
-    ? 'prefer-software'
-    : 'no-preference';
+  const hardwareAcceleration: HardwareAcceleration = $<HTMLInputElement>('optHardware').checked
+    ? 'no-preference'
+    : 'prefer-software';
 
   try {
     setStatus(`Parsing the sample table of ${file.name}…`);

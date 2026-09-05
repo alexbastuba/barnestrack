@@ -19,7 +19,7 @@ import {
 const PAGE_URL = '/prototypes/frame-server/';
 const SAMPLE_DIR = process.env['BARNESTRACK_SAMPLE_DIR'];
 const RESULTS_DIR = 'test-results/frame-server';
-/** Comma-separated page options for the sample-video runs: decode_order, latency, software. */
+/** Comma-separated page options for the sample-video runs: decode_order, latency, hardware. */
 const OPTIONS = (process.env['BARNESTRACK_FRAME_SERVER_OPTIONS'] ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -27,7 +27,7 @@ const OPTIONS = (process.env['BARNESTRACK_FRAME_SERVER_OPTIONS'] ?? '')
 const OPTION_CHECKBOXES: Record<string, string> = {
   decode_order: '#optDecodeOrder',
   latency: '#optLatency',
-  software: '#optSoftware',
+  hardware: '#optHardware',
 };
 
 function chromeInstalled(): boolean {
