@@ -29,5 +29,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Playwright specs live in tests/browser/*.spec.ts and are not Vitest tests.
+    include: ['tests/**/*.test.ts'],
   },
 });
