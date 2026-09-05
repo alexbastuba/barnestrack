@@ -33,8 +33,21 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
 
 ## Repo layout (keep current as it evolves)
 
-- `src/` application code; `src/analysis/` pure metric/event/cleaning functions
-- `tests/` unit tests for everything in `src/analysis/` and file I/O
-- `docs/` data-contracts.md, decisions.md
+- `src/contracts/` TypeScript types for the track, session, maze map and export-row data contracts (D7–D12)
+- `src/video/` MP4 demuxing, decoding, sample-table frame identity
+- `src/analysis/` pure metric/event/cleaning functions, no DOM or video dependency
+- `src/session/` session file read/write, IndexedDB autosave, correction application
+- `src/ui/` DOM + canvas UI: timeline, frame viewer, correction tools, exports
+- `prototypes/` throwaway spikes, not part of the shipped build
+- `scripts/` one-off maintenance/build scripts
+- `tests/` unit tests for everything in `src/analysis/`, `src/contracts/` and file I/O
+- `docs/` data-contracts.md, decisions.md, known-limitations.md
 - `.claude/` agents and commands used to build this project (committed deliberately)
 - `AI_NOTES.md` written at the end; do not generate or pad it speculatively
+
+## Workflow
+
+- A `/finish-chunk` command (added in chunk 1) runs the test suite, invokes the reviewer subagent
+  against the diff, and prompts for a known-limitations update before a chunk is reported done.
+- Every chunk ends with the test suite green and `docs/known-limitations.md` reviewed for anything
+  discovered during that chunk (D39, D40).
