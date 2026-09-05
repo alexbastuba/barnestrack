@@ -38,6 +38,13 @@ export interface QualityReport {
   noseConfidenceHistogram: readonly HistogramBin[];
   timebaseAnomalies: TimebaseAnomalies;
   platformDiameter_cm: number;
+  /**
+   * This video's pixels-per-centimetre, derived from the maze map's platform
+   * radius after this video's transform. Calibration lives only in the maze
+   * map (D44); this is the one place the derived, per-video value is
+   * recorded, alongside `quality.csv`.
+   */
+  pxPerCm: number;
   parametersHash: ParametersHash;
   tier: QualityTier;
 }

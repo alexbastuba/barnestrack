@@ -103,5 +103,7 @@ export interface QualityRow extends ExportProvenance {
   droppedFrameGapCount: number;
   driftSeconds: number;
   platformDiameter_cm: number;
+  /** Derived from the maze map's platform radius after this video's transform. D44. */
+  pxPerCm: number;
   tier: 'GOOD' | 'REVIEW' | 'POOR';
 }

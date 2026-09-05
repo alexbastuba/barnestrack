@@ -1,5 +1,10 @@
 /**
  * Session file: one JSON document per cohort. D9, D27, D28.
+ *
+ * No separate calibration field: `platformDiameter_cm` lives once in the
+ * shared `mazeMap` (D10, D44). A video's pixels-per-centimetre is derived
+ * from the map's platform radius after that video's `mazeTransform` and
+ * recorded in `derived.quality.pxPerCm`, never entered separately.
  */
 import type { ParametersHash, Parameters } from './parameters.js';
 import type { MazeMapFile, SimilarityTransform } from './mazeMap.js';
@@ -121,6 +126,7 @@ export interface SessionFile {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   toolVersion: ToolVersion;
   videos: VideoDescriptor[];
+  /** The one shared source of calibration for the cohort (D10, D44); a cohort using two mazes carries two maps. */
   mazeMap: MazeMapFile;
   parameters: Parameters;
   analyses: Record<string, VideoAnalysis>;

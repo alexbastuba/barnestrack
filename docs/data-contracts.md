@@ -83,10 +83,17 @@ The automatic layer never contains a frame with `source: 'filled'` on either poi
 }
 ```
 
-## 3. Session file (D9, D27, D28)
+## 3. Session file (D9, D27, D28, D44)
 
 One JSON document per session (cohort): a video list, a shared maze map with a per-video
 transform, shared parameters, and per-video analyses in three layers.
+
+**No session-level calibration field.** `platformDiameter_cm` lives once in the shared `mazeMap`
+(§4); the session file does not repeat it. A video's pixels-per-centimetre is derived from the
+map's platform radius after that video's `mazeTransform` and recorded in
+`analyses[videoId].derived.quality.pxPerCm` and in `quality.csv`'s `px_per_cm` column — never
+entered separately. A cohort that uses two physical mazes carries two maze map files (D44,
+superseding the session-level "calibration" field named in D9's prose).
 
 | Field           | Type                                    | Notes                                                    |
 | --------------- | ---------------------------------------- | --------------------------------------------------------- |
@@ -118,7 +125,7 @@ transform, shared parameters, and per-video analyses in three layers.
   `source: 'user'` and an ISO 8601 `timestamp` (D25). Never mutates `auto`.
 - **`derived`** — `{ cleanedTrack, events, metrics, quality }`. Everything recomputed from
   `auto ⊕ corrections` on load: safe to discard and recompute at any time; never treated as the
-  source of truth (D9, D20).
+  source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration value (D44).
 
 ```json
 {
@@ -260,5 +267,6 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | `gap_count`, `longest_gap_s` | count, s | D30 |
 | `duplicate_timestamp_count`, `dropped_frame_gap_count`, `drift_s` | count, count, s | D7, O11 |
 | `platform_diameter_cm` | cm | D14 |
+| `px_per_cm` | px/cm | this video's calibration, derived from the maze map's platform radius after its transform (D44) |
 | `tier` | — | `GOOD \| REVIEW \| POOR` |
 | `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
