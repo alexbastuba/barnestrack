@@ -17,7 +17,7 @@ export interface EventRecord {
   startTime_s: TimeSeconds;
   endTime_s: TimeSeconds;
   durationSeconds: number;
-  /** Which named point this event's distance/dwell was judged on. O16, O18. */
+  /** Which named point this event's distance/dwell was judged on. O16. */
   pointUsed: NamedPointId;
   minNoseDistance_cm: number;
   minCentroidDistance_cm: number;

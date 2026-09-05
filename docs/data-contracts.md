@@ -251,7 +251,7 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | `hole_index` (nullable), `is_target` | —, bool | — |
 | `start_frame`, `end_frame` | — | D7 |
 | `start_time_s`, `end_time_s`, `duration_s` | s | D7 |
-| `point_used` | — | `nose \| centroid` (O16, O18) |
+| `point_used` | — | `nose \| centroid` (O16) |
 | `min_nose_distance_cm`, `min_centroid_distance_cm` | cm | O1 |
 | `evidence_summary` | — | D19 |
 | `source` | — | `auto \| corrected` |
