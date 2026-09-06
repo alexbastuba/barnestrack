@@ -62,6 +62,33 @@ session it is found (D39).
   holes near the far platform edge are seen obliquely as small crescents). A baked-in animal of at
   least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
   to flag.
+- **`src/viz/figure-export.ts` has no automated test.** Node has neither `OffscreenCanvas` nor
+  `document`, so the one module that turns a figure into a PNG cannot be exercised by Vitest; its
+  test only asserts that it says so plainly rather than failing obscurely. Everything it draws is
+  covered — the figures themselves are unit-tested against a recording 2D context — but the canvas
+  sizing, the 2×/3× scaling and the PNG encoding are checked by hand in Chrome through
+  `prototypes/viz-gallery/`, where a 3× PNG of each of the nine figures was exported, converted to
+  grayscale with `sips` and read (chunk 8). A fix would be a Playwright spec in `tests/browser/`
+  that exports one figure and asserts the PNG's dimensions and magic bytes.
+- **The export ZIP is stored, not compressed.** `src/export/zip.ts` writes store-only entries, so a
+  bundle is as large as the files inside it: 11.1 MiB for the three-video synthetic cohort, of which
+  11.07 MiB is the session file carrying its embedded `auto` track layer. A twenty-video cohort
+  would give a bundle near 80 MB where deflate would give a small fraction of that. The workbook
+  is already deflated, so only the JSON and the CSVs would benefit. A fix would be a raw-deflate
+  implementation, or `CompressionStream('deflate-raw')` where the browser has it, behind the same
+  `zipStore` signature.
+- **`session_id` in the exports is the cohort name, not a stable identifier.** `SessionFile` (D9,
+  D47) has no id field, only the user-editable `name`, so that is what `trials.csv`, `events.csv`
+  and `quality.csv` carry in `session_id`. Renaming a cohort changes the value in every row exported
+  afterwards, and two cohorts that happen to share a name are indistinguishable in a merged
+  spreadsheet. A fix is a generated, immutable session id in the session contract, which needs a
+  schema-version bump and Alex's sign-off.
+- **`events.csv` cannot express a tracking failure.** `EventKind` admits `tracking_failure`, but D11
+  and `docs/data-contracts.md` give the exported `kind` column the domain
+  `investigation | escape_entry`, and O4 makes a loss away from any hole a finding of the quality
+  report rather than an event. `eventRows()` therefore drops those records; they survive in the
+  session file, in `quality.csv` as gaps, and in the timeline. Anyone reconciling the two files must
+  know that the event count in `events.csv` is not the length of `derived.events`.
 
 ## Excluded scope
 
@@ -103,6 +130,12 @@ session it is found (D39).
   attached" until the same file is dropped again (D27). BarnesTrack could keep the file in
   IndexedDB and re-open it automatically, but that would put copies of a lab's video data in the
   browser profile without the user asking, so it is not done.
+
+- **Figures are drawn on a plain platform disc, not the video frame.** `FigureOpts.background`
+  accepts a still and `drawPlatform` clips it to the disc, but nothing produces that still yet: D33
+  calls for one derived still per video so every result renders without a video attached, and that
+  belongs with the demo-state work. Until then a trajectory is read against the numbered hole ring
+  rather than against the arena the animal was actually in.
 
 ## Findings about the sample data
 
