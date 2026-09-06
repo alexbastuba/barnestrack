@@ -1,0 +1,113 @@
+/**
+ * The parametric hole ring. D10, D13, D44, O8.
+ *
+ * Twenty holes on sixty videos must not be twelve hundred clicks, so holes are
+ * *generated* from the platform circle — count, ring ratio, hole radius and one
+ * phase angle — and only nudged individually when a maze is visibly irregular.
+ *
+ * Angles are degrees measured from the platform centre with `x = cx + R·cos θ`,
+ * `y = cy + R·sin θ`. Video pixels have y pointing down, so an increasing angle
+ * runs clockwise on screen. Hole 0 sits at `phase_deg`.
+ */
+import type { HoleRing, MazeMapFile, PlatformCircle } from '../contracts/mazeMap.js';
+import { angleDifferenceDeg, distance, normaliseDeg, type Point } from './types.js';
+
+/** O8 · hole diameter default, centimetres. The one hole dimension a user may change. */
+export const DEFAULT_HOLE_DIAMETER_CM = 5;
+/** O8 · hole-ring radius as a fraction of the platform radius, measured on the sample videos. */
+export const DEFAULT_RING_RATIO = 0.89;
+/** O8 · hole count. */
+export const DEFAULT_HOLE_COUNT = 20;
+/** O8 · the hint shown beside the calibration field; the user must enter the real value. */
+export const TYPICAL_PLATFORM_DIAMETER_CM = 92;
+
+export interface HolePosition extends Point {
+  holeIndex: number;
+  /** True when a per-hole offset moved this hole off the generated ring. */
+  nudged: boolean;
+}
+
+export function ringRadius(platform: PlatformCircle, holes: Pick<HoleRing, 'ringRatio'>): number {
+  return platform.r * holes.ringRatio;
+}
+
+export function holeAngleDeg(holes: Pick<HoleRing, 'n' | 'phase_deg'>, holeIndex: number): number {
+  return normaliseDeg(holes.phase_deg + (holeIndex * 360) / holes.n);
+}
+
+/** Every hole centre in the map's own pixels, offsets applied. */
+export function holeCentres(map: Pick<MazeMapFile, 'platform' | 'holes'>): HolePosition[] {
+  const radius = ringRadius(map.platform, map.holes);
+  const offsets = new Map(map.holes.offsets?.map((o) => [o.holeIndex, o]) ?? []);
+  const positions: HolePosition[] = [];
+  for (let holeIndex = 0; holeIndex < map.holes.n; holeIndex++) {
+    const angle = (holeAngleDeg(map.holes, holeIndex) * Math.PI) / 180;
+    const offset = offsets.get(holeIndex);
+    positions.push({
+      holeIndex,
+      x: map.platform.cx + radius * Math.cos(angle) + (offset?.dx_px ?? 0),
+      y: map.platform.cy + radius * Math.sin(angle) + (offset?.dy_px ?? 0),
+      nudged: offset !== undefined && (offset.dx_px !== 0 || offset.dy_px !== 0),
+    });
+  }
+  return positions;
+}
+
+export interface NearestHole {
+  hole: HolePosition;
+  distance_px: number;
+}
+
+export function nearestHole(
+  map: Pick<MazeMapFile, 'platform' | 'holes'>,
+  point: Point,
+): NearestHole | null {
+  let best: NearestHole | null = null;
+  for (const hole of holeCentres(map)) {
+    const d = distance(hole, point);
+    if (best === null || d < best.distance_px) best = { hole, distance_px: d };
+  }
+  return best;
+}
+
+/**
+ * The `phase_deg` that slides the ring so the hole currently nearest the click
+ * lands on it. One click aligns twenty holes (D13).
+ */
+export function phaseForClick(
+  map: Pick<MazeMapFile, 'platform' | 'holes'>,
+  point: Point,
+): number | null {
+  const clickAngle = angleAt(map.platform, point);
+  if (clickAngle === null) return null;
+  const step = 360 / map.holes.n;
+  // Which generated hole is nearest in angle, ignoring per-hole nudges.
+  const k = Math.round(angleDifferenceDeg(clickAngle, map.holes.phase_deg) / step);
+  return normaliseDeg(clickAngle - k * step);
+}
+
+/** The angle of `point` seen from the platform centre, or null at the centre itself. */
+export function angleAt(platform: PlatformCircle, point: Point): number | null {
+  const dx = point.x - platform.cx;
+  const dy = point.y - platform.cy;
+  if (dx === 0 && dy === 0) return null;
+  return normaliseDeg((Math.atan2(dy, dx) * 180) / Math.PI);
+}
+
+/**
+ * This video's pixels per centimetre, from the platform circle it was fitted to
+ * and the one calibration input. D14, D44 — never entered separately.
+ */
+export function pxPerCm(platform: PlatformCircle, platformDiameter_cm: number): number | null {
+  if (!(platformDiameter_cm > 0) || !(platform.r > 0)) return null;
+  return (2 * platform.r) / platformDiameter_cm;
+}
+
+export function holeRadiusPx(holeDiameter_cm: number, pixelsPerCm: number): number {
+  return (holeDiameter_cm / 2) * pixelsPerCm;
+}
+
+/** The hole diameter in centimetres implied by a stored `holeRadius_px`. */
+export function holeDiameterCm(holeRadius_px: number, pixelsPerCm: number): number {
+  return (2 * holeRadius_px) / pixelsPerCm;
+}
