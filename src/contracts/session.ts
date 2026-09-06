@@ -1,10 +1,17 @@
 /**
- * Session file: one JSON document per cohort. D9, D27, D28.
+ * Session file: one JSON document per cohort. D9, D27, D28, D47.
  *
  * No separate calibration field: `platformDiameter_cm` lives once in the
  * shared `mazeMap` (D10, D44). A video's pixels-per-centimetre is derived
  * from the map's platform radius after that video's `mazeTransform` and
  * recorded in `derived.quality.pxPerCm`, never entered separately.
+ *
+ * A session exists before a maze or parameters do (D47): it is created the
+ * moment a video is loaded, so autosave and reload work from the first drop
+ * (D27). `mazeMap` is null until the maze step is finished and `parameters`
+ * is null until the first tracking run stamps the defaults in force at that
+ * time. `analyses` has no entry for a video that has not been tracked —
+ * never a placeholder `auto`/`derived` layer.
  */
 import type { ParametersHash, Parameters } from './parameters.js';
 import type { MazeMapFile, SimilarityTransform } from './mazeMap.js';
@@ -125,9 +132,16 @@ export interface VideoAnalysis {
 export interface SessionFile {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   toolVersion: ToolVersion;
+  /** User-editable cohort name; defaults to the first video's filename. D47. */
+  name: string;
   videos: VideoDescriptor[];
-  /** The one shared source of calibration for the cohort (D10, D44); a cohort using two mazes carries two maps. */
-  mazeMap: MazeMapFile;
-  parameters: Parameters;
+  /**
+   * The one shared source of calibration for the cohort (D10, D44); a cohort
+   * using two mazes carries two maps. Null until the maze step is finished (D47).
+   */
+  mazeMap: MazeMapFile | null;
+  /** Null until the first tracking run stamps the defaults in force at that time. D47. */
+  parameters: Parameters | null;
+  /** No entry for a video that has not been tracked. */
   analyses: Record<string, VideoAnalysis>;
 }

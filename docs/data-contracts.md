@@ -86,10 +86,17 @@ The automatic layer never contains a frame with `source: 'filled'` on either poi
 }
 ```
 
-## 3. Session file (D9, D27, D28, D44)
+## 3. Session file (D9, D27, D28, D44, D47)
 
-One JSON document per session (cohort): a video list, a shared maze map with a per-video
+One JSON document per session (cohort): a name, a video list, a shared maze map with a per-video
 transform, shared parameters, and per-video analyses in three layers.
+
+**A session exists before a maze or parameters do (D47).** The session is created the moment a
+video is loaded, so autosave and reload work from the first dropped file (D27). `mazeMap` is `null`
+until the maze step is finished; `parameters` is `null` until the first tracking run stamps the
+defaults in force at that time; `analyses` has no entry for a video that has not been tracked —
+never a placeholder `auto`/`derived` layer. `SESSION_SCHEMA_VERSION` stays 1: no schema-1 file had
+been written when this was decided.
 
 **No session-level calibration field.** `platformDiameter_cm` lives once in the shared `mazeMap`
 (§4); the session file does not repeat it. A video's pixels-per-centimetre is derived from the
@@ -102,10 +109,11 @@ superseding the session-level "calibration" field named in D9's prose).
 | --------------- | ---------------------------------------- | --------------------------------------------------------- |
 | `schemaVersion` | `1`                                       | `SESSION_SCHEMA_VERSION`.                                  |
 | `toolVersion`   | string                                    | `barnestrack v<major>.<minor>.<patch> (<git-sha7>)`.       |
+| `name`          | string                                    | User-editable cohort name; defaults to the first video's filename (D47). |
 | `videos`        | VideoDescriptor[]                        | See below.                                                 |
-| `mazeMap`       | MazeMapFile                              | Shared across the cohort. See §4.                          |
-| `parameters`    | Parameters                               | Every event/cleaning threshold. See §6.                    |
-| `analyses`      | `Record<videoId, VideoAnalysis>`         | See below.                                                 |
+| `mazeMap`       | `MazeMapFile \| null`                    | Shared across the cohort; `null` until the maze step is finished (D47). See §4. |
+| `parameters`    | `Parameters \| null`                     | Every event/cleaning threshold; `null` until the first tracking run (D47). See §6. |
+| `analyses`      | `Record<videoId, VideoAnalysis>`         | No entry until the video is tracked. See below.            |
 
 **VideoDescriptor**
 
@@ -134,6 +142,7 @@ superseding the session-level "calibration" field named in D9's prose).
 {
   "schemaVersion": 1,
   "toolVersion": "barnestrack v0.1.0 (a1b2c3d)",
+  "name": "cohort3_day1",
   "videos": [
     {
       "id": "vid_01",
