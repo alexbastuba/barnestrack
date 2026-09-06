@@ -848,3 +848,146 @@ label {
   color: var(--danger);
   font-weight: 600;
 }
+
+/* ---- track step ------------------------------------------------------------- */
+
+.track-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.queue-state {
+  flex: 1 1 12rem;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.track-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  background: var(--paper);
+}
+
+.track-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.track-status {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+/* State is carried by the words in these elements; the colour only echoes it. */
+.track-status.is-done {
+  color: var(--ok);
+}
+
+.track-status.is-failed {
+  color: var(--danger);
+}
+
+.track-status.is-cancelled,
+.track-status.is-untracked {
+  color: var(--ink-soft);
+}
+
+.track-detail,
+.track-progress-text {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.track-blocked {
+  display: block;
+  margin: 0 0 0.5rem;
+}
+
+.track-warnings {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.track-warnings .warn {
+  color: var(--ink);
+  background: var(--warn-bg);
+  border-left: 3px solid var(--warn-line);
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.track-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.track-progress {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  height: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.track-preview-wrap {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem;
+  background: var(--paper-soft);
+}
+
+.track-preview {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.track-preview-caption {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--ink-soft);
+  max-width: 240px;
+}
+
+.track-params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.track-param {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+}
+
+.track-param-default {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.track-learned {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--accent-soft);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius);
+}

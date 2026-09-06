@@ -4,6 +4,7 @@ import { IndexedDbSessionStorage, MemorySessionStorage } from './session/storage
 import { mountApp } from './ui/app.js';
 import { placeholderStep } from './ui/placeholder-step.js';
 import { createMazeStep } from './ui/maze-step.js';
+import { createTrackStep } from './ui/track-step.js';
 import { createVideosStep } from './ui/videos-step.js';
 import type { AppContext, Step } from './ui/step.js';
 
@@ -17,18 +18,7 @@ function makeSteps(context: AppContext): Step[] {
   return [
     createVideosStep(context),
     createMazeStep(context),
-    placeholderStep({
-      id: 'track',
-      label: 'Track',
-      what:
-        'Run the automatic tracking pass over each video, watch it work, and correct any frame ' +
-        'where it got the animal wrong.',
-      definitions: [
-        'Automatic values are never overwritten: a correction is stored beside the automatic layer and everything downstream is recomputed (D9, D25).',
-        'A frame the tracker could not resolve stays visibly missing; nothing is interpolated silently (D16).',
-      ],
-      waitingFor: () => 'tracking is built in a later chunk',
-    }),
+    createTrackStep(context),
     placeholderStep({
       id: 'review',
       label: 'Review & Export',

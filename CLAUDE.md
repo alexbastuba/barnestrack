@@ -48,7 +48,8 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
 - `tests/` unit tests for everything in `src/analysis/`, `src/contracts/`, `src/maze/`,
   `src/session/` and `src/video/` parsing and file I/O; `tests/fixtures/` holds the ffprobe
   per-frame timestamps of the sample videos; `tests/browser/` holds the Playwright specs.
-  There is no `tests/ui/`: `src/ui/` is DOM- and canvas-bound and the project has no DOM test
+  `tests/ui/` holds unit tests for the DOM-free parts of `src/ui/` only (string formatting and
+  the like); the rest of `src/ui/` is DOM- and canvas-bound and the project has no DOM test
   environment, so it is covered by typecheck, by `tests/browser/` and by a recorded manual pass
 - `docs/` data-contracts.md, decisions.md, known-limitations.md
 - `.claude/` agents and commands used to build this project (committed deliberately)
