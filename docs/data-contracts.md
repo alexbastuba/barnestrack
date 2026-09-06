@@ -288,7 +288,10 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
 - **Derived reason strings.** Besides the tracker's eight, the derived track uses `outlier_velocity`
   (O17; `detectionState: 'ambiguous'`, both points `valid: false` with their coordinates kept, never
   replaced), `not_visible` and `in_escape_box` (range corrections; `detectionState: 'not_detected'`,
-  points invalid at (0, 0) with `source: 'corrected'`).
+  points invalid at (0, 0) with `source: 'corrected'`), and `corrected` (a hand-placed centroid:
+  `detectionState: 'tracked'` when the placed point is valid, `'not_detected'` when the user
+  declared it invalid, so the state fractions, the tier and the gaps follow the correction; a
+  nose-only correction leaves the state and reason as the tracker set them).
 - **Filled points** (O10) carry `source: 'filled'` on the centroid only, linearly interpolated in
   time between the positioned frames either side; the nose stays invalid and `detectionState` /
   `reason` keep the tracker's values. Gaps that touch an outlier or contain a hand-corrected point are

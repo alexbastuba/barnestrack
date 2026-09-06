@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CorrectionEntry, CorrectionsLayer } from '../../src/contracts/session.js';
 import {
+  CORRECTED_REASON,
   IN_ESCAPE_BOX_REASON,
   NOT_VISIBLE_REASON,
   applyTrackCorrections,
@@ -50,6 +51,7 @@ describe('applyTrackCorrections', () => {
     });
     expect(frames[2]!.centroid).toBe(auto[2]!.centroid);
     expect(frames[2]!.detectionState).toBe('tracked');
+    expect(frames[2]!.reason).toBe('single_blob'); // a nose-only correction leaves the state and reason
     expect(frames[0]).toBe(auto[0]);
     expect(frames[1]).toBe(auto[1]);
     expect(frames[3]).toBe(auto[3]);
@@ -76,6 +78,35 @@ describe('applyTrackCorrections', () => {
       valid: false,
       source: 'corrected',
     });
+    expect(frames[1]!.detectionState).toBe('not_detected');
+    expect(frames[1]!.reason).toBe(CORRECTED_REASON);
+  });
+
+  it('makes a frame tracked / corrected when a valid centroid is placed on a lost frame', () => {
+    const lost = deepFreeze(buildTrack([[100, 100], null, [120, 100]]));
+    const { frames } = applyTrackCorrections(
+      lost,
+      layer({
+        id: 'c1',
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: 1,
+        point: 'centroid',
+        value: { x: 110, y: 100, confidence: 1, valid: true },
+      }),
+    );
+    expect(frames[1]!.centroid).toEqual({
+      x: 110,
+      y: 100,
+      confidence: 1,
+      valid: true,
+      source: 'corrected',
+    });
+    expect(frames[1]!.detectionState).toBe('tracked');
+    expect(frames[1]!.reason).toBe(CORRECTED_REASON);
+    expect(frames[1]!.nose.valid).toBe(false);
+    expect(frames[1]!.blobArea_px2).toBe(0);
   });
 
   it('marks a not-visible range: both points invalid, corrected, state not_detected with the reason', () => {
@@ -151,7 +182,7 @@ describe('applyTrackCorrections', () => {
       startFrame: 0,
       endFrame: 1,
     };
-    // the range is earlier: the later point wins on frame 1 and the frame keeps the range's state
+    // the range is earlier: the later centroid wins on frame 1 and re-positions the frame
     const a = applyTrackCorrections(auto, layer(point, range));
     expect(a.frames[1]!.centroid).toEqual({
       x: 50,
@@ -160,7 +191,9 @@ describe('applyTrackCorrections', () => {
       valid: true,
       source: 'corrected',
     });
-    expect(a.frames[1]!.detectionState).toBe('not_detected');
+    expect(a.frames[1]!.detectionState).toBe('tracked');
+    expect(a.frames[1]!.reason).toBe(CORRECTED_REASON);
+    expect(a.frames[1]!.nose.valid).toBe(false); // the range's nose invalidation stands
     expect(a.frames[0]!.centroid.valid).toBe(false);
     // swap the timestamps: the range is later and wins
     const b = applyTrackCorrections(

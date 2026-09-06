@@ -1,7 +1,9 @@
 /**
  * Applying the sparse human corrections of the corrections layer to a copy
  * of the automatic track (D9, D25): point corrections replace one named
- * point, range corrections mark frames "not visible" or "in the escape box".
+ * point (a centroid correction also sets the frame's detection state, so the
+ * quality report follows it), range corrections mark frames "not visible" or
+ * "in the escape box".
  * The automatic layer is never touched; untouched frames are shared, changed
  * frames are new objects. Corrections apply in timestamp order, then id, so
  * a re-saved file gives the same answer regardless of array order.
@@ -10,9 +12,11 @@ import type { CorrectionEntry, CorrectionsLayer } from '../contracts/session.js'
 import type { NamedPoint, TrackFrame } from '../contracts/track.js';
 import type { ReviewFlag } from './types.js';
 
-/** Derived-layer reason strings written by range corrections (D8: every non-tracked frame carries a reason). */
+/** Derived-layer reason strings written by corrections (D8: every frame carries a reason). */
 export const NOT_VISIBLE_REASON = 'not_visible';
 export const IN_ESCAPE_BOX_REASON = 'in_escape_box';
+/** A frame whose centroid was placed (or declared invalid) by hand: `tracked` when valid, `not_detected` when not. */
+export const CORRECTED_REASON = 'corrected';
 
 export type CorrectionOfKind<K extends CorrectionEntry['kind']> = Extract<
   CorrectionEntry,
@@ -105,7 +109,20 @@ export function applyTrackCorrections(
         valid: c.value.valid,
         source: 'corrected',
       };
-      edited.set(position, { ...frameAt(position), [c.point]: point });
+      const base = frameAt(position);
+      if (c.point === 'centroid') {
+        // a hand-placed centroid positions the frame (or declares it unpositioned): the detection
+        // state follows, so the quality report and the tier move with the correction (D26, D30)
+        edited.set(position, {
+          ...base,
+          centroid: point,
+          detectionState: point.valid ? 'tracked' : 'not_detected',
+          reason: CORRECTED_REASON,
+        });
+      } else {
+        // a nose-only correction leaves the frame's state and reason as the tracker set them
+        edited.set(position, { ...base, nose: point });
+      }
     } else if (c.kind === 'range') {
       const first = Math.max(0, positionOf(c.startFrame));
       const last = Math.min(n - 1, positionOf(c.endFrame));

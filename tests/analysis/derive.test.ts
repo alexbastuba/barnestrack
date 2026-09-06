@@ -410,6 +410,72 @@ describe('derive', () => {
     );
   });
 
+  it('moves the tier, fractions, gaps and events together when centroids are corrected', () => {
+    // 6 s tracked, 4 s lost in the open, 6 s tracked: a quality gap, a tracking failure, tier REVIEW
+    const holed: Segment[] = [
+      { kind: 'dwell', seconds: 6 },
+      { kind: 'lost', seconds: 4 },
+      { kind: 'dwell', seconds: 6 },
+    ];
+    const { input, segmentStarts } = inputFor(holed);
+    const before = derive(input);
+    expect(before.quality.tier).toBe('REVIEW');
+    expect(before.quality.gaps).toHaveLength(1);
+    expect(before.events.map((e) => e.kind)).toEqual(['tracking_failure']);
+    expect(before.metrics.trackedFraction).toBeCloseTo(0.75, 9);
+    expect(before.quality.detectionStateFractions.not_detected).toBeCloseTo(0.25, 9);
+    const placed: CorrectionEntry[] = [];
+    for (let i = segmentStarts[1]!; i < segmentStarts[2]!; i++) {
+      placed.push({
+        id: `p${i}`,
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: i,
+        point: 'centroid',
+        value: { x: 322, y: 240, confidence: 1, valid: true },
+      });
+    }
+    const after = derive({ ...input, corrections: { entries: placed } });
+    expect(after.quality.gaps).toHaveLength(0);
+    expect(after.events).toHaveLength(0);
+    expect(after.quality.tier).toBe('GOOD');
+    expect(after.metrics.trackedFraction).toBeCloseTo(1, 9);
+    expect(after.quality.detectionStateFractions).toEqual({
+      tracked: 1,
+      not_detected: 0,
+      ambiguous: 0,
+      low_confidence: 0,
+    });
+    expect(after.cleanedTrack[segmentStarts[1]!]!.detectionState).toBe('tracked');
+    expect(after.cleanedTrack[segmentStarts[1]!]!.reason).toBe('corrected');
+    expect(after.kinematics.trackedTime_s).toBeGreaterThan(before.kinematics.trackedTime_s);
+
+    // the reverse: invalidating tracked frames opens a gap, a failure, and lowers the tier
+    const solid = inputFor([{ kind: 'dwell', seconds: 12 }]).input;
+    const good = derive(solid);
+    expect(good.quality.tier).toBe('GOOD');
+    const removed: CorrectionEntry[] = [];
+    for (let i = 180; i < 300; i++) {
+      removed.push({
+        id: `r${i}`,
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: i,
+        point: 'centroid',
+        value: { x: 0, y: 0, confidence: 0, valid: false },
+      });
+    }
+    const worse = derive({ ...solid, corrections: { entries: removed } });
+    expect(worse.quality.gaps).toHaveLength(1);
+    expect(worse.events.map((e) => e.kind)).toEqual(['tracking_failure']);
+    expect(worse.quality.tier).not.toBe('GOOD');
+    expect(worse.metrics.trackedFraction).toBeCloseTo(1 - 120 / 360, 9);
+    expect(worse.quality.detectionStateFractions.not_detected).toBeCloseTo(120 / 360, 9);
+    expect(worse.cleanedTrack[200]!.reason).toBe('corrected');
+  });
+
   it('flags oversized foreground inside the trial without moving the start', () => {
     const d = derive(
       inputFor([
