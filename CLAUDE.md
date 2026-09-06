@@ -65,9 +65,11 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
   `npm run lint && npm run typecheck && npm test && npm run build`, invokes the reviewer, fixes
   REJECT findings in new commits and re-runs the reviewer once, prompts for a
   `docs/known-limitations.md` update, and prints the chunk report.
+- Edit source files with Edit/Write, never a shell heredoc, so the post-edit hook runs on them.
 - `.claude/hooks/pre-commit-guard.sh` blocks commits that stage videos, files over 2 MB,
   `notes/` or `.env*` paths, or key-shaped strings; `.claude/hooks/post-edit-check.sh` typechecks
-  and lints every edited `.ts` file.
+  and lints every edited `.ts` file, and also catches a `.ts` path under `src/` or `tests/` that a
+  Bash command writes with `>`, `>>` or `tee`, so a heredoc cannot bypass it.
 - Every chunk ends with the test suite green and `docs/known-limitations.md` reviewed for anything
   discovered during that chunk (D39, D40).
 - Browser-only behaviour (WebCodecs, drag-and-drop, reload) is checked with `npx playwright test`
