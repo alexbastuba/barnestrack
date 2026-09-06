@@ -36,6 +36,7 @@ export function createVideosStep(context: AppContext): Step {
   const { store } = context;
   const rejections: Rejection[] = [];
   const notes: string[] = [];
+  const queue: File[] = [];
   let busy = false;
 
   const body = el('div', { class: 'videos-step drop-zone' });
@@ -125,16 +126,33 @@ export function createVideosStep(context: AppContext): Step {
 
   // ---- intake ---------------------------------------------------------------
 
+  /**
+   * Files dropped while an earlier batch is still being hashed join the queue
+   * rather than being discarded: reading an 80 MB video takes seconds, and a
+   * second drop in that window used to vanish without a word (D28 — nothing is
+   * ever silently dropped).
+   */
   async function ingest(files: File[]): Promise<void> {
-    if (files.length === 0 || busy) return;
+    if (files.length === 0) return;
+    queue.push(...files);
+    if (busy) {
+      context.announce(
+        `Still reading the previous file; ${queue.length} more queued, starting with ${files[0]?.name ?? ''}.`,
+      );
+      return;
+    }
     busy = true;
     notes.length = 0;
     try {
-      for (const [position, file] of files.entries()) {
+      let done = 0;
+      while (queue.length > 0) {
+        const file = queue.shift()!;
+        done += 1;
+        const remaining = queue.length;
         context.announce(
-          files.length === 1
+          remaining === 0 && done === 1
             ? `Reading ${file.name}…`
-            : `Reading ${file.name} (${position + 1} of ${files.length})…`,
+            : `Reading ${file.name} (${remaining} more to go)…`,
         );
         // One file at a time: memory stays flat and the status line stays truthful.
         await acceptOne(file);

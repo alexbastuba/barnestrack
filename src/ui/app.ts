@@ -161,7 +161,8 @@ export function mountApp(
       step.body.hidden = reason !== null;
       step.refresh();
     }
-    sessionName.value = store.current.name;
+    // An autosave completing must not rewrite a field the user is typing in.
+    if (document.activeElement !== sessionName) sessionName.value = store.current.name;
     saveButton.disabled = store.current.videos.length === 0;
     const state = store.autosaveState;
     saveState.textContent =

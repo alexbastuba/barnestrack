@@ -22,6 +22,12 @@ export function looksLikeMp4(file: File): boolean {
   return file.type === 'video/mp4' || /\.mp4$/i.test(file.name);
 }
 
+const VIDEO_EXTENSIONS = /\.(avi|mov|mkv|webm|mpg|mpeg|m4v|wmv|flv|mts|m2ts|ogv|3gp)$/i;
+
+function couldBeVideo(file: File): boolean {
+  return file.type.startsWith('video/') || VIDEO_EXTENSIONS.test(file.name);
+}
+
 function describeFile(file: File): string {
   const extension = /\.([^.]+)$/.exec(file.name)?.[1];
   if (file.type) return `a ${file.type} file`;
@@ -39,7 +45,9 @@ export async function inspectFile(file: File): Promise<IntakeResult> {
       kind: 'rejected',
       file,
       reason: `This is ${describeFile(file)}. BarnesTrack reads MP4 files containing H.264 (AVC) video.`,
-      hint: REENCODE_HINT,
+      // Only worth suggesting for something that is plausibly video: telling
+      // someone to re-encode a spreadsheet is noise, not help.
+      hint: couldBeVideo(file) ? REENCODE_HINT : null,
     };
   }
   try {

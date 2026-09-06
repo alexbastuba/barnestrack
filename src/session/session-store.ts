@@ -59,7 +59,10 @@ export interface SessionStoreOptions {
 
 export class SessionStore {
   private session: SessionFile;
+  private draftMazeMap: MazeMapFile | null = null;
   private mazeClicks: Record<VideoId, number> = {};
+  /** Bumped whenever the whole session is replaced, so views can drop cached state. */
+  private sessionEpoch = 0;
   private readonly attachments = new Map<VideoId, VideoAttachment>();
   private readonly listeners = new Set<() => void>();
   private readonly autosaveDelayMs: number;
@@ -92,6 +95,19 @@ export class SessionStore {
     return this.saveState;
   }
 
+  /** Changes whenever the whole session is replaced (load, reset, restore). */
+  get epoch(): number {
+    return this.sessionEpoch;
+  }
+
+  /**
+   * The maze map being worked on: the session file's once it is calibrated,
+   * the unpublished draft before that (D14, D47).
+   */
+  get workingMazeMap(): MazeMapFile | null {
+    return this.session.mazeMap ?? this.draftMazeMap;
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -103,9 +119,12 @@ export class SessionStore {
   async restore(): Promise<boolean> {
     const record = await this.storage.load();
     if (!record) return false;
+    if (this.session.videos.length > 0) return false;
     this.closeAttachments();
     this.session = record.file;
+    this.draftMazeMap = record.draftMazeMap;
     this.mazeClicks = { ...record.mazeClicks };
+    this.sessionEpoch += 1;
     this.emit();
     return true;
   }
@@ -114,7 +133,9 @@ export class SessionStore {
   replaceSession(session: SessionFile): void {
     this.closeAttachments();
     this.session = session;
+    this.draftMazeMap = null;
     this.mazeClicks = {};
+    this.sessionEpoch += 1;
     this.changed();
   }
 
@@ -122,7 +143,9 @@ export class SessionStore {
   async reset(): Promise<void> {
     this.closeAttachments();
     this.session = createSessionFile(DEFAULT_SESSION_NAME, this.toolVersion);
+    this.draftMazeMap = null;
     this.mazeClicks = {};
+    this.sessionEpoch += 1;
     this.cancelPendingSave();
     await this.storage.clear();
     this.saveState = 'saved';
@@ -197,8 +220,16 @@ export class SessionStore {
 
   // ---- maze -----------------------------------------------------------------
 
+  /**
+   * An uncalibrated map is held back from the session file: D47 makes
+   * `mazeMap` null until the maze step is finished, and `platformDiameter_cm`
+   * is the one input that finishes it (D14, D44). The draft is still saved to
+   * this browser, so a reload does not lose the platform the user just marked.
+   */
   setMazeMap(map: MazeMapFile | null): void {
-    this.session.mazeMap = map;
+    const calibrated = map !== null && map.calibration.platformDiameter_cm > 0;
+    this.session.mazeMap = calibrated ? map : null;
+    this.draftMazeMap = calibrated ? null : map;
     this.changed();
   }
 
@@ -225,6 +256,7 @@ export class SessionStore {
   toStoredSession(): StoredSession {
     return {
       file: this.session,
+      draftMazeMap: this.draftMazeMap,
       mazeClicks: { ...this.mazeClicks },
       savedAt: new Date().toISOString(),
     };

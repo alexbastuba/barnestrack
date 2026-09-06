@@ -8,6 +8,7 @@
  * therefore restored across a reload but is not written into a downloaded
  * session file.
  */
+import type { MazeMapFile } from '../contracts/mazeMap.js';
 import type { SessionFile } from '../contracts/session.js';
 
 /** `VideoDescriptor.id`, and the key of `SessionFile.analyses`. */
@@ -15,6 +16,14 @@ export type VideoId = string;
 
 export interface StoredSession {
   file: SessionFile;
+  /**
+   * A maze map that has been started but not yet calibrated. D47 says
+   * `SessionFile.mazeMap` is null until the maze step is finished, and a map
+   * with `platformDiameter_cm: 0` is not a calibration (D14) — so the
+   * in-progress map is remembered here, where a reload finds it, instead of
+   * being published into the session file for another tool to divide by.
+   */
+  draftMazeMap: MazeMapFile | null;
   /** Maze-step clicks spent per video. Not part of the session file contract. */
   mazeClicks: Record<VideoId, number>;
   /** ISO 8601, when this record was written. */

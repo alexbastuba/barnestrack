@@ -132,6 +132,89 @@ describe('SessionStore', () => {
   });
 });
 
+describe('an unfinished maze map (D14, D47)', () => {
+  it('is remembered in this browser but kept out of the session file', async () => {
+    const { store, storage } = newStore();
+    store.addVideo(test50);
+    const draft = { ...fullSession().mazeMap!, calibration: { platformDiameter_cm: 0 } };
+    store.setMazeMap(draft);
+
+    expect(store.current.mazeMap).toBeNull();
+    expect(store.workingMazeMap?.platform.r).toBe(draft.platform.r);
+    await store.flush();
+
+    const restored = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
+    await restored.restore();
+    expect(restored.current.mazeMap).toBeNull();
+    expect(restored.workingMazeMap?.platform.r).toBe(draft.platform.r);
+  });
+
+  it('is published the moment the platform diameter arrives, and withdrawn if it is removed', () => {
+    const { store } = newStore();
+    store.addVideo(test50);
+    const map = fullSession().mazeMap!;
+    store.setMazeMap({ ...map, calibration: { platformDiameter_cm: 0 } });
+    expect(store.current.mazeMap).toBeNull();
+
+    store.setMazeMap(map);
+    expect(store.current.mazeMap?.calibration.platformDiameter_cm).toBe(92);
+    expect(store.workingMazeMap).toBe(store.current.mazeMap);
+
+    store.setMazeMap({ ...map, calibration: { platformDiameter_cm: 0 } });
+    expect(store.current.mazeMap).toBeNull();
+  });
+});
+
+describe('epoch and restore', () => {
+  it('changes on every whole-session replacement so views can drop cached state', async () => {
+    const { store, storage } = newStore();
+    const start = store.epoch;
+    store.addVideo(test50);
+    expect(store.epoch).toBe(start);
+
+    store.replaceSession(fullSession());
+    expect(store.epoch).toBe(start + 1);
+    await store.reset();
+    expect(store.epoch).toBe(start + 2);
+
+    store.addVideo(test51);
+    await store.flush();
+    const other = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
+    expect(await other.restore()).toBe(true);
+    expect(other.epoch).toBe(1);
+  });
+
+  it('refuses to restore over work already in memory', async () => {
+    const { store, storage } = newStore();
+    store.addVideo(test50);
+    await store.flush();
+
+    const racing = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
+    racing.addVideo(test51);
+    expect(await racing.restore()).toBe(false);
+    expect(racing.videos.map((v) => v.filename)).toEqual(['test51.mp4']);
+  });
+});
+
+describe('autosave state', () => {
+  it('reports pending the moment something changes, and saved once it lands', async () => {
+    const storage = new MemorySessionStorage();
+    const store = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 5 });
+    expect(store.autosaveState).toBe('saved');
+
+    let sawPending = false;
+    store.subscribe(() => {
+      if (store.autosaveState === 'pending') sawPending = true;
+    });
+    store.addVideo(test50);
+    expect(sawPending).toBe(true);
+    expect(store.autosaveState).toBe('pending');
+
+    await store.flush();
+    expect(store.autosaveState).toBe('saved');
+  });
+});
+
 describe('re-attach by fingerprint (D27)', () => {
   it('matches the same content under a different filename', () => {
     const { store } = newStore();

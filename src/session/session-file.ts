@@ -57,6 +57,14 @@ export function parseSessionDocument(text: string): ParsedSession {
     return { ok: false, message: 'That file does not contain a BarnesTrack session.' };
   }
 
+  if (isRecord(value['platform']) && isRecord(value['holes'])) {
+    return {
+      ok: false,
+      message:
+        'That is a BarnesTrack maze map, not a session file. Load it with "Import map" on the Maze step.',
+    };
+  }
+
   const version = value['schemaVersion'];
   if (typeof version !== 'number') {
     return {

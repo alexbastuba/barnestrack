@@ -50,6 +50,10 @@ type Mode = 'idle' | 'rim' | 'align' | 'target' | 'adjust';
 type Selection = { kind: 'platform' } | { kind: 'hole'; holeIndex: number } | null;
 
 const RIM_POINTS_NEEDED = 3;
+/** Maze maps get their own suffix so they are never offered as session files. */
+const MAZE_MAP_FILE_NAME = 'maze-map.mazemap.json';
+/** How near a click must be to a hole, in screen-independent pixels, to select it. */
+const HOLE_PICK_SLACK_PX = 12;
 const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 
@@ -83,7 +87,12 @@ export function createMazeStep(context: AppContext): Step {
   }
 
   function sharedMap(): MazeMapFile | null {
-    return store.current.mazeMap;
+    return store.workingMazeMap;
+  }
+
+  /** A map is finished only once the one calibration input is in (D14, D44, D47). */
+  function calibrated(): boolean {
+    return store.current.mazeMap !== null;
   }
 
   /** The shared map expressed in the current video's pixels. */
@@ -229,7 +238,7 @@ export function createMazeStep(context: AppContext): Step {
     }
     // Idle: a click selects whatever it landed on, for the arrow keys.
     const found = nearestHole(map, videoPoint);
-    if (found && found.distance_px <= Math.max(map.holes.holeRadius_px, 12) * 1.5) {
+    if (found && found.distance_px <= Math.max(map.holes.holeRadius_px, HOLE_PICK_SLACK_PX) * 1.5) {
       selection = { kind: 'hole', holeIndex: found.hole.holeIndex };
       context.announce(`Hole ${found.hole.holeIndex} selected. Arrow keys nudge it; hold Shift for 10 pixels.`);
     } else {
@@ -305,18 +314,26 @@ export function createMazeStep(context: AppContext): Step {
 
   // ---- reuse (D10, D29) -----------------------------------------------------
 
+  /**
+   * Exports what this video shows, not the raw shared map: the user means "this
+   * maze, in these pixels". Only a calibrated map is exportable, so an
+   * uncalibrated one cannot travel to another machine looking finished.
+   */
   function exportMap(): void {
-    const map = sharedMap();
-    if (!map) return;
-    downloadText('maze-map.barnestrack.json', `${JSON.stringify(map, null, 2)}\n`);
-    context.announce('Maze map saved as maze-map.barnestrack.json.');
+    const map = videoMap();
+    if (!map || !calibrated()) return;
+    downloadText(MAZE_MAP_FILE_NAME, `${JSON.stringify(map, null, 2)}\n`);
+    context.announce(`Maze map saved as ${MAZE_MAP_FILE_NAME}.`);
   }
 
   async function importMap(): Promise<void> {
     const [file] = await pickFiles('.json,application/json');
     if (!file) return;
     const problem = adoptMapDocument(await file.text());
-    context.announce(problem ?? `Maze map loaded from ${file.name}.`);
+    context.announce(
+      problem ??
+        `Maze map loaded from ${file.name} and scaled onto every video in this session. Check each one and use "Adjust" where the platform sits differently.`,
+    );
     render();
   }
 
@@ -336,14 +353,18 @@ export function createMazeStep(context: AppContext): Step {
     if (!map.platform || !map.holes || !map.target || !map.calibration || !map.referenceResolution) {
       return 'That maze map is missing its platform, holes, target or calibration.';
     }
-    const video = currentVideo();
     store.setMazeMap(map as MazeMapFile);
-    if (video) {
+    // Every video's transform was fitted against the platform of the map that
+    // has just been replaced, so every one of them is now meaningless.
+    for (const video of store.videos) {
       store.setMazeTransform(
         video.id,
         transformForResolution(map.referenceResolution, video.referenceResolution),
       );
     }
+    selection = null;
+    mode = 'idle';
+    rimPoints = [];
     return null;
   }
 
@@ -609,13 +630,16 @@ export function createMazeStep(context: AppContext): Step {
   }
 
   function nudgePad(label: string): HTMLElement {
-    const key = (text: string, dx: number, dy: number) =>
-      button(text, () => nudge(dx * nudgeStep(), dy * nudgeStep()), { class: 'nudge' });
+    const key = (text: string, name: string, dx: number, dy: number) =>
+      button(text, () => nudge(dx * nudgeStep(), dy * nudgeStep()), {
+        class: 'nudge',
+        attrs: { 'aria-label': name },
+      });
     return el('div', { class: 'nudge-pad', attrs: { role: 'group', 'aria-label': label } }, [
-      key('←', -1, 0),
-      key('↑', 0, -1),
-      key('↓', 0, 1),
-      key('→', 1, 0),
+      key('←', 'Nudge left', -1, 0),
+      key('↑', 'Nudge up', 0, -1),
+      key('↓', 'Nudge down', 0, 1),
+      key('→', 'Nudge right', 1, 0),
       bigStepToggle,
     ]);
   }
@@ -704,14 +728,22 @@ export function createMazeStep(context: AppContext): Step {
     context.announce(`Hole ${holeIndex} is the target hole.`);
     render();
   });
-  const nudgeHoleField = numberField('Hole to nudge', { min: '0' }, (v) => {
+  const nudgeHoleField = numberField('Hole to nudge', { min: '0', max: '999' }, (v) => {
     const map = sharedMap();
     if (!map) return;
-    const holeIndex = Math.max(0, Math.min(map.holes.n - 1, Math.round(v)));
-    selection = { kind: 'hole', holeIndex };
-    canvasView.viewport.focus({ preventScroll: true });
-    context.announce(`Hole ${holeIndex} selected. Arrow keys nudge it; hold Shift for 10 pixels.`);
+    selection = { kind: 'hole', holeIndex: Math.min(map.holes.n - 1, Math.round(v)) };
+    context.announce(
+      `Hole ${selection.holeIndex} selected. Press Enter here, or Tab to the frame, then use the arrow keys; hold Shift for 10 pixels.`,
+    );
     render();
+  });
+  // `change` also fires on blur, so moving focus there would yank a keyboard
+  // user out of the tab order. Enter is the deliberate "take me to the frame".
+  nudgeHoleField.input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    nudgeHoleField.input.dispatchEvent(new Event('change'));
+    canvasView.viewport.focus({ preventScroll: true });
   });
   const resetNudges = button('Reset nudges', () => {
     updateMap((m) => ({ ...m, holes: { ...m.holes, offsets: [] } }));
@@ -824,8 +856,20 @@ export function createMazeStep(context: AppContext): Step {
 
   let lastVideoId: VideoId | null = null;
   let lastAttached = false;
+  let lastEpoch = store.epoch;
 
   function render(): void {
+    if (store.epoch !== lastEpoch) {
+      // Load, reset or restore replaced the whole session: nothing cached here
+      // refers to it any more.
+      lastEpoch = store.epoch;
+      lastVideoId = null;
+      lastAttached = false;
+      selectedVideoId = null;
+      selection = null;
+      mode = 'idle';
+      rimPoints = [];
+    }
     const video = currentVideo();
     const map = videoMap();
     const shared = sharedMap();
@@ -860,7 +904,7 @@ export function createMazeStep(context: AppContext): Step {
       control.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     }
     adjustButton.disabled = shared === null;
-    exportButton.disabled = shared === null;
+    exportButton.disabled = !calibrated();
     applyButton.disabled = shared === null || applySelect.options.length === 0;
     alignButton.disabled = shared === null;
     targetButton.disabled = shared === null;
