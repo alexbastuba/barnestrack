@@ -7,17 +7,18 @@ session it is found (D39).
 
 ## Defects
 
-- **An animal split in two is reported as ambiguous, not positioned.** When the animal straddles a
-  hole (dark in the background, so there is no difference signal under the body) or hangs over the
-  rim where the rim's shadow line cuts the difference image, the foreground is two plausible pieces
-  and the tracker's selection rule reports `ambiguous / multiple_blobs` with no centroid. This is
-  7.6 % of test50's frames and 7.0 % of test53's (423 and 63 frames), concentrated at holes — the
-  moments the assay cares about — and it is why the single-blob criterion of chunk 2 reads 92 % / 92 %
-  on those clips instead of ≥ 95 %. In every such frame the pieces lie within one body length of each
-  other (max 6.3 / 6.5 cm). Not fixed in chunk 2 because the remedy — merging pieces within one body
-  length into one candidate under a new reason such as `fragmented` at `low_confidence` — adds a
-  reason string to the fixed vocabulary and needs a decision; measured and proposed in
-  `prototypes/tracker/RESULTS.md`.
+- **A merged animal is positioned, but only as a union.** When the animal straddles a hole (dark
+  in the background, so there is no difference signal under the body) or hangs over the rim where
+  the rim's shadow line cuts the difference image, the foreground is two pieces; since D48 the
+  pieces are merged into one `low_confidence / fragmented` candidate when their centroids lie within
+  `fragmentMergeDistance_cm` (8 cm) of each other and the union satisfies the single-blob area
+  bounds. This is 8.7 % of test50's frames and 8.4 % of test53's (483 and 76 frames; 14 in test51),
+  concentrated at holes. What remains: the union centroid is the area-weighted centroid of the
+  visible pieces, so with the head in a hole it sits on the visible body, not the true body centre;
+  the nose is available on only 53 % / 66 % / 21 % of fragmented frames (test50 / test53 / test51),
+  and the union's bounding box spans the hole. Two pieces farther apart than the merge distance are
+  still `ambiguous / multiple_blobs` (only the start cylinder's two crescents, 8.9 cm apart, in the
+  sample videos).
 - **The nose is often unavailable, and a tail-only nose never clears O16.** The tail cue exists on
   71 % / 78 % / 54 % of frames with a blob (test51 / test53 / test50) and no cue at all on 23 % /
   21 % / 32 %: the re-encoded tail is frequently below the foreground threshold along its whole
