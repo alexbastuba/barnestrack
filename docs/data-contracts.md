@@ -40,33 +40,33 @@ Decoder output frames are identified by output order using synthetic, monotone t
 by matching a decoded frame back to the sample table by timestamp value, which would collapse the
 duplicates.
 
-| Field        | Type   | Unit    | Notes                                          |
-| ------------ | ------ | ------- | ---------------------------------------------- |
-| `frameIndex` | number | —       | Position in the sample table, sorted by PTS.   |
-| `t_s`        | number | seconds | From the sample table, not `frameIndex / fps`. |
+| Field        | Type   | Unit    | Notes                                            |
+| ------------ | ------ | ------- | ------------------------------------------------- |
+| `frameIndex` | number | —       | Position in the sample table, sorted by PTS.       |
+| `t_s`        | number | seconds | From the sample table, not `frameIndex / fps`.     |
 
 ## 2. Track frame (D8)
 
 One record per frame of one video's track.
 
-| Field                   | Type         | Unit    | Notes                                                            |
-| ----------------------- | ------------ | ------- | ---------------------------------------------------------------- |
-| `frameIndex`            | number       | —       | See §1.                                                          |
-| `t_s`                   | number       | seconds | See §1.                                                          |
-| `centroid`              | NamedPoint   | px      | Body centroid. See below.                                        |
-| `nose`                  | NamedPoint   | px      | Head-end point. See below.                                       |
-| `detectionState`        | enum         | —       | `tracked \| not_detected \| ambiguous \| low_confidence`.        |
-| `reason`                | string       | —       | Why `detectionState` took this value.                            |
-| `blobArea_px2`          | number       | px²     | Foreground blob area at this frame.                              |
-| `boundingBox`           | BBox \| null | px      | `{ x, y, width, height }`, or `null` when nothing was detected.  |
-| `noseHeadingConfidence` | number       | 0–1     | Confidence in the head-end choice along the body ellipse's axis. |
+| Field                   | Type            | Unit    | Notes                                                              |
+| ----------------------- | --------------- | ------- | ------------------------------------------------------------------- |
+| `frameIndex`            | number          | —       | See §1.                                                              |
+| `t_s`                   | number          | seconds | See §1.                                                              |
+| `centroid`              | NamedPoint      | px      | Body centroid. See below.                                            |
+| `nose`                  | NamedPoint      | px      | Head-end point. See below.                                           |
+| `detectionState`        | enum            | —       | `tracked \| not_detected \| ambiguous \| low_confidence`.            |
+| `reason`                | string          | —       | Why `detectionState` took this value.                                |
+| `blobArea_px2`          | number          | px²     | Foreground blob area at this frame.                                  |
+| `boundingBox`           | BBox \| null    | px      | `{ x, y, width, height }`, or `null` when nothing was detected.      |
+| `noseHeadingConfidence` | number          | 0–1     | Confidence in the head-end choice along the body ellipse's axis.     |
 
 **NamedPoint** (`centroid`, `nose`):
 
-| Field        | Type    | Unit | Notes                                      |
+| Field        | Type    | Unit | Notes                                     |
 | ------------ | ------- | ---- | ------------------------------------------ |
 | `x`, `y`     | number  | px   | Native video pixels, y down.               |
-| `confidence` | number  | 0–1  | —                                          |
+| `confidence` | number  | 0–1  | —                                           |
 | `valid`      | boolean | —    | False when the point should not be used.   |
 | `source`     | enum    | —    | `auto \| corrected \| filled \| imported`. |
 
@@ -98,25 +98,25 @@ map's platform radius after that video's `mazeTransform` and recorded in
 entered separately. A cohort that uses two physical mazes carries two maze map files (D44,
 superseding the session-level "calibration" field named in D9's prose).
 
-| Field           | Type                             | Notes                                                |
-| --------------- | -------------------------------- | ---------------------------------------------------- |
-| `schemaVersion` | `1`                              | `SESSION_SCHEMA_VERSION`.                            |
-| `toolVersion`   | string                           | `barnestrack v<major>.<minor>.<patch> (<git-sha7>)`. |
-| `videos`        | VideoDescriptor[]                | See below.                                           |
-| `mazeMap`       | MazeMapFile                      | Shared across the cohort. See §4.                    |
-| `parameters`    | Parameters                       | Every event/cleaning threshold. See §6.              |
-| `analyses`      | `Record<videoId, VideoAnalysis>` | See below.                                           |
+| Field           | Type                                    | Notes                                                    |
+| --------------- | ---------------------------------------- | --------------------------------------------------------- |
+| `schemaVersion` | `1`                                       | `SESSION_SCHEMA_VERSION`.                                  |
+| `toolVersion`   | string                                    | `barnestrack v<major>.<minor>.<patch> (<git-sha7>)`.       |
+| `videos`        | VideoDescriptor[]                        | See below.                                                 |
+| `mazeMap`       | MazeMapFile                              | Shared across the cohort. See §4.                          |
+| `parameters`    | Parameters                               | Every event/cleaning threshold. See §6.                    |
+| `analyses`      | `Record<videoId, VideoAnalysis>`         | See below.                                                 |
 
 **VideoDescriptor**
 
-| Field                 | Type                | Notes                                                                                                               |
-| --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `id`                  | string              | —                                                                                                                   |
-| `filename`            | string              | Display only; re-attach is by fingerprint, not path.                                                                |
-| `fingerprint`         | VideoFingerprint    | `{ byteLength, durationSeconds, frameCount, sha256 }`. Lets a reload re-attach the video by dropping the same file. |
-| `referenceResolution` | `{ width, height }` | px                                                                                                                  |
-| `mazeTransform`       | SimilarityTransform | `{ translateX, translateY, rotationDeg, scale }` fit of `mazeMap` onto this video (D10).                            |
-| `metadata`            | VideoMetadata       | `{ animal?, day?, trial?, group? }`, user-editable, no filename parsing (O12).                                      |
+| Field                | Type            | Notes                                                        |
+| -------------------- | --------------- | -------------------------------------------------------------- |
+| `id`                 | string          | —                                                                |
+| `filename`           | string          | Display only; re-attach is by fingerprint, not path.            |
+| `fingerprint`        | VideoFingerprint | `{ byteLength, durationSeconds, frameCount, sha256 }`. Lets a reload re-attach the video by dropping the same file. |
+| `referenceResolution`| `{ width, height }` | px                                                          |
+| `mazeTransform`      | SimilarityTransform | `{ translateX, translateY, rotationDeg, scale }` fit of `mazeMap` onto this video (D10). |
+| `metadata`           | VideoMetadata   | `{ animal?, day?, trial?, group? }`, user-editable, no filename parsing (O12). |
 
 **VideoAnalysis** — the three layers for one video:
 
@@ -138,12 +138,7 @@ superseding the session-level "calibration" field named in D9's prose).
     {
       "id": "vid_01",
       "filename": "cohort3_day1_animal07.mp4",
-      "fingerprint": {
-        "byteLength": 88234112,
-        "durationSeconds": 182.4,
-        "frameCount": 5472,
-        "sha256": "…"
-      },
+      "fingerprint": { "byteLength": 88234112, "durationSeconds": 182.4, "frameCount": 5472, "sha256": "…" },
       "referenceResolution": { "width": 1280, "height": 720 },
       "mazeTransform": { "translateX": 0, "translateY": 0, "rotationDeg": 0, "scale": 1 },
       "metadata": { "animal": "07", "day": "1", "group": "control" }
@@ -166,19 +161,19 @@ superseding the session-level "calibration" field named in D9's prose).
 A parametric hole ring fit to a platform circle, reusable across videos by a similarity transform
 so hole numbering stays consistent across a cohort.
 
-| Field                             | Type                | Unit | Notes                                                           |
-| --------------------------------- | ------------------- | ---- | --------------------------------------------------------------- |
-| `schemaVersion`                   | `1`                 | —    | `MAZE_MAP_SCHEMA_VERSION`.                                      |
-| `referenceResolution`             | `{ width, height }` | px   | —                                                               |
-| `platform`                        | `{ cx, cy, r }`     | px   | Fit from three rim clicks or typed centre/radius.               |
-| `holes.n`                         | number              | —    | Default 20 (O8).                                                |
-| `holes.ringRatio`                 | number              | —    | Hole-ring radius ÷ platform radius. Default ≈ 0.89 (O8).        |
-| `holes.holeRadius_px`             | number              | px   | Default corresponds to 5 cm (O8).                               |
-| `holes.phase_deg`                 | number              | deg  | Angle of hole 0; set by one click on any hole.                  |
-| `holes.offsets`                   | HoleOffset[]?       | px   | Per-hole `{ holeIndex, dx_px, dy_px }` nudge, only when needed. |
-| `target.holeIndex`                | number              | —    | —                                                               |
-| `calibration.platformDiameter_cm` | number              | cm   | The one required calibration input (D14).                       |
-| `createdFrom`                     | string              | —    | Video id this map was originally fit from.                      |
+| Field                 | Type                | Unit  | Notes                                                     |
+| --------------------- | ------------------- | ----- | ------------------------------------------------------------ |
+| `schemaVersion`       | `1`                  | —     | `MAZE_MAP_SCHEMA_VERSION`.                                    |
+| `referenceResolution` | `{ width, height }` | px    | —                                                              |
+| `platform`            | `{ cx, cy, r }`      | px    | Fit from three rim clicks or typed centre/radius.             |
+| `holes.n`             | number               | —     | Default 20 (O8).                                               |
+| `holes.ringRatio`     | number               | —     | Hole-ring radius ÷ platform radius. Default ≈ 0.89 (O8).       |
+| `holes.holeRadius_px` | number               | px    | Default corresponds to 5 cm (O8).                              |
+| `holes.phase_deg`     | number               | deg   | Angle of hole 0; set by one click on any hole.                 |
+| `holes.offsets`       | HoleOffset[]?        | px    | Per-hole `{ holeIndex, dx_px, dy_px }` nudge, only when needed.|
+| `target.holeIndex`    | number               | —     | —                                                              |
+| `calibration.platformDiameter_cm` | number  | cm    | The one required calibration input (D14).                      |
+| `createdFrom`         | string               | —     | Video id this map was originally fit from.                     |
 
 ```json
 {
@@ -194,21 +189,21 @@ so hole numbering stays consistent across a cohort.
 
 ## 5. Events (D8, D19; O1, O4)
 
-| Field                     | Type                    | Unit    | Notes                                                                                   |
-| ------------------------- | ----------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `id`                      | string                  | —       | —                                                                                       |
-| `kind`                    | enum                    | —       | `investigation \| escape_entry \| tracking_failure`.                                    |
-| `holeIndex`               | number \| null          | —       | `null` for a failure away from any hole.                                                |
-| `isTarget`                | boolean                 | —       | —                                                                                       |
-| `startFrame`/`endFrame`   | number                  | —       | —                                                                                       |
-| `startTime_s`/`endTime_s` | number                  | seconds | —                                                                                       |
-| `durationSeconds`         | number                  | seconds | —                                                                                       |
-| `pointUsed`               | `'nose' \| 'centroid'`  | —       | Nose when heading confidence ≥ cutoff (O16), else centroid.                             |
-| `minNoseDistance_cm`      | number                  | cm      | Always recorded, whichever point was used (O1).                                         |
-| `minCentroidDistance_cm`  | number                  | cm      | Always recorded (O1).                                                                   |
-| `evidence`                | string                  | —       | Plain-language: last seen, loss duration, reappearance, blob-area trend.                |
-| `source`                  | `'auto' \| 'corrected'` | —       | —                                                                                       |
-| `autoShadow`              | partial event?          | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when a correction changes them. |
+| Field                  | Type                                  | Unit    | Notes                                                    |
+| ---------------------- | -------------------------------------- | ------- | ----------------------------------------------------------|
+| `id`                   | string                                  | —       | —                                                           |
+| `kind`                 | enum                                    | —       | `investigation \| escape_entry \| tracking_failure`.        |
+| `holeIndex`            | number \| null                         | —       | `null` for a failure away from any hole.                    |
+| `isTarget`             | boolean                                 | —       | —                                                            |
+| `startFrame`/`endFrame`| number                                  | —       | —                                                            |
+| `startTime_s`/`endTime_s` | number                               | seconds | —                                                            |
+| `durationSeconds`      | number                                  | seconds | —                                                            |
+| `pointUsed`            | `'nose' \| 'centroid'`                 | —       | Nose when heading confidence ≥ cutoff (O16), else centroid.  |
+| `minNoseDistance_cm`   | number                                  | cm      | Always recorded, whichever point was used (O1).              |
+| `minCentroidDistance_cm`| number                                 | cm      | Always recorded (O1).                                        |
+| `evidence`             | string                                  | —       | Plain-language: last seen, loss duration, reappearance, blob-area trend. |
+| `source`               | `'auto' \| 'corrected'`                | —       | —                                                            |
+| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when a correction changes them. |
 
 ## 6. Parameters
 
@@ -258,55 +253,55 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 
 ### `trials.csv` — one row per trial
 
-| Column                                                                                                    | Unit               | Source                            |
-| --------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------- |
-| `session_id`, `video_id`, `animal`, `day`, `trial_label`, `group`                                         | —                  | identifiers / O12 metadata        |
-| `trial_start_s`                                                                                           | s                  | O5                                |
-| `primary_latency_s`                                                                                       | s (nullable)       | O3                                |
-| `total_latency_s`                                                                                         | s (nullable)       | O4                                |
-| `primary_errors`, `total_errors`                                                                          | count              | O2                                |
-| `path_length_cm`, `path_length_smoothed_cm`                                                               | cm                 | O9                                |
-| `mean_speed_cm_per_s`                                                                                     | cm/s               | O9                                |
-| `target_quadrant_time_s`                                                                                  | s                  | O6                                |
-| `strategy`, `strategy_source`                                                                             | —                  | O7                                |
-| `escaped`                                                                                                 | bool               | O4                                |
-| `status`                                                                                                  | —                  | `ok \| review \| unresolved` (O5) |
-| `tracked_fraction`                                                                                        | 0–1                | —                                 |
-| `correction_count`                                                                                        | count              | —                                 |
-| `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1                                |
-| `escape_entry_radius_factor`, `escape_entry_min_duration_s`, `escape_entry_persist_cutoff_s`              | ×hole radius, s, s | O4                                |
-| `trial_cutoff_s`                                                                                          | s                  | O5                                |
-| `target_quadrant_hole_span`                                                                               | holes              | O6                                |
-| `gap_fill_max_duration_s`                                                                                 | s                  | O10                               |
-| `nose_confidence_cutoff`                                                                                  | 0–1                | O16                               |
-| `outlier_velocity_threshold_cm_per_s`                                                                     | cm/s               | O17                               |
-| `tool_version`, `schema_version`, `parameters_hash`                                                       | —                  | D12                               |
+| Column | Unit | Source |
+| --- | --- | --- |
+| `session_id`, `video_id`, `animal`, `day`, `trial_label`, `group` | — | identifiers / O12 metadata |
+| `trial_start_s` | s | O5 |
+| `primary_latency_s` | s (nullable) | O3 |
+| `total_latency_s` | s (nullable) | O4 |
+| `primary_errors`, `total_errors` | count | O2 |
+| `path_length_cm`, `path_length_smoothed_cm` | cm | O9 |
+| `mean_speed_cm_per_s` | cm/s | O9 |
+| `target_quadrant_time_s` | s | O6 |
+| `strategy`, `strategy_source` | — | O7 |
+| `escaped` | bool | O4 |
+| `status` | — | `ok \| review \| unresolved` (O5) |
+| `tracked_fraction` | 0–1 | — |
+| `correction_count` | count | — |
+| `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |
+| `escape_entry_radius_factor`, `escape_entry_min_duration_s`, `escape_entry_persist_cutoff_s` | ×hole radius, s, s | O4 |
+| `trial_cutoff_s` | s | O5 |
+| `target_quadrant_hole_span` | holes | O6 |
+| `gap_fill_max_duration_s` | s | O10 |
+| `nose_confidence_cutoff` | 0–1 | O16 |
+| `outlier_velocity_threshold_cm_per_s` | cm/s | O17 |
+| `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
 
 ### `events.csv` — one row per investigation or entry
 
-| Column                                                             | Unit    | Source                                                   |
-| ------------------------------------------------------------------ | ------- | -------------------------------------------------------- |
-| `session_id`, `video_id`, `trial_label`, `event_id`                | —       | identifiers                                              |
-| `kind`                                                             | —       | `investigation \| escape_entry`                          |
-| `hole_index` (nullable), `is_target`                               | —, bool | —                                                        |
-| `start_frame`, `end_frame`                                         | —       | D7                                                       |
-| `start_time_s`, `end_time_s`, `duration_s`                         | s       | D7                                                       |
-| `point_used`                                                       | —       | `nose \| centroid` (O16)                                 |
-| `min_nose_distance_cm`, `min_centroid_distance_cm`                 | cm      | O1                                                       |
-| `evidence_summary`                                                 | —       | D19                                                      |
-| `source`                                                           | —       | `auto \| corrected`                                      |
-| `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | —       | shadow columns, populated only when `source = corrected` |
-| `tool_version`, `schema_version`, `parameters_hash`                | —       | D12                                                      |
+| Column | Unit | Source |
+| --- | --- | --- |
+| `session_id`, `video_id`, `trial_label`, `event_id` | — | identifiers |
+| `kind` | — | `investigation \| escape_entry` |
+| `hole_index` (nullable), `is_target` | —, bool | — |
+| `start_frame`, `end_frame` | — | D7 |
+| `start_time_s`, `end_time_s`, `duration_s` | s | D7 |
+| `point_used` | — | `nose \| centroid` (O16) |
+| `min_nose_distance_cm`, `min_centroid_distance_cm` | cm | O1 |
+| `evidence_summary` | — | D19 |
+| `source` | — | `auto \| corrected` |
+| `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | — | shadow columns, populated only when `source = corrected` |
+| `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
 
 ### `quality.csv` — one row per video
 
-| Column                                                                                       | Unit            | Source                                                                                          |
-| -------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| `session_id`, `video_id`                                                                     | —               | identifiers                                                                                     |
-| `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction` | 0–1             | D30                                                                                             |
-| `gap_count`, `longest_gap_s`                                                                 | count, s        | D30                                                                                             |
-| `duplicate_timestamp_count`, `dropped_frame_gap_count`, `drift_s`                            | count, count, s | D7, O11                                                                                         |
-| `platform_diameter_cm`                                                                       | cm              | D14                                                                                             |
-| `px_per_cm`                                                                                  | px/cm           | this video's calibration, derived from the maze map's platform radius after its transform (D44) |
-| `tier`                                                                                       | —               | `GOOD \| REVIEW \| POOR`                                                                        |
-| `tool_version`, `schema_version`, `parameters_hash`                                          | —               | D12                                                                                             |
+| Column | Unit | Source |
+| --- | --- | --- |
+| `session_id`, `video_id` | — | identifiers |
+| `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction` | 0–1 | D30 |
+| `gap_count`, `longest_gap_s` | count, s | D30 |
+| `duplicate_timestamp_count`, `dropped_frame_gap_count`, `drift_s` | count, count, s | D7, O11 |
+| `platform_diameter_cm` | cm | D14 |
+| `px_per_cm` | px/cm | this video's calibration, derived from the maze map's platform radius after its transform (D44) |
+| `tier` | — | `GOOD \| REVIEW \| POOR` |
+| `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
