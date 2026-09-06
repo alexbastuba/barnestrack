@@ -21,8 +21,11 @@ export function formatFrameRanges(ranges: readonly FrameRange[]): string {
 
 /**
  * Accepts `start-end` pairs separated by commas or semicolons, and a bare
- * number as a single frame. Ranges are normalised to ascending order and
- * sorted, so the same set typed two ways hashes the same (D51).
+ * number as a single frame. Ranges are normalised to ascending order, sorted,
+ * and merged where they overlap or touch — so any two spellings of the same
+ * excluded frames produce the same value and therefore the same parameters
+ * hash (D51). `5-8, 0-10` and `0-10` exclude the same frames and must not be
+ * recorded as two different parameter sets.
  */
 export function parseFrameRanges(text: string): ParsedRanges {
   const trimmed = text.trim();
@@ -52,7 +55,19 @@ export function parseFrameRanges(text: string): ParsedRanges {
   }
 
   ranges.sort((a, b) => a.startFrame - b.startFrame || a.endFrame - b.endFrame);
-  return { ok: true, ranges };
+
+  // Merge overlapping and adjacent ranges. Adjacent too: 0-10 and 11-20
+  // exclude exactly the frames 0-20 does, so they must record as one range.
+  const merged: FrameRange[] = [];
+  for (const range of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && range.startFrame <= last.endFrame + 1) {
+      last.endFrame = Math.max(last.endFrame, range.endFrame);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return { ok: true, ranges: merged };
 }
 
 /** Plain-language count for the status line, e.g. `2 ranges, 85 frames`. */

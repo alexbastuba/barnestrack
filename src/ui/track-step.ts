@@ -23,6 +23,11 @@ import {
   type RunState,
 } from '../session/tracking-runs.js';
 import type { VideoId } from '../session/stored.js';
+import {
+  MANUAL_THRESHOLD_BOUND,
+  TRACKING_PARAMETER_BOUNDS,
+  clampToBound,
+} from '../session/tracking-parameter-bounds.js';
 import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
 import { describeFrameRanges, formatFrameRanges, parseFrameRanges } from './frame-ranges.js';
 import type { AppContext, Step } from './step.js';
@@ -213,22 +218,33 @@ interface VideoCard {
 function createVideoCard(context: AppContext, videoId: VideoId, runner: TrackingRunner): VideoCard {
   const { store } = context;
 
-  const heading = el('h3', {});
+  // The card names itself, so the three "Track" buttons of a three-video
+  // cohort are told apart by assistive technology (D37).
+  const heading = el('h3', { id: uniqueId('track-card') });
   const status = el('p', { class: 'track-status' });
   const detail = el('p', { class: 'track-detail' });
-  const blockedNote = el('p', { class: 'hint track-blocked' });
+  const blockedNote = el('p', { class: 'hint track-blocked', id: uniqueId('track-blocked') });
   const warnings = el('ul', { class: 'track-warnings' });
 
   const trackButton = button('Track', () => {
     runner.enqueue(videoId);
   });
+  // So a disabled button says why, not just that it is disabled.
+  trackButton.setAttribute('aria-describedby', blockedNote.id);
   const cancelButton = button('Cancel', () => {
     runner.cancel(videoId);
   });
 
-  const bar = el('progress', { class: 'track-progress' });
+  const progressText = el('p', {
+    class: 'track-progress-text',
+    id: uniqueId('track-progress'),
+    attrs: { 'aria-live': 'off' },
+  });
+  const bar = el('progress', {
+    class: 'track-progress',
+    attrs: { 'aria-labelledby': progressText.id },
+  });
   bar.max = 1;
-  const progressText = el('p', { class: 'track-progress-text', attrs: { 'aria-live': 'off' } });
 
   const preview = el('canvas', {
     class: 'track-preview',
@@ -238,7 +254,7 @@ function createVideoCard(context: AppContext, videoId: VideoId, runner: Tracking
   const previewWrap = el('div', { class: 'track-preview-wrap' }, [preview, previewCaption]);
   previewWrap.hidden = true;
 
-  const element = el('div', { class: 'track-card' }, [
+  const element = el('div', { class: 'track-card', attrs: { role: 'group', 'aria-labelledby': heading.id } }, [
     heading,
     status,
     detail,
@@ -427,26 +443,29 @@ interface ParameterPanel {
   refresh(): void;
 }
 
-/** Numeric tracking parameters, in the order the pass uses them. */
-const NUMBER_FIELDS: {
-  key: keyof TrackingParameters;
-  label: string;
-  step: string;
-  min: number;
-  max: number;
-}[] = [
-  { key: 'backgroundSampleCount', label: 'Background sample frames', step: '1', min: 3, max: 500 },
-  { key: 'platformMaskMargin_cm', label: 'Platform mask margin (cm)', step: '0.1', min: 0, max: 20 },
-  { key: 'minBlobArea_cm2', label: 'Smallest blob (cm²)', step: '0.5', min: 0.1, max: 200 },
-  { key: 'maxBlobArea_cm2', label: 'Largest blob (cm²)', step: '1', min: 1, max: 1000 },
-  { key: 'oversizedBlobFactor', label: 'Oversized blob factor', step: '0.1', min: 1, max: 20 },
-  { key: 'smallBlobFactor', label: 'Small blob factor', step: '0.05', min: 0.05, max: 1 },
-  { key: 'tailOpeningRadius_cm', label: 'Tail opening radius (cm)', step: '0.1', min: 0, max: 10 },
-  { key: 'noseCueWindowFrames', label: 'Nose velocity window (frames)', step: '1', min: 1, max: 60 },
-  { key: 'noseMovingSpeed_cmPerS', label: 'Moving speed (cm/s)', step: '0.5', min: 0, max: 100 },
-  { key: 'rimContactMargin_cm', label: 'Rim contact margin (cm)', step: '0.1', min: 0, max: 20 },
-  { key: 'proximityRadius_cm', label: 'Proximity radius (cm)', step: '0.5', min: 0.5, max: 100 },
-  { key: 'fragmentMergeDistance_cm', label: 'Fragment merge distance (cm)', step: '0.5', min: 0, max: 100 },
+/**
+ * Numeric tracking parameters, in the order the pass uses them. The label is
+ * this file's business; the admissible range is not — it decides the value
+ * that gets hashed, so it lives in `tracking-parameter-bounds.ts`.
+ */
+type NumberFieldKey = Exclude<
+  keyof TrackingParameters,
+  'threshold' | 'backgroundExcludeRanges' | 'expectedBlobArea_cm2'
+>;
+
+const NUMBER_FIELDS: { key: NumberFieldKey; label: string }[] = [
+  { key: 'backgroundSampleCount', label: 'Background sample frames' },
+  { key: 'platformMaskMargin_cm', label: 'Platform mask margin (cm)' },
+  { key: 'minBlobArea_cm2', label: 'Smallest blob (cm²)' },
+  { key: 'maxBlobArea_cm2', label: 'Largest blob (cm²)' },
+  { key: 'oversizedBlobFactor', label: 'Oversized blob factor' },
+  { key: 'smallBlobFactor', label: 'Small blob factor' },
+  { key: 'tailOpeningRadius_cm', label: 'Tail opening radius (cm)' },
+  { key: 'noseCueWindowFrames', label: 'Nose velocity window (frames)' },
+  { key: 'noseMovingSpeed_cmPerS', label: 'Moving speed (cm/s)' },
+  { key: 'rimContactMargin_cm', label: 'Rim contact margin (cm)' },
+  { key: 'proximityRadius_cm', label: 'Proximity radius (cm)' },
+  { key: 'fragmentMergeDistance_cm', label: 'Fragment merge distance (cm)' },
 ];
 
 function createParameterPanel(
@@ -468,11 +487,12 @@ function createParameterPanel(
   }
 
   for (const spec of NUMBER_FIELDS) {
+    const bound = TRACKING_PARAMETER_BOUNDS[spec.key];
     const input = el('input', { id: uniqueId('track-param'), class: 'number-input' });
     input.type = 'number';
-    input.step = spec.step;
-    input.min = String(spec.min);
-    input.max = String(spec.max);
+    input.step = bound.step;
+    input.min = String(bound.min);
+    input.max = String(bound.max);
     input.addEventListener('change', () => {
       const typed = Number(input.value);
       if (input.value.trim() === '' || !Number.isFinite(typed)) {
@@ -480,13 +500,12 @@ function createParameterPanel(
         refresh();
         return;
       }
-      const whole = spec.step === '1' ? Math.round(typed) : typed;
-      const value = Math.min(spec.max, Math.max(spec.min, whole));
+      const value = clampToBound(typed, bound);
       commit({ [spec.key]: value } as unknown as Partial<TrackingParameters>);
       if (value !== typed) {
         input.value = String(value);
         context.announce(
-          `${spec.label} must be between ${spec.min} and ${spec.max}, so ${typed} became ${value}.`,
+          `${spec.label} must be between ${bound.min} and ${bound.max}, so ${typed} became ${value}.`,
         );
       }
     });
@@ -529,19 +548,28 @@ function createParameterPanel(
 
   const manualInput = el('input', { id: uniqueId('track-param'), class: 'number-input' });
   manualInput.type = 'number';
-  manualInput.step = '1';
-  manualInput.min = '1';
-  manualInput.max = '255';
+  manualInput.step = MANUAL_THRESHOLD_BOUND.step;
+  manualInput.min = String(MANUAL_THRESHOLD_BOUND.min);
+  manualInput.max = String(MANUAL_THRESHOLD_BOUND.max);
   manualInput.addEventListener('change', () => {
-    const typed = Math.round(Number(manualInput.value));
-    if (!Number.isFinite(typed)) {
-      context.announce('The manual threshold needs a number from 1 to 255.');
+    const typed = Number(manualInput.value);
+    if (manualInput.value.trim() === '' || !Number.isFinite(typed)) {
+      context.announce(
+        `The manual threshold needs a number from ${MANUAL_THRESHOLD_BOUND.min} to ${MANUAL_THRESHOLD_BOUND.max}.`,
+      );
       refresh();
       return;
     }
-    const value = Math.min(255, Math.max(1, typed));
+    const value = clampToBound(typed, MANUAL_THRESHOLD_BOUND);
     commit({ threshold: { mode: current().threshold.mode, manualValue: value } });
-    if (value !== typed) manualInput.value = String(value);
+    if (value !== typed) {
+      manualInput.value = String(value);
+      // Announced like every other clamp: a screen-reader user must not have a
+      // value silently changed under them.
+      context.announce(
+        `Manual threshold must be between ${MANUAL_THRESHOLD_BOUND.min} and ${MANUAL_THRESHOLD_BOUND.max}, so ${typed} became ${value}.`,
+      );
+    }
   });
 
   const thresholdHint = el('span', {
@@ -566,7 +594,10 @@ function createParameterPanel(
       thresholdHint,
     ]),
     el('div', { class: 'field track-param' }, [
-      el('label', { text: 'Manual threshold (0–255)', attrs: { for: manualInput.id } }),
+      el('label', {
+        text: `Manual threshold (${MANUAL_THRESHOLD_BOUND.min}–${MANUAL_THRESHOLD_BOUND.max})`,
+        attrs: { for: manualInput.id },
+      }),
       manualInput,
       el('span', { class: 'track-param-default', text: 'default 40' }),
       manualHint,
@@ -607,11 +638,12 @@ function createParameterPanel(
   );
 
   // Expected body area: null means "learn it from the video" (D29).
+  const expectedBound = TRACKING_PARAMETER_BOUNDS.expectedBlobArea_cm2;
   const expectedInput = el('input', { id: uniqueId('track-param'), class: 'number-input' });
   expectedInput.type = 'number';
-  expectedInput.step = '0.5';
-  expectedInput.min = '0.5';
-  expectedInput.max = '500';
+  expectedInput.step = expectedBound.step;
+  expectedInput.min = String(expectedBound.min);
+  expectedInput.max = String(expectedBound.max);
   expectedInput.placeholder = 'learned from the video';
   expectedInput.addEventListener('change', () => {
     const text = expectedInput.value.trim();
@@ -626,7 +658,14 @@ function createParameterPanel(
       refresh();
       return;
     }
-    commit({ expectedBlobArea_cm2: Math.min(500, Math.max(0.5, typed)) });
+    const value = clampToBound(typed, expectedBound);
+    commit({ expectedBlobArea_cm2: value });
+    if (value !== typed) {
+      expectedInput.value = String(value);
+      context.announce(
+        `Expected body area must be between ${expectedBound.min} and ${expectedBound.max} cm², so ${typed} became ${value}.`,
+      );
+    }
   });
 
   const expectedHint = el('span', {

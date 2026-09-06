@@ -53,6 +53,32 @@ describe('parseFrameRanges', () => {
     expect(parseFrameRanges('200-210, 0-74')).toEqual(parseFrameRanges('0-74, 200-210'));
   });
 
+  // D51: two spellings of the same excluded frames must be one parameter set,
+  // or two runs that sampled identical frames disagree about their hash.
+  it('merges overlapping ranges, so the same frames spell one way', () => {
+    expect(parseFrameRanges('5-8, 0-10')).toEqual(parseFrameRanges('0-10'));
+    expect(parseFrameRanges('0-10, 0-10')).toEqual(parseFrameRanges('0-10'));
+    expect(parseFrameRanges('0-10, 5-20')).toEqual(parseFrameRanges('0-20'));
+  });
+
+  it('merges ranges that merely touch, which exclude the same frames', () => {
+    expect(parseFrameRanges('0-10, 11-20')).toEqual(parseFrameRanges('0-20'));
+    expect(parseFrameRanges('0-10, 12-20')).toEqual({
+      ok: true,
+      ranges: [
+        { startFrame: 0, endFrame: 10 },
+        { startFrame: 12, endFrame: 20 },
+      ],
+    });
+  });
+
+  it('leaves genuinely separate ranges separate', () => {
+    const parsed = parseFrameRanges('0-74, 200-210');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(formatFrameRanges(parsed.ranges)).toBe('0-74, 200-210');
+  });
+
   it('names the piece it could not read instead of dropping it', () => {
     const result = parseFrameRanges('0-74, banana');
     expect(result.ok).toBe(false);

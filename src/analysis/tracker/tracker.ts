@@ -91,9 +91,11 @@ export interface TrackerOptions {
 export interface LivePreview {
   presIndex: number;
   /**
-   * Centroid of the largest candidate, or of the merged union when the pieces
-   * were merged (D48); null when no candidate reached the minimum area.
-   * Provisional: `finish()` may select a different candidate by proximity.
+   * Centroid of the largest candidate, or of the union when every piece lies
+   * within the fragment merge distance; null when no candidate reached the
+   * minimum area. Provisional in two ways: `finish()` may select a different
+   * candidate by proximity, and it applies D48's area bound, which can reject
+   * a union this preview has already drawn (a hand beside the animal).
    */
   centroid: { x: number; y: number } | null;
   /** Candidates at or above the minimum area this frame. */
