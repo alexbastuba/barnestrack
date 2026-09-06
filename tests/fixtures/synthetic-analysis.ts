@@ -100,6 +100,13 @@ export const FIXTURE_PARAMETERS: Parameters = {
   tracking: DEFAULT_TRACKING_PARAMETERS,
 };
 
+/**
+ * How far the body centroid sits back from a hole centre while the animal noses
+ * into it, in cm. Without it every dwell would put the centroid exactly on the
+ * hole and every reported distance would be zero.
+ */
+const BODY_SETBACK_CM = 3;
+
 /** Deterministic 32-bit LCG (Numerical Recipes constants). */
 function lcg(seed: number): () => number {
   let state = seed >>> 0;
@@ -286,6 +293,8 @@ interface Segment {
 function buildSegments(script: VideoScript, map: MazeMapFile): Segment[] {
   const centres = holeCentres(map);
   const centre: Point = { x: map.platform.cx, y: map.platform.cy };
+  const pixelsPerCm = pxPerCm(map.platform, map.calibration.platformDiameter_cm) ?? MAP_PX_PER_CM;
+  const setback = (BODY_SETBACK_CM * pixelsPerCm) / map.platform.r;
   const waypoint = (leg: ScriptLeg): Point => {
     if (leg.holeIndex === null) {
       return leg.radiusFrac === 0
@@ -293,7 +302,8 @@ function buildSegments(script: VideoScript, map: MazeMapFile): Segment[] {
         : lerp(centre, centres[0] ?? centre, leg.radiusFrac / RING_RATIO);
     }
     const hole = centres[leg.holeIndex] ?? centre;
-    return lerp(centre, hole, leg.radiusFrac / RING_RATIO);
+    // The body stops short of the hole; the nose reaches it.
+    return lerp(centre, hole, (leg.radiusFrac - setback) / RING_RATIO);
   };
 
   const scripted = script.legs.reduce((sum, leg) => sum + leg.travel_s + leg.dwell_s, 0);
@@ -620,7 +630,7 @@ function buildEvents(script: VideoScript, map: MazeMapFile, track: BuiltTrack): 
       pointUsed: usesNose ? 'nose' : 'centroid',
       minNoseDistance_cm: approach.nose_cm,
       minCentroidDistance_cm: approach.centroid_cm,
-      evidence: `${usesNose ? 'Nose' : 'Centroid'} within ${approach.centroid_cm.toFixed(1)} cm of hole ${segment.holeIndex} for ${round(values[endFrame]! - values[startFrame]!, 2).toFixed(2)} s.`,
+      evidence: `${usesNose ? 'Nose' : 'Centroid'} within ${(usesNose ? approach.nose_cm : approach.centroid_cm).toFixed(1)} cm of hole ${segment.holeIndex} for ${round(values[endFrame]! - values[startFrame]!, 2).toFixed(2)} s.`,
       source: 'auto',
     });
   }
