@@ -16,25 +16,63 @@ import {
   type SequentialDecoder,
 } from './decoder.js';
 import { fnv1a32 } from './frame-hash.js';
-import type { FrameConsumerKind, WorkerRequest, WorkerResponse } from './worker-protocol.js';
+import { createTrackConsumer } from './track-consumer.js';
+import type {
+  StartHashMessage,
+  StartTrackMessage,
+  TrackPreview,
+  TrackResult,
+  WorkerRequest,
+  WorkerResponse,
+} from './worker-protocol.js';
 
 interface FrameConsumer {
   onFrame(frame: GrayFrame): void;
-  finish(): { hashes?: Uint32Array; transfer: Transferable[] };
+  /** Called before the pass, so a consumer can post what it worked out first. */
+  started?(): void;
+  /** The newest live preview, or null when none is due. */
+  takePreview?(): TrackPreview | null;
+  finish(): { hashes?: Uint32Array; track?: TrackResult; transfer: Transferable[] };
 }
 
-function createConsumer(kind: FrameConsumerKind, frameCount: number): FrameConsumer {
-  switch (kind) {
-    case 'hash': {
-      const hashes = new Uint32Array(frameCount);
-      return {
-        onFrame(frame) {
-          hashes[frame.presIndex] = fnv1a32(frame.gray);
-        },
-        finish: () => ({ hashes, transfer: [hashes.buffer] }),
-      };
-    }
-  }
+function hashConsumer(frameCount: number): FrameConsumer {
+  const hashes = new Uint32Array(frameCount);
+  return {
+    onFrame(frame) {
+      hashes[frame.presIndex] = fnv1a32(frame.gray);
+    },
+    finish: () => ({ hashes, transfer: [hashes.buffer] }),
+  };
+}
+
+function trackConsumer(request: StartTrackMessage): FrameConsumer {
+  const consumer = createTrackConsumer({
+    ...request.track,
+    width: request.index.width,
+    height: request.index.height,
+  });
+  return {
+    started() {
+      post({
+        type: 'prepared',
+        threshold: consumer.preparation.threshold,
+        pxPerCm: consumer.preparation.pxPerCm,
+        warnings: consumer.preparation.warnings,
+        elapsedMs: consumer.prepareMs,
+      });
+    },
+    onFrame: (frame) => consumer.onFrame(frame),
+    takePreview: () => consumer.takePreview(),
+    // The frames are plain objects, which is what the session stores; a
+    // columnar typed-array encoding would have to be decoded straight back.
+    finish: () => ({ track: consumer.finish(), transfer: [] }),
+  };
+}
+
+function createConsumer(request: StartHashMessage | StartTrackMessage): FrameConsumer {
+  return request.consumer === 'hash'
+    ? hashConsumer(request.index.frameCount)
+    : trackConsumer(request);
 }
 
 interface PerformanceWithMemory extends Performance {
@@ -59,7 +97,8 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
     return;
   }
   const { file, index } = request;
-  const consumer = createConsumer(request.consumer, index.frameCount);
+  const consumer = createConsumer(request);
+  consumer.started?.();
   const started = performance.now();
   let peakHeap = usedHeapBytes();
 
@@ -77,12 +116,17 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
         const fps = elapsedS > 0 ? done / elapsedS : 0;
         const heap = usedHeapBytes();
         if (heap !== undefined && (peakHeap === undefined || heap > peakHeap)) peakHeap = heap;
-        post({
+        const message: WorkerResponse = {
           type: 'progress',
           presIndex,
           fps,
           etaSeconds: fps > 0 ? (index.frameCount - done) / fps : 0,
-        });
+        };
+        // Only the newest preview is posted; a slow page drops them rather
+        // than falling behind on stale thumbnails.
+        const preview = consumer.takePreview?.() ?? null;
+        if (preview) message.preview = preview;
+        post(message, preview ? [preview.gray.buffer] : []);
       },
     },
   );
@@ -102,6 +146,7 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
     };
     if (peakHeap !== undefined) done.peakHeapBytes = peakHeap;
     if (output.hashes) done.hashes = output.hashes;
+    if (output.track) done.track = output.track;
     post(done, output.transfer);
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
