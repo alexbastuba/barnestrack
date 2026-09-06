@@ -13,7 +13,9 @@ import {
   PLATFORM_DIAMETER_CM,
   mouseAtRim,
   renderScene,
+  renderStaticScene,
 } from '../synthetic-frames.js';
+import { createTracker } from '../../../src/analysis/tracker/tracker.js';
 import { setup, t_s, trackerFor } from './helpers.js';
 
 const pxPerCm = pxPerCmFromPlatform(DEFAULT_SCENE.platform, PLATFORM_DIAMETER_CM);
@@ -50,6 +52,7 @@ describe('selectCandidate on constructed candidate lists', () => {
       reason: 'single_blob',
       index: 0,
       byProximity: false,
+      merged: false,
     });
   });
 
@@ -65,6 +68,7 @@ describe('selectCandidate on constructed candidate lists', () => {
       reason: 'proximity_to_previous',
       index: 1,
       byProximity: true,
+      merged: false,
     });
     expect(selectCandidate(two, px, expected, { x: 400, y: 250 })).toMatchObject({
       reason: 'multiple_blobs',
@@ -73,6 +77,60 @@ describe('selectCandidate on constructed candidate lists', () => {
     expect(selectCandidate(close, px, expected, { x: 305, y: 202 })).toMatchObject({
       reason: 'multiple_blobs',
     });
+  });
+
+  it('merges pieces within one body length into one animal (D48)', () => {
+    // two pieces 20 px apart (≈ 4.5 cm), union 400 px² within the bounds
+    const pieces = [blob({ area: 220, cx: 300, cy: 200 }), blob({ area: 180, cx: 320, cy: 200 })];
+    const union = { area: 400, cx: 309, cy: 200, rimContact: false };
+    expect(selectCandidate(pieces, px, expected, null, union)).toEqual({
+      state: 'low_confidence',
+      reason: 'fragmented',
+      index: -1,
+      byProximity: false,
+      merged: true,
+    });
+    // merged even when a previous position would have picked one piece
+    expect(selectCandidate(pieces, px, expected, { x: 300, y: 200 }, union)).toMatchObject({
+      reason: 'fragmented',
+    });
+    // union above the oversized bound → stays ambiguous / multiple_blobs
+    const big = [blob({ area: 700, cx: 300, cy: 200 }), blob({ area: 600, cx: 320, cy: 200 })];
+    expect(
+      selectCandidate(big, px, expected, null, { area: 1300, cx: 309, cy: 200, rimContact: false }),
+    ).toMatchObject({
+      state: 'ambiguous',
+      reason: 'multiple_blobs',
+      merged: false,
+    });
+    // union above maxBlobArea without an expected area → multiple_blobs as well
+    const huge = [
+      blob({ area: px.maxBlobArea_px2 - 10, cx: 300, cy: 200 }),
+      blob({ area: 100, cx: 320, cy: 200 }),
+    ];
+    expect(
+      selectCandidate(huge, px, null, null, {
+        area: px.maxBlobArea_px2 + 90,
+        cx: 305,
+        cy: 200,
+        rimContact: false,
+      }),
+    ).toMatchObject({ reason: 'multiple_blobs' });
+    // pieces farther apart than the merge distance → multiple_blobs (no union offered, or a union that does not qualify)
+    const far = [
+      blob({ area: 220, cx: 300, cy: 200 }),
+      blob({ area: 180, cx: 300 + px.fragmentMergeDistance_px + 5, cy: 200 }),
+    ];
+    expect(
+      selectCandidate(far, px, expected, null, { area: 400, cx: 320, cy: 200, rimContact: false }),
+    ).toMatchObject({ reason: 'multiple_blobs' });
+    expect(selectCandidate(far, px, expected, null, null)).toMatchObject({
+      reason: 'multiple_blobs',
+    });
+    // a merged blob touching the rim is still fragmented (the union carries the rim flag into confidence, not the reason)
+    expect(
+      selectCandidate(pieces, px, expected, null, { ...union, rimContact: true }),
+    ).toMatchObject({ reason: 'fragmented' });
   });
 
   it('an oversized component wins over everything else', () => {
@@ -185,6 +243,32 @@ describe('selection on rendered frames', () => {
     expect(f.detectionState).toBe('low_confidence');
     expect(f.reason).toBe('partial_at_rim');
     expect(f.centroid.valid).toBe(true);
+    expect(f.centroid.confidence).toBeLessThan(0.75);
+  });
+
+  it('a mouse straddling a hole → low_confidence / fragmented with the centroid on the body (D48)', () => {
+    // A narrow hole cuts the body in two; both halves are plausible pieces within a body length.
+    // A hole as dark as the real ones (near black): under the body the difference stays below threshold.
+    const holeSpec = { ...scene, holeCount: 1, holeRadius_px: 6, holeRingRatio: 0, holeLevel: 10 };
+    const holeX = holeSpec.platform.cx;
+    const holeY = holeSpec.platform.cy;
+    const m = { ...DEFAULT_MOUSE, x: holeX, y: holeY, heading: 0, tailLength: 0 };
+    const tracker = createTracker({
+      ...s.options,
+      background: renderStaticScene(holeSpec),
+      params: { ...s.params, expectedBlobArea_cm2: 20 },
+    });
+    const frame = renderScene(holeSpec, { mouse: m });
+    tracker.onFrame(frame, 0, 0);
+    const result = tracker.finish();
+    const f = result.frames[0]!;
+    expect(result.candidates[0]!.length).toBe(2);
+    expect(f.detectionState).toBe('low_confidence');
+    expect(f.reason).toBe('fragmented');
+    expect(f.centroid.valid).toBe(true);
+    expect(Math.hypot(f.centroid.x - m.x, f.centroid.y - m.y)).toBeLessThan(4);
+    expect(f.blobArea_px2).toBeGreaterThan(Math.PI * 16 * 8 * 0.5);
+    expect(f.boundingBox!.width).toBeGreaterThan(26);
     expect(f.centroid.confidence).toBeLessThan(0.75);
   });
 

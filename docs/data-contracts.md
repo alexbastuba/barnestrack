@@ -239,10 +239,11 @@ every export.
 | `noseMovingSpeed_cmPerS`  | number                       | cm/s   | 8       | Below this centroid speed the velocity cue is unavailable and the hole cue may apply.              |
 | `rimContactMargin_cm`     | number                       | cm     | 1.0     | A blob with any pixel within this distance of the platform edge, or beyond it, is `partial_at_rim`. |
 | `proximityRadius_cm`      | number                       | cm     | 6       | With several plausible blobs, tracked only if exactly one lies within this of the last centroid.   |
+| `fragmentMergeDistance_cm` | number                      | cm     | 8       | Plausible pieces whose centroids all lie within this of each other are one animal, `low_confidence / fragmented`, when the union satisfies the single-blob area bounds (one body length; D48). |
 
 The per-frame `reason` strings the tracker emits are fixed (`src/analysis/tracker/select.ts`):
 `single_blob`, `proximity_to_previous` (tracked); `no_foreground` (not_detected); `multiple_blobs`,
-`oversized_blob` (ambiguous); `partial_at_rim`, `small_blob` (low_confidence). The quality report
+`oversized_blob` (ambiguous); `partial_at_rim`, `small_blob`, `fragmented` (low_confidence; D48). The quality report
 clusters on them (D8, D30).
 
 ## 7. Export schema (D11)

@@ -108,3 +108,37 @@ export function tailDirection(
   if (!(len > 1e-9) || len < minOffset_px) return null;
   return { dx: dx / len, dy: dy / len, pixels };
 }
+
+/** Contour extremes along `e`'s major axis over the union of several components (D48). */
+export function axisExtremesMulti(
+  labels: Int32Array,
+  width: number,
+  components: readonly Component[],
+  e: BodyEllipse,
+): AxisEnds {
+  let maxS = -Infinity;
+  let minS = Infinity;
+  let ax = e.cx;
+  let ay = e.cy;
+  let bx = e.cx;
+  let by = e.cy;
+  for (const c of components) {
+    for (let y = c.minY; y <= c.maxY; y++) {
+      for (let x = c.minX; x <= c.maxX; x++) {
+        if (labels[y * width + x] !== c.label) continue;
+        const s = (x - e.cx) * e.ux + (y - e.cy) * e.uy;
+        if (s > maxS) {
+          maxS = s;
+          ax = x;
+          ay = y;
+        }
+        if (s < minS) {
+          minS = s;
+          bx = x;
+          by = y;
+        }
+      }
+    }
+  }
+  return { ax, ay, bx, by };
+}

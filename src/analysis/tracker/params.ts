@@ -28,6 +28,7 @@ export const DEFAULT_TRACKING_PARAMETERS: TrackingParameters = {
   noseMovingSpeed_cmPerS: 8,
   rimContactMargin_cm: 1.0,
   proximityRadius_cm: 6,
+  fragmentMergeDistance_cm: 8,
 };
 
 /** Shown verbatim in the UI next to each parameter (chunk 4). */
@@ -59,6 +60,8 @@ export const TRACKING_PARAMETER_DEFINITIONS: Record<keyof TrackingParameters, st
     'A blob with any pixel within this distance of the platform edge, or beyond it, is low_confidence / partial_at_rim (cm).',
   proximityRadius_cm:
     'With several plausible blobs, the frame is tracked only if exactly one lies within this distance of the last valid centroid (cm).',
+  fragmentMergeDistance_cm:
+    'Plausible pieces whose centroids all lie within this distance of each other are merged into one animal (low_confidence / fragmented) when the union satisfies the area bounds; one body length (8 cm): the sample videos split the animal at holes and the rim into pieces at most 6.5 cm apart, while the start cylinder’s two crescents are 8.9 cm apart.',
 };
 
 /**
@@ -87,6 +90,8 @@ export const CONFIDENCE_MODEL = {
   proximityCandidateFactor: 0.7,
   /** Confidence multiplier when the blob touches the rim zone. */
   rimContactFactor: 0.7,
+  /** Confidence multiplier when the blob is the union of fragments (D48). */
+  fragmentedFactor: 0.7,
   /** Largest components recorded per frame; smaller ones are counted only. */
   maxCandidatesPerFrame: 8,
   /** Background contamination: a dark blob at least this multiple of the median dark-blob area (≈ one hole) is warned about. */
@@ -114,6 +119,7 @@ export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL,
   proximityCandidateFactor:
     'Confidence multiplier for a blob chosen by proximity to the previous position.',
   rimContactFactor: 'Confidence multiplier for a blob in the rim zone.',
+  fragmentedFactor: 'Confidence multiplier for a blob merged from fragments.',
   maxCandidatesPerFrame: 'Per-frame cap on recorded candidate components (largest first).',
   contaminationAreaFactor:
     'Background check: dark blob area ÷ median dark blob area at or above this is a stationary object or animal, not a hole.',

@@ -12,7 +12,8 @@ export type DetectionReason =
   | 'multiple_blobs'
   | 'oversized_blob'
   | 'partial_at_rim'
-  | 'small_blob';
+  | 'small_blob'
+  | 'fragmented';
 
 export const DETECTION_REASONS: readonly DetectionReason[] = [
   'single_blob',
@@ -22,6 +23,7 @@ export const DETECTION_REASONS: readonly DetectionReason[] = [
   'oversized_blob',
   'partial_at_rim',
   'small_blob',
+  'fragmented',
 ];
 
 export const REASON_STATE: Record<DetectionReason, DetectionState> = {
@@ -32,6 +34,7 @@ export const REASON_STATE: Record<DetectionReason, DetectionState> = {
   oversized_blob: 'ambiguous',
   partial_at_rim: 'low_confidence',
   small_blob: 'low_confidence',
+  fragmented: 'low_confidence',
 };
 
 export interface CandidateBlob {
@@ -45,30 +48,52 @@ export interface CandidateBlob {
 export interface Selection {
   state: DetectionState;
   reason: DetectionReason;
-  /** Index into `candidates` of the selected blob, or −1. */
+  /** Index into `candidates` of the selected blob, or −1 (nothing selected, or the union when `merged`). */
   index: number;
   /** The blob was picked among several by proximity to the previous position. */
   byProximity: boolean;
+  /** The selected blob is the union of all plausible pieces (D48). */
+  merged: boolean;
 }
 
 function rejected(reason: DetectionReason): Selection {
-  return { state: REASON_STATE[reason], reason, index: -1, byProximity: false };
+  return { state: REASON_STATE[reason], reason, index: -1, byProximity: false, merged: false };
+}
+
+/** True when every pair of centroids is within `distance_px` of each other. */
+export function allWithin(candidates: readonly CandidateBlob[], distance_px: number): boolean {
+  const d2 = distance_px * distance_px;
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const dx = candidates[i]!.cx - candidates[j]!.cx;
+      const dy = candidates[i]!.cy - candidates[j]!.cy;
+      if (dx * dx + dy * dy > d2) return false;
+    }
+  }
+  return true;
 }
 
 /**
  * Precedence: any component above `maxBlobArea` or above
  * `oversizedBlobFactor × expected` → ambiguous / oversized_blob; nothing at or
  * above `minBlobArea` → not_detected / no_foreground; two or more plausible →
- * ambiguous / multiple_blobs unless exactly one lies within the proximity
- * radius of the previous position; the chosen blob → low_confidence /
- * partial_at_rim when it touches the rim zone, low_confidence / small_blob
- * when below `smallBlobFactor × expected`, otherwise tracked.
+ * low_confidence / fragmented when all their centroids lie within the merge
+ * distance of each other and their union satisfies the same area bounds as a
+ * single blob (D48), else ambiguous / multiple_blobs unless exactly one lies
+ * within the proximity radius of the previous position; the chosen blob →
+ * low_confidence / partial_at_rim when it touches the rim zone, low_confidence
+ * / small_blob when below `smallBlobFactor × expected`, otherwise tracked.
+ *
+ * `union` is the union of all plausible candidates (area, centroid, rim
+ * contact), supplied by the caller when it exists; null when there are fewer
+ * than two plausible pieces.
  */
 export function selectCandidate(
   candidates: readonly CandidateBlob[],
   px: TrackingParametersPx,
   expected_px2: number | null,
   previous: { x: number; y: number } | null,
+  union: CandidateBlob | null = null,
 ): Selection {
   const oversizedAbove =
     expected_px2 === null
@@ -85,6 +110,23 @@ export function selectCandidate(
   let index = plausible[0]!;
   let byProximity = false;
   if (plausible.length >= 2) {
+    if (
+      union !== null &&
+      allWithin(
+        plausible.map((i) => candidates[i]!),
+        px.fragmentMergeDistance_px,
+      ) &&
+      union.area >= px.minBlobArea_px2 &&
+      union.area <= oversizedAbove
+    ) {
+      return {
+        state: 'low_confidence',
+        reason: 'fragmented',
+        index: -1,
+        byProximity: false,
+        merged: true,
+      };
+    }
     if (previous === null) return rejected('multiple_blobs');
     const r2 = px.proximityRadius_px * px.proximityRadius_px;
     let near = -1;
@@ -104,15 +146,17 @@ export function selectCandidate(
   }
 
   const chosen = candidates[index]!;
-  if (chosen.rimContact)
-    return { state: 'low_confidence', reason: 'partial_at_rim', index, byProximity };
+  if (chosen.rimContact) {
+    return { state: 'low_confidence', reason: 'partial_at_rim', index, byProximity, merged: false };
+  }
   if (expected_px2 !== null && chosen.area < px.smallBlobFactor * expected_px2) {
-    return { state: 'low_confidence', reason: 'small_blob', index, byProximity };
+    return { state: 'low_confidence', reason: 'small_blob', index, byProximity, merged: false };
   }
   return {
     state: 'tracked',
     reason: byProximity ? 'proximity_to_previous' : 'single_blob',
     index,
     byProximity,
+    merged: false,
   };
 }

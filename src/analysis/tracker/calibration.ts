@@ -45,6 +45,7 @@ export interface TrackingParametersPx {
   noseCueWindowFrames: number;
   noseMovingSpeed_pxPerS: number;
   proximityRadius_px: number;
+  fragmentMergeDistance_px: number;
   threshold: { mode: ThresholdMode; manualValue: number };
 }
 
@@ -71,6 +72,7 @@ export function toPixelUnits(
     noseCueWindowFrames: params.noseCueWindowFrames,
     noseMovingSpeed_pxPerS: params.noseMovingSpeed_cmPerS * pxPerCm,
     proximityRadius_px: params.proximityRadius_cm * pxPerCm,
+    fragmentMergeDistance_px: params.fragmentMergeDistance_cm * pxPerCm,
     threshold: { mode: params.threshold.mode, manualValue: params.threshold.manualValue },
   };
 }

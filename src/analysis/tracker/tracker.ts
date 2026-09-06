@@ -43,11 +43,19 @@ import { assignNose, type HoleCircle, type NoseFrameInput } from './nose.js';
 import { CONFIDENCE_MODEL, type TrackingParameters } from './params.js';
 import {
   DETECTION_REASONS,
+  allWithin,
   selectCandidate,
+  type CandidateBlob,
   type DetectionReason,
   type Selection,
 } from './select.js';
-import { axisExtremes, ellipseFromComponent, tailDirection, type TailDirection } from './shape.js';
+import {
+  axisExtremes,
+  axisExtremesMulti,
+  ellipseFromComponent,
+  tailDirection,
+  type TailDirection,
+} from './shape.js';
 
 export interface TrackerOptions {
   width: number;
@@ -179,8 +187,19 @@ interface Observation {
   t_s: number;
   /** Components at or above the minimum area, largest first, capped. */
   candidates: CandidateRecord[];
+  /** Union of all candidates when their centroids all lie within the merge distance (D48); else null. */
+  union: CandidateRecord | null;
   componentCount: number;
   foregroundPixels: number;
+}
+
+function asBlob(c: CandidateRecord): CandidateBlob {
+  return { area: c.area, cx: c.cx, cy: c.cy, rimContact: c.rimContact };
+}
+
+function selectedRecord(o: Observation, s: Selection): CandidateRecord | null {
+  if (s.merged) return o.union;
+  return s.index >= 0 ? (o.candidates[s.index] ?? null) : null;
 }
 
 const EMPTY_RECT: PixelRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -250,6 +269,7 @@ export function createTracker(options: TrackerOptions): Tracker {
       presIndex,
       t_s,
       candidates: [],
+      union: null,
       componentCount: 0,
       foregroundPixels: extent.count,
     };
@@ -403,6 +423,85 @@ export function createTracker(options: TrackerOptions): Tracker {
                 : 0,
           });
         }
+
+        // Union of the pieces when they all lie within the merge distance of each other (D48).
+        if (
+          order.length >= 2 &&
+          allWithin(observation.candidates.map(asBlob), px.fragmentMergeDistance_px)
+        ) {
+          const parts = order.map((b) => bodyComponents[b]!);
+          const u: Component = {
+            label: -1,
+            area: 0,
+            minX: Infinity,
+            minY: Infinity,
+            maxX: -Infinity,
+            maxY: -Infinity,
+            sumX: 0,
+            sumY: 0,
+            sumXX: 0,
+            sumYY: 0,
+            sumXY: 0,
+            sumDiff: 0,
+            maxDist2: 0,
+            firstIndex: Infinity,
+          };
+          let uTailX = 0;
+          let uTailY = 0;
+          let uTailN = 0;
+          for (const b of order) {
+            const c = bodyComponents[b]!;
+            u.area += c.area;
+            u.minX = Math.min(u.minX, c.minX);
+            u.minY = Math.min(u.minY, c.minY);
+            u.maxX = Math.max(u.maxX, c.maxX);
+            u.maxY = Math.max(u.maxY, c.maxY);
+            u.sumX += c.sumX;
+            u.sumY += c.sumY;
+            u.sumXX += c.sumXX;
+            u.sumYY += c.sumYY;
+            u.sumXY += c.sumXY;
+            u.sumDiff += c.sumDiff;
+            u.maxDist2 = Math.max(u.maxDist2, c.maxDist2);
+            u.firstIndex = Math.min(u.firstIndex, c.firstIndex);
+            uTailX += tailSumX[b]!;
+            uTailY += tailSumY[b]!;
+            uTailN += tailCount[b]!;
+          }
+          const e = ellipseFromComponent(u);
+          const ends = axisExtremesMulti(bodyScratch.labels, width, parts, e);
+          observation.union = {
+            area: u.area,
+            cx: e.cx,
+            cy: e.cy,
+            minX: u.minX,
+            minY: u.minY,
+            maxX: u.maxX,
+            maxY: u.maxY,
+            meanDiff: u.sumDiff / u.area,
+            rimContact: u.maxDist2 >= rimZone2,
+            ux: e.ux,
+            uy: e.uy,
+            major: e.major,
+            minor: e.minor,
+            ax: ends.ax,
+            ay: ends.ay,
+            bx: ends.bx,
+            by: ends.by,
+            tail: tailDirection(
+              e.cx,
+              e.cy,
+              uTailX,
+              uTailY,
+              uTailN,
+              CONFIDENCE_MODEL.noseTailMinPixels,
+              CONFIDENCE_MODEL.noseTailMinOffsetFraction * e.major,
+            ),
+            tailPixels: uTailN,
+            tailOffset_px:
+              uTailN > 0 ? Math.hypot(uTailX / uTailN - e.cx, uTailY / uTailN - e.cy) : 0,
+          };
+        }
       }
     }
     observations.push(observation);
@@ -439,18 +538,22 @@ export function createTracker(options: TrackerOptions): Tracker {
     let previous: { x: number; y: number } | null = null;
     for (let i = 0; i < observations.length; i++) {
       const o = observations[i]!;
-      const s = selectCandidate(o.candidates, px, expected_px2, previous);
+      const s = selectCandidate(
+        o.candidates,
+        px,
+        expected_px2,
+        previous,
+        o.union ? asBlob(o.union) : null,
+      );
       selections[i] = s;
-      if (s.index >= 0) {
-        const c = o.candidates[s.index]!;
-        previous = { x: c.cx, y: c.cy };
-      }
+      const c = selectedRecord(o, s);
+      if (c) previous = { x: c.cx, y: c.cy };
     }
 
     const noseInputs: NoseFrameInput[] = observations.map((o, i) => {
       const s = selections[i]!;
-      if (s.index < 0) return { t_s: o.t_s, shape: null };
-      const c = o.candidates[s.index]!;
+      const c = selectedRecord(o, s);
+      if (!c) return { t_s: o.t_s, shape: null };
       return {
         t_s: o.t_s,
         shape: {
@@ -504,8 +607,9 @@ export function createTracker(options: TrackerOptions): Tracker {
       let nosePoint = invalidPoint();
       let blobArea_px2 = 0;
       let boundingBox: TrackFrame['boundingBox'] = null;
-      if (s.index >= 0) {
-        const c = o.candidates[s.index]!;
+      const sel = selectedRecord(o, s);
+      if (sel) {
+        const c = sel;
         const areaFactor =
           expected_px2 === null
             ? 1
@@ -522,7 +626,9 @@ export function createTracker(options: TrackerOptions): Tracker {
         );
         const candidateFactor = s.byProximity ? CONFIDENCE_MODEL.proximityCandidateFactor : 1;
         const rimFactor = c.rimContact ? CONFIDENCE_MODEL.rimContactFactor : 1;
-        const confidence = areaFactor * contrastFactor * candidateFactor * rimFactor;
+        const fragmentFactor = s.merged ? CONFIDENCE_MODEL.fragmentedFactor : 1;
+        const confidence =
+          areaFactor * contrastFactor * candidateFactor * rimFactor * fragmentFactor;
         centroid = { x: c.cx, y: c.cy, confidence, valid: true, source: 'auto' };
         nosePoint = {
           x: nose.valid ? nose.x : 0,
@@ -568,7 +674,7 @@ export function createTracker(options: TrackerOptions): Tracker {
         reason: s.reason,
         blobArea_px2,
         boundingBox,
-        noseHeadingConfidence: s.index >= 0 ? nose.headingConfidence : 0,
+        noseHeadingConfidence: sel ? nose.headingConfidence : 0,
       };
     }
 

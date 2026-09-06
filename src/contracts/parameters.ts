@@ -95,6 +95,8 @@ export interface TrackingParameters {
   rimContactMargin_cm: number;
   /** With several plausible blobs, the one within this distance of the previous position is kept, cm. */
   proximityRadius_cm: number;
+  /** Plausible pieces whose centroids all lie within this distance of each other are one animal (`fragmented`), cm. D48. */
+  fragmentMergeDistance_cm: number;
 }
 
 /** Hash of a `Parameters` value, used to key the auto layer and stamp exports. */
