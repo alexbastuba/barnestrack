@@ -39,13 +39,42 @@ export function countGaps(frames: readonly TrackFrame[]): number {
   return gaps;
 }
 
+/**
+ * How long the animal was actually missing: from the start of the gap to the
+ * moment tracking resumed, not to the last missing frame — otherwise an N-frame
+ * gap reads one frame short and a single-frame gap reads "0.0 s", which is a
+ * gap the summary claims and then denies (D16, D30).
+ *
+ * A gap running to the end of the video has no resuming frame, so the last
+ * frame's own interval stands in for it.
+ */
+export function gapDurationSeconds(
+  run: NotDetectedRun,
+  frames: readonly TrackFrame[],
+): number | null {
+  const start = frames[run.startFrame]?.t_s;
+  if (start === undefined) return null;
+
+  const resumed = frames[run.endFrame + 1]?.t_s;
+  if (resumed !== undefined) return resumed - start;
+
+  const last = frames[run.endFrame]?.t_s;
+  if (last === undefined) return null;
+  const previous = frames[run.startFrame - 1]?.t_s;
+  const step = previous !== undefined ? start - previous : 0;
+  return last - start + step;
+}
+
 function gapPhrase(longest: NotDetectedRun | null, frames: readonly TrackFrame[]): string {
   if (!longest) return '';
   const start = frames[longest.startFrame]?.t_s;
-  const end = frames[longest.endFrame]?.t_s;
-  const seconds = start !== undefined && end !== undefined ? end - start : 0;
+  const seconds = gapDurationSeconds(longest, frames) ?? 0;
   const at = start === undefined ? '' : ` starting at ${formatClock(start)}`;
-  return ` · longest ${seconds.toFixed(1)} s${at}`;
+  // A gap under a second still gets two decimals: rounding a real 0.03 s gap
+  // to "0.0 s" would deny in one clause what the gap count asserts in the one
+  // before it.
+  const shown = seconds < 1 ? seconds.toFixed(2) : seconds.toFixed(1);
+  return ` · longest ${shown} s${at}`;
 }
 
 /**

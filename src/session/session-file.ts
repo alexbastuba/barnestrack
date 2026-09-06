@@ -110,6 +110,24 @@ function requiredFieldProblem(value: Record<string, unknown>): string | null {
   if (mazeMap !== null && !isRecord(mazeMap)) return complaint('its maze map is not a maze map');
   const parameters = value['parameters'];
   if (parameters !== null && !isRecord(parameters)) return complaint('its parameters are not a parameter set');
-  if (!isRecord(value['analyses'])) return complaint('its analyses section is missing');
+  const analyses = value['analyses'];
+  if (!isRecord(analyses)) return complaint('its analyses section is missing');
+  for (const [videoId, analysis] of Object.entries(analyses)) {
+    if (!isRecord(analysis)) return complaint(`the analysis for ${videoId} is not an analysis`);
+    const auto = analysis['auto'];
+    if (!isRecord(auto) || !Array.isArray(auto['frames'])) {
+      return complaint(`the analysis for ${videoId} has no tracked frames`);
+    }
+    const corrections = analysis['corrections'];
+    if (!isRecord(corrections) || !Array.isArray(corrections['entries'])) {
+      return complaint(`the analysis for ${videoId} has no corrections list`);
+    }
+    // `derived` is null until an analysis run computes it (D52), so its
+    // absence is correct; anything that is neither null nor an object is not.
+    const derived = analysis['derived'];
+    if (derived !== null && derived !== undefined && !isRecord(derived)) {
+      return complaint(`the analysis for ${videoId} has a derived layer that is not one`);
+    }
+  }
   return null;
 }

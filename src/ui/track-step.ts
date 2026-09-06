@@ -119,6 +119,7 @@ export function createTrackStep(context: AppContext): Step {
   function refreshQueueControls(): void {
     const untracked = runner.untracked().length;
     trackAllButton.disabled = untracked === 0;
+    if (!runner.busy && document.activeElement === cancelAllButton) trackAllButton.focus();
     cancelAllButton.hidden = !runner.busy;
     const tracked = store.videos.filter((v) => store.analysisFor(v.id) !== undefined).length;
     queueState.textContent =
@@ -281,6 +282,10 @@ function createVideoCard(context: AppContext, videoId: VideoId, runner: Tracking
     const running = state !== undefined && runner.isActive(videoId);
     trackButton.disabled = blocked !== null || running;
     trackButton.textContent = analysis ? 'Track again' : 'Track';
+    // Hiding the focused button would drop focus to the top of the document,
+    // so a keyboard user who tabbed to Cancel and did not press it keeps a
+    // place on this card (D37).
+    if (!running && document.activeElement === cancelButton) trackButton.focus();
     cancelButton.hidden = !running;
     bar.hidden = !running;
     progressText.hidden = !running;
@@ -316,11 +321,24 @@ function createVideoCard(context: AppContext, videoId: VideoId, runner: Tracking
       return;
     }
     if (analysis) {
-      status.textContent = `Tracked · ${analysis.auto.frames.length.toLocaleString()} frames on record`;
+      // A hand-edited or truncated session file can carry an analysis with no
+      // frames. Say so and stay usable rather than throwing mid-render and
+      // leaving the step half-drawn.
+      const frameCount = analysis.auto?.frames?.length;
+      const corrections = analysis.corrections?.entries?.length ?? 0;
+      if (frameCount === undefined) {
+        status.textContent =
+          'This video has an analysis with no track in it — the session file may have been edited by hand. Track it again to replace it.';
+        status.className = 'track-status is-failed';
+        detail.textContent = '';
+        showWarnings([]);
+        return;
+      }
+      status.textContent = `Tracked · ${frameCount.toLocaleString()} frames on record`;
       status.className = 'track-status is-done';
       detail.textContent =
-        analysis.corrections.entries.length > 0
-          ? `${analysis.corrections.entries.length} correction(s) kept; re-tracking will not touch them.`
+        corrections > 0
+          ? `${corrections} correction(s) kept; re-tracking will not touch them.`
           : 'Loaded from this session. Re-track to apply changed parameters.';
       showWarnings([]);
       return;
@@ -724,7 +742,9 @@ function createParameterPanel(
       class: 'hint',
       text:
         'Every threshold the tracking pass uses, with the definition it is applied by. Changing ' +
-        'one does not alter a track that has already been computed — re-track the video to apply it.',
+        'one does not alter a track that has already been computed — re-track the video to apply ' +
+        'it. A pass already running keeps the values it started with; videos still waiting in the ' +
+        'queue will use the new ones.',
     }),
     el('div', { class: 'track-params' }, rows),
     resetButton,

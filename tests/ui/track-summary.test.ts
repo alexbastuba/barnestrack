@@ -14,6 +14,7 @@ import {
   formatClock,
   formatPercent,
   formatRemaining,
+  gapDurationSeconds,
   learnedBlobArea_cm2,
   progressLine,
   stateBreakdown,
@@ -142,6 +143,48 @@ describe('summaryLine', () => {
   it('says how many background warnings there are when there are any', () => {
     const line = summaryLine(summary({ warnings: ['a dark blob is baked into the background'] }), []);
     expect(line).toContain('background warning: 1');
+  });
+
+  // A gap is measured to the moment tracking resumed. Measuring to the last
+  // missing frame reports every gap one frame short, and a one-frame gap as
+  // "0.0 s" — a gap the same sentence has just claimed exists.
+  it('measures a gap to the frame where tracking resumed', () => {
+    const frames = [
+      frame(0, 'tracked'),
+      frame(1, 'not_detected'),
+      frame(2, 'tracked'),
+      frame(3, 'tracked'),
+    ];
+    const line = summaryLine(
+      summary({
+        longestNotDetectedRun: { startFrame: 1, endFrame: 1, frames: 1, lastTrackedPoint: null },
+      }),
+      frames,
+    );
+    // One frame at 30 fps is 0.03 s, and is shown as such rather than rounded
+    // away to a gap of no length.
+    expect(line).toContain('longest 0.03 s');
+    expect(gapDurationSeconds({ startFrame: 1, endFrame: 1, frames: 1, lastTrackedPoint: null }, frames)).toBeCloseTo(
+      1 / 30,
+      6,
+    );
+  });
+
+  it('counts the whole span of a multi-frame gap', () => {
+    const frames = [
+      frame(0, 'tracked'),
+      ...Array.from({ length: 9 }, (_, i) => frame(1 + i, 'not_detected')),
+      frame(10, 'tracked'),
+    ];
+    const run = { startFrame: 1, endFrame: 9, frames: 9, lastTrackedPoint: null };
+    // Nine missing frames at 30 fps is 0.3 s, not 8/30.
+    expect(gapDurationSeconds(run, frames)).toBeCloseTo(9 / 30, 6);
+  });
+
+  it('still measures a gap that runs to the end of the video', () => {
+    const frames = [frame(0, 'tracked'), frame(1, 'tracked'), frame(2, 'not_detected')];
+    const run = { startFrame: 2, endFrame: 2, frames: 1, lastTrackedPoint: null };
+    expect(gapDurationSeconds(run, frames)).toBeCloseTo(1 / 30, 6);
   });
 
   it('leaves the gap clause out when there was no gap', () => {

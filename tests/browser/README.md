@@ -96,6 +96,12 @@ frame. The Videos and Maze steps were both opened and used mid-pass and rendered
 kept running and finished. Decoding and tracking are in the worker, and progress never touches the
 session store, so the main thread only paints.
 
+Scrubbing specifically, which is the criterion's own wording: with a test50 pass running, focusing
+the Maze step's scrubber on the other video and pressing `ArrowRight` forty times advanced it to
+frame 40 a frame at a time, with the main thread at median 16.7 ms and worst 18.0 ms, and the pass
+finished normally. Random-access decoding for the scrubber and sequential decoding for the pass are
+separate decoder instances over the same file (D5), which is what makes that safe.
+
 **The live thumbnail updates.** A 214 × 160 preview, sampled twice during one pass, differs between
 samples. It is captioned and `aria-label`-led "provisional — final track computed at end of pass"
 throughout.

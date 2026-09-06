@@ -183,6 +183,15 @@ test('re-tracking replaces the automatic layer and leaves corrections alone', as
   await card.getByRole('button', { name: 'Track', exact: true }).click();
   await expect(card.locator('.track-status')).toContainText('Tracked ·', { timeout: 240_000 });
 
+  const firstHash = await page.evaluate(() => {
+    const store = (window as unknown as { __barnestrackStore?: unknown }).__barnestrackStore;
+    const session = (
+      store as { current: { analyses: Record<string, { auto: { parametersHash: string } }> } }
+    ).current;
+    return session.analyses['vid_01']?.auto.parametersHash ?? '';
+  });
+  expect(firstHash).toMatch(/^[0-9a-f]{64}$/);
+
   // A correction made by hand between the two runs. The correction UI lands in
   // a later chunk, so this plants one directly in the layer the store holds.
   await page.evaluate(() => {
@@ -213,11 +222,28 @@ test('re-tracking replaces the automatic layer and leaves corrections alone', as
   await card.getByRole('button', { name: 'Track again', exact: true }).click();
   await expect(card.locator('.track-status')).toContainText('Tracked ·', { timeout: 240_000 });
 
-  const kept = await page.evaluate(() => {
+  const after = await page.evaluate(() => {
     const store = (window as unknown as { __barnestrackStore?: unknown }).__barnestrackStore;
-    const session = (store as { current: { analyses: Record<string, { corrections: { entries: unknown[] } }> } })
-      .current;
-    return session.analyses['vid_01']?.corrections.entries.length ?? -1;
+    const session = (
+      store as {
+        current: {
+          analyses: Record<
+            string,
+            { auto: { parametersHash: string; frames: unknown[] }; corrections: { entries: unknown[] } }
+          >;
+        };
+      }
+    ).current;
+    const analysis = session.analyses['vid_01'];
+    return {
+      corrections: analysis?.corrections.entries.length ?? -1,
+      hash: analysis?.auto.parametersHash ?? '',
+      frames: analysis?.auto.frames.length ?? -1,
+    };
   });
-  expect(kept).toBe(1);
+  expect(after.corrections).toBe(1);
+  // The other half of the title: the layer was genuinely replaced, under the
+  // hash of the changed parameters, not left as the first run's.
+  expect(after.hash).not.toBe(firstHash);
+  expect(after.frames).toBe(905);
 });

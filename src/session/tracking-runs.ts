@@ -208,6 +208,9 @@ export class TrackingRunner {
   }
 
   private finishRun(videoId: VideoId, patch: Partial<RunState>): void {
+    // A run that settles after `destroy()` — or after another has started —
+    // must not tear down the run that replaced it.
+    if (this.running !== videoId) return;
     this.worker?.terminate();
     this.worker = null;
     this.running = null;

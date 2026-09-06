@@ -269,7 +269,7 @@ every export.
 | `backgroundExcludeRanges` | `{ startFrame, endFrame }[]` | frames | `[]`    | Inclusive frame ranges never used as background samples (stationary animal or object).             |
 | `platformMaskMargin_cm`   | number                       | cm     | 1.5     | Platform disc grown outward by this margin; foreground is searched only inside the grown disc.     |
 | `threshold.mode`          | `otsu \| manual`             | —      | `otsu`  | Otsu: chosen once per video from the sample frames' background-minus-frame histogram.              |
-| `threshold.manualValue`   | number                       | 0–255  | 40      | Smallest background-minus-frame difference counted as foreground when `mode` is `manual`.          |
+| `threshold.manualValue`   | number                       | 1–255  | 40      | Smallest background-minus-frame difference counted as foreground when `mode` is `manual`. `createTracker` rejects a threshold outside 1–255: at 0 every pixel is foreground. |
 | `minBlobArea_cm2`         | number                       | cm²    | 4       | Components smaller than this are ignored.                                                          |
 | `maxBlobArea_cm2`         | number                       | cm²    | 80      | Components larger than this are never the animal: the frame is `ambiguous / oversized_blob`.       |
 | `expectedBlobArea_cm2`    | number \| null               | cm²    | `null`  | Expected body area after tail removal; `null` learns the median of the video's unambiguous frames. |
