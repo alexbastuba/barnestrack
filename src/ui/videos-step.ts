@@ -322,7 +322,7 @@ export function createVideosStep(context: AppContext): Step {
       [
         'Frame rate',
         index
-          ? [`${index.nominalFps.toFixed(3)} fps`, el('span', { class: 'hint', text: "from the file's own timebase" })]
+          ? [`${index.nominalFps.toFixed(3)} fps `, el('span', { class: 'hint', text: "from the file's own timebase" })]
           : [el('span', { class: 'hint', text: 'read from the file when it is re-attached' })],
       ],
       ['Duration', [formatDuration(index?.durationSeconds ?? video.fingerprint.durationSeconds)]],

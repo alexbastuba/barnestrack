@@ -66,6 +66,8 @@ export class CanvasView {
   private panning: { pointerId: number; lastX: number; lastY: number } | null = null;
   private destroyed = false;
   private everSized = false;
+  /** True once the user has zoomed or panned; until then the view follows the viewport. */
+  private userAdjusted = false;
 
   constructor(options: CanvasViewOptions) {
     this.options = options;
@@ -135,6 +137,7 @@ export class CanvasView {
 
   fit(): void {
     const rect = this.viewport.getBoundingClientRect();
+    this.userAdjusted = false;
     this.applyView(
       fitView({ width: this.videoWidth, height: this.videoHeight }, { width: rect.width, height: rect.height }),
     );
@@ -167,15 +170,18 @@ export class CanvasView {
 
   private zoomByStep(factor: number): void {
     const rect = this.viewport.getBoundingClientRect();
+    this.userAdjusted = true;
     this.applyView(zoomAt(this.view, { x: rect.width / 2, y: rect.height / 2 }, factor));
   }
 
   private onResize(): void {
     const rect = this.viewport.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
-    // A panel built while its tab was hidden has no size to fit to; the first
-    // real measurement is the moment to fit the frame into it.
-    const firstSize = !this.everSized;
+    // A panel built while its tab was hidden has no size to fit to, and a
+    // browser-zoom change resizes the viewport under a view that was fitted to
+    // the old one. In both cases re-fit — unless the user has zoomed or panned
+    // themselves, in which case their view is the one to keep.
+    const refit = !this.everSized || !this.userAdjusted;
     this.everSized = true;
     const backing = backingStoreSize(rect, window.devicePixelRatio);
     if (this.overlay.width !== backing.width || this.overlay.height !== backing.height) {
@@ -184,7 +190,7 @@ export class CanvasView {
     }
     this.overlay.style.width = `${rect.width}px`;
     this.overlay.style.height = `${rect.height}px`;
-    if (firstSize && this.videoWidth > 0) this.fit();
+    if (refit && this.videoWidth > 0) this.fit();
     else this.requestDraw();
   }
 
@@ -227,6 +233,7 @@ export class CanvasView {
 
   private onPointerMove(event: PointerEvent): void {
     if (this.panning && this.panning.pointerId === event.pointerId) {
+      this.userAdjusted = true;
       this.applyView(panBy(this.view, event.clientX - this.panning.lastX, event.clientY - this.panning.lastY));
       this.panning.lastX = event.clientX;
       this.panning.lastY = event.clientY;
@@ -247,6 +254,7 @@ export class CanvasView {
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
     const factor = event.deltaY > 0 ? 1 / WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
+    this.userAdjusted = true;
     this.applyView(zoomAt(this.view, this.viewportPointFor(event), factor));
   }
 
@@ -265,6 +273,7 @@ export class CanvasView {
       event.preventDefault();
       const dx = event.key === 'ArrowLeft' ? KEYBOARD_PAN_PX : event.key === 'ArrowRight' ? -KEYBOARD_PAN_PX : 0;
       const dy = event.key === 'ArrowUp' ? KEYBOARD_PAN_PX : event.key === 'ArrowDown' ? -KEYBOARD_PAN_PX : 0;
+      this.userAdjusted = true;
       this.applyView(panBy(this.view, dx, dy));
     }
   }
