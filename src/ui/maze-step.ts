@@ -268,10 +268,20 @@ export function createMazeStep(context: AppContext): Step {
     render();
   }
 
+  /**
+   * The keyboard equivalent of the rim clicks: typing any of centre x, centre y
+   * or radius creates the platform if there is not one yet, starting from a
+   * circle inscribed in the frame, and the remaining fields fill in with it.
+   */
   function resizePlatform(change: Partial<PlatformCircle>): void {
-    const map = videoMap();
-    if (!map) return;
-    setPlatformInVideo({ ...map.platform, ...change });
+    const video = currentVideo();
+    if (!video) return;
+    const base = videoMap()?.platform ?? {
+      cx: video.referenceResolution.width / 2,
+      cy: video.referenceResolution.height / 2,
+      r: Math.min(video.referenceResolution.width, video.referenceResolution.height) * 0.4,
+    };
+    setPlatformInVideo({ ...base, ...change });
     render();
   }
 
@@ -593,7 +603,11 @@ export function createMazeStep(context: AppContext): Step {
 
   const cxField = numberField('Centre x (px)', { step: '0.1' }, (v) => resizePlatform({ cx: v }));
   const cyField = numberField('Centre y (px)', { step: '0.1' }, (v) => resizePlatform({ cy: v }));
-  const rField = numberField('Radius (px)', { step: '0.1', min: '1' }, (v) => resizePlatform({ r: v }));
+  const rField = numberField(
+    'Radius (px)',
+    { step: '0.1', min: '1', hint: 'Typing any of these three creates the platform without clicking the rim.' },
+    (v) => resizePlatform({ r: v }),
+  );
 
   const selectPlatform = button('Select the platform for the arrow keys', () => {
     selection = { kind: 'platform' };

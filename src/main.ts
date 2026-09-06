@@ -47,6 +47,8 @@ function makeSteps(context: AppContext): Step[] {
 const appRoot = document.getElementById('app');
 if (appRoot) {
   const store = new SessionStore(storage, toolVersion);
+  // A reload must never lose the last few hundred milliseconds of work (D27).
+  window.addEventListener('pagehide', () => void store.flush());
   const app = mountApp(appRoot, store, toolVersion, makeSteps);
   void store.restore().then((restored) => {
     app.refresh();

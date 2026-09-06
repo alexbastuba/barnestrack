@@ -39,6 +39,9 @@ export interface NewVideo {
   referenceResolution: { width: number; height: number };
 }
 
+/** What the autosave is doing, so the page can say whether work is safe. D27. */
+export type SaveState = 'saved' | 'pending' | 'failed';
+
 export const DEFAULT_SESSION_NAME = 'Untitled session';
 const DEFAULT_AUTOSAVE_DELAY_MS = 500;
 const IDENTITY_TRANSFORM: SimilarityTransform = {
@@ -63,6 +66,7 @@ export class SessionStore {
   private readonly onSaveError: (error: Error) => void;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private saveChain: Promise<void> = Promise.resolve();
+  private saveState: SaveState = 'saved';
 
   constructor(
     private readonly storage: SessionStorage,
@@ -81,6 +85,11 @@ export class SessionStore {
 
   get videos(): readonly VideoDescriptor[] {
     return this.session.videos;
+  }
+
+  /** Whether everything in memory has reached storage. */
+  get autosaveState(): SaveState {
+    return this.saveState;
   }
 
   subscribe(listener: () => void): () => void {
@@ -116,6 +125,7 @@ export class SessionStore {
     this.mazeClicks = {};
     this.cancelPendingSave();
     await this.storage.clear();
+    this.saveState = 'saved';
     this.emit();
   }
 
@@ -276,6 +286,7 @@ export class SessionStore {
 
   private scheduleSave(): void {
     this.cancelPendingSave();
+    this.saveState = 'pending';
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       this.queueSave();
@@ -286,8 +297,14 @@ export class SessionStore {
   private queueSave(): void {
     const record = this.toStoredSession();
     this.saveChain = this.saveChain
-      .then(() => this.storage.save(record))
+      .then(async () => {
+        await this.storage.save(record);
+        if (this.saveTimer === null) this.saveState = 'saved';
+        this.emit();
+      })
       .catch((error: unknown) => {
+        this.saveState = 'failed';
+        this.emit();
         this.onSaveError(error instanceof Error ? error : new Error(String(error)));
       });
   }

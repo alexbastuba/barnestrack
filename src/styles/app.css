@@ -837,3 +837,14 @@ label {
 .placeholder:empty {
   display: none;
 }
+
+.save-state {
+  flex: 1 1 100%;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+
+.save-state.is-failed {
+  color: var(--danger);
+  font-weight: 600;
+}

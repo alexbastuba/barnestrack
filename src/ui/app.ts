@@ -163,6 +163,14 @@ export function mountApp(
     }
     sessionName.value = store.current.name;
     saveButton.disabled = store.current.videos.length === 0;
+    const state = store.autosaveState;
+    saveState.textContent =
+      state === 'saved'
+        ? 'All changes saved in this browser'
+        : state === 'pending'
+          ? 'Saving…'
+          : 'Could not save to this browser’s storage — use Save session file to keep your work';
+    saveState.className = `save-state is-${state}`;
   }
 
   // ---- session controls -----------------------------------------------------
@@ -174,6 +182,8 @@ export function mountApp(
     store.setName(sessionName.value.trim() || store.current.name);
     context.announce(`Session renamed to ${store.current.name}.`);
   });
+
+  const saveState = el('span', { class: 'save-state', attrs: { role: 'status', 'aria-live': 'polite' } });
 
   const saveButton = button('Save session file', () => {
     void saveSession();
@@ -284,6 +294,7 @@ export function mountApp(
       loadButton,
       resetButton,
       confirmRow,
+      saveState,
     ]),
     loadError,
   ]);
