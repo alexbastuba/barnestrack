@@ -69,7 +69,9 @@ Matches the sheet: after the first target visit at 12.7 s the animal walks the r
 never disappears into a hole, and the trial runs to the cutoff. The classification is *spatial*
 because the O7 rules look only at the search phase before the first target visit (two errors at
 hole 5, next to the target); the serial walk that follows is outside the rules' window — an O7
-question for Alex, recorded in the chunk report.
+question recorded under "The O7 placeholder classifies an empty search as spatial, and looks only
+at the search phase" in `docs/known-limitations.md` (the rules themselves are O7 in
+`docs/decisions.md`).
 
 ### test51 (start cylinder; the sheet shows the animal ending at the top-right hole)
 

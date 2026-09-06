@@ -90,7 +90,7 @@ session it is found (D39).
   12→13→12→11 is a run of four (a same-direction reading would make it three), and the target
   visit may be the run's last element, so 9→8→7 with target 7 is a run of three where O7's
   "precedes the target visit" could be read as two. Both readings are stated in the serial rule's
-  definition text; the wording is Alex's call.
+  definition text; which one O7 means is a decision for `docs/decisions.md`.
 - **Thresholds outside the contract are not in the parameters hash.** The O5 censoring switch,
   the five O7 rule numbers and the two D30 tier thresholds live in `DEFAULT_ANALYSIS_OPTIONS`
   (`trialCensoring.censorToCutoff`, `strategy.spatialMaxErrors`, `strategy.spatialMaxHoleDistance`,
