@@ -4,11 +4,13 @@
  * runtime libraries).
  *
  * Store-only means no compression: local file header, the bytes, then a central
- * directory and end-of-central-directory record. The bundle is a few hundred
- * kilobytes and the workbook inside it is already deflated, so there is nothing
- * to gain from a second compressor and a lot of code to avoid. No data
- * descriptors and no ZIP64 — every entry's size is known before it is written
- * and the archive is far below 4 GB.
+ * directory and end-of-central-directory record. The workbook inside is already
+ * deflated, so a second compressor would buy nothing there — but the session
+ * file is not, and it dominates the bundle (11.1 MiB for a three-video cohort;
+ * see docs/known-limitations.md). Deflating the JSON and the CSVs is the
+ * obvious next step and fits behind this same signature. No data descriptors
+ * and no ZIP64 — every entry's size is known before it is written and the
+ * archive is far below 4 GB.
  */
 
 const LOCAL_HEADER_SIGNATURE = 0x04034b50;

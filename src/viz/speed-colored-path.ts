@@ -24,7 +24,9 @@ function speedOf(data: Parameters<FigureSpec['describe']>[0]) {
   const source = trialSource(data);
   if (!source) return null;
   const path = centroidPath(source.analysis);
-  // O11's centred window, or its default when parameters have not been stamped.
+  // O11's centred window. The fallback is unreachable once chunk 5 stamps the
+  // parameters before any derived layer exists (D51); TODO(chunk 5): take the
+  // default from the defaults module rather than restating O11 here.
   const windowFrames = data.session.parameters?.kinematics.speedWindowFrames ?? 2;
   const speeds = speedsCmPerS(path, source.pixelsPerCm, windowFrames);
   return { source, path, speeds, top: percentile(speeds, SCALE_PERCENTILE) };
@@ -83,7 +85,9 @@ export const speedColoredPathFigure: FigureSpec = {
         ['Mean speed (cm/s)', source.analysis.derived.metrics.meanSpeed_cmPerS],
         ['Median speed (cm/s)', Number(formatNumber(percentile(finite, 0.5)))],
         ['95th percentile speed (cm/s)', Number(formatNumber(computed.top))],
-        ['Fastest speed (cm/s)', Number(formatNumber(Math.max(0, ...finite)))],
+        // A reduce, not a spread: one argument per tracked frame would blow the
+        // call-argument limit on a long enough clip.
+        ['Fastest speed (cm/s)', Number(formatNumber(finite.reduce((a, b) => Math.max(a, b), 0)))],
         ['Target hole', source.targetIndex],
       ],
     };

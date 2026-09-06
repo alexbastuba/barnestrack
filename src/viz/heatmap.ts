@@ -168,7 +168,13 @@ export const heatmapFigure: FigureSpec = {
         drawLegend(
           frame,
           [
-            { label: 'no time spent here', colour: palette.platform, glyph: 'square' },
+            // The platform fill is near-white, so the swatch needs its outline.
+            {
+              label: 'no time spent here',
+              colour: palette.platform,
+              glyph: 'square',
+              border: true,
+            },
             { label: targetLabel(source), colour: palette.target, glyph: 'square' },
           ],
           bottom + 46,

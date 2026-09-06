@@ -140,7 +140,12 @@ interface VideoScript {
   escapeAt: number | null;
   /** A mid-trial loss of detection away from any hole — a tracking failure (O4). */
   failure: { atFraction: number; duration_s: number } | null;
-  /** A gap short enough for O10 to fill, as a fraction of the clip. */
+  /**
+   * Where to put a short loss of detection, as a fraction of the clip. Whether
+   * it is actually filled depends on the video's frame rate against O10's
+   * 0.1 s ceiling: at 30 fps a two-frame gap just fits, and at test51's
+   * 14.985 fps even a one-frame gap does not, so that video keeps the gap.
+   */
   fillableGapAt: number | null;
   seed: number;
 }
@@ -447,10 +452,28 @@ function buildTrack(script: VideoScript, map: MazeMapFile): BuiltTrack {
           Math.round(script.failure.duration_s * script.fps),
       }
     : null;
+  /*
+   * The fillable gap is grown from this video's own timestamps until one more
+   * frame would take the bounding gap past O10's ceiling — a fixed frame count
+   * would be under the limit at 30 fps and twice over it at 14.985.
+   */
   const filledStart =
     script.fillableGapAt === null ? null : Math.round(script.fillableGapAt * script.frameCount);
-  const filledRange =
-    filledStart === null ? null : { startFrame: filledStart, endFrame: filledStart + 2 };
+  let filledRange: { startFrame: number; endFrame: number } | null = null;
+  if (filledStart !== null && filledStart > 0) {
+    const boundingGap = (endFrame: number): number =>
+      (timebase.values[endFrame] ?? Infinity) - (timebase.values[filledStart - 1] ?? 0);
+    let endFrame = filledStart + 1;
+    while (
+      endFrame + 1 < script.frameCount &&
+      boundingGap(endFrame + 1) <= FIXTURE_PARAMETERS.gapFilling.maxDuration_s
+    ) {
+      endFrame++;
+    }
+    if (boundingGap(endFrame) <= FIXTURE_PARAMETERS.gapFilling.maxDuration_s) {
+      filledRange = { startFrame: filledStart, endFrame };
+    }
+  }
 
   const auto: TrackFrame[] = [];
   let previous: Point | null = null;
@@ -548,7 +571,7 @@ function buildTrack(script: VideoScript, map: MazeMapFile): BuiltTrack {
           centroid: namedPoint(lerp(before.centroid, after.centroid, t), 0.4, true, 'filled'),
           nose: namedPoint(lerp(before.nose, after.nose, t), 0.4, true, 'filled'),
           detectionState: 'low_confidence',
-          reason: 'linearly filled across a 0.07 s gap away from any hole (O10)',
+          reason: `linearly filled across a ${round(after.t_s - before.t_s, 3)} s gap away from any hole (O10)`,
         };
       }
     }

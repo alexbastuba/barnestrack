@@ -17,6 +17,9 @@ import type { FigureData, FigureDescription, FigureSpec } from './types.js';
 
 const SIZE = { width: 470, height: 500 };
 const TITLE = 'Target quadrant';
+// O6's default, restated only as an unreachable fallback: by D51 `parameters`
+// is stamped before any derived layer exists, so a figure always reads the real
+// value. TODO(chunk 5): take it from the defaults module instead.
 const DEFAULT_HOLE_SPAN = 2.5;
 const OUTSIDE_ALPHA = 0.22;
 

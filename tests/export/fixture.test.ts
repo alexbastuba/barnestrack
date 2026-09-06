@@ -60,6 +60,37 @@ describe('syntheticSession', () => {
     expect(filled.length).toBeGreaterThan(0);
   });
 
+  it('never fills a gap wider than the parameter that authorises it (O10)', () => {
+    const session = syntheticSession();
+    const ceiling = session.parameters?.gapFilling.maxDuration_s ?? 0;
+    expect(ceiling).toBeGreaterThan(0);
+    let filledRuns = 0;
+    for (const analysis of Object.values(session.analyses)) {
+      const track = analysis.derived.cleanedTrack;
+      for (let i = 0; i < track.length; i++) {
+        if (track[i]!.centroid.source !== 'filled') continue;
+        if (i > 0 && track[i - 1]!.centroid.source === 'filled') continue;
+        let end = i;
+        while (end + 1 < track.length && track[end + 1]!.centroid.source === 'filled') end++;
+        // The gap is measured between the frames that bound it, which is what
+        // O10's ceiling is about — not the filled frames alone.
+        const before = track[i - 1];
+        const after = track[end + 1];
+        expect(before).toBeDefined();
+        expect(after).toBeDefined();
+        if (!before || !after) continue;
+        expect(after.t_s - before.t_s).toBeLessThanOrEqual(ceiling + 1e-9);
+        // The reason quotes the gap it actually measured, not a fixed number.
+        expect(track[i]!.reason).toContain(
+          `${Math.round((after.t_s - before.t_s) * 1000) / 1000} s`,
+        );
+        filledRuns++;
+        i = end;
+      }
+    }
+    expect(filledRuns).toBeGreaterThan(0);
+  });
+
   it('keeps every tracked position inside the platform of its own video', () => {
     const session = syntheticSession();
     for (const video of session.videos) {

@@ -49,8 +49,10 @@ export const timeColoredPathFigure: FigureSpec = {
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {
           map: VIRIDIS,
-          min: 0,
-          max: Math.round((last - first) * 10) / 10,
+          // Absolute clip times, because the scale runs from the first tracked
+          // frame to the last — which is not frame zero when tracking starts late.
+          min: Math.round(first * 10) / 10,
+          max: Math.round(last * 10) / 10,
           label: 'Time from the start of the clip (s)',
           rect: { x: frame.plot.x + 40, y: bottom + 12, width: frame.plot.width - 80, height: 10 },
         });

@@ -163,7 +163,9 @@ export const holeRasterFigure: FigureSpec = {
       frame,
       [
         { label: 'investigation', colour: palette.ink, glyph: 'bar' },
-        { label: 'investigation of the target hole', colour: palette.target, glyph: 'bar' },
+        // A different shape, not just a different colour: in the print theme
+        // ink and target are both black, so two bars would be one swatch twice.
+        { label: 'investigation of the target hole', colour: palette.target, glyph: 'square' },
         { label: 'corrected by a reviewer', colour: palette.corrected, hatched: true },
         { label: 'escape-box entry', colour: palette.target, glyph: 'diamond' },
       ],

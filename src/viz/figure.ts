@@ -355,7 +355,11 @@ export interface LegendEntry {
   glyph?: GlyphKind;
   hollow?: boolean;
   hatched?: boolean;
-  /** Outline the swatch, so a pale fill is still visible against the paper. */
+  /**
+   * Outline the swatch. A swatch whose fill is the paper or near it — the
+   * quality strip's tracked band, the heatmap's empty platform — is invisible
+   * without one, and in the print theme it has no fill to show at all.
+   */
   border?: boolean;
 }
 
@@ -400,6 +404,13 @@ export function drawLegend(
         entry.colour,
         entry.hollow,
       );
+      if (entry.border) {
+        ctx.save();
+        ctx.strokeStyle = palette.lineStrong;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y - glyphSize / 2, glyphSize, glyphSize);
+        ctx.restore();
+      }
     }
     ctx.fillStyle = palette.ink;
     ctx.fillText(entry.label, x + glyphSize + 6, y);

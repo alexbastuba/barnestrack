@@ -82,6 +82,27 @@ describe('drawLegend', () => {
     expect(ctx.saveDepth).toBe(0);
   });
 
+  it('outlines a swatch whose fill is too pale to see on its own', () => {
+    const ctx = fakeContext();
+    const frame = beginFigure(ctx, OPTS, SPEC);
+    drawLegend(frame, [
+      { label: 'no time spent here', colour: '#f4f6f8', glyph: 'square', border: true },
+    ]);
+    endFigure(frame);
+    // A near-white square on white paper is nothing at all without the outline,
+    // and in the print theme there is no fill to show in the first place.
+    expect(ctx.callsNamed('strokeRect')).toHaveLength(1);
+    expect(ctx.saveDepth).toBe(0);
+  });
+
+  it('leaves an ordinary swatch unoutlined', () => {
+    const ctx = fakeContext();
+    const frame = beginFigure(ctx, OPTS, SPEC);
+    drawLegend(frame, [{ label: 'path', colour: '#000', glyph: 'bar' }]);
+    endFigure(frame);
+    expect(ctx.callsNamed('strokeRect')).toHaveLength(0);
+  });
+
   it('draws nothing for an empty legend', () => {
     const ctx = fakeContext();
     const frame = beginFigure(ctx, OPTS, SPEC);

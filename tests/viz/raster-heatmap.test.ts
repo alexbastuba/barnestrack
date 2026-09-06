@@ -219,6 +219,10 @@ describe('quality strip', () => {
     expect(ctx.callsNamed('fillRect').some((call) => call.args[4] === palette.panel)).toBe(true);
     expect(ctx.callsNamed('fill').some((call) => call.args[0] === palette.panel)).toBe(true);
     expect(ctx.callsNamed('fillRect').some((call) => call.args[4] === palette.ink)).toBe(true);
+    // The tracked swatch is the panel colour on near-white paper, so it is only
+    // visible because it is outlined. Without the outline the legend's most
+    // common entry would be a word with nothing before it.
+    expect(ctx.callsNamed('strokeRect').length).toBeGreaterThanOrEqual(1);
   });
 
   it('draws in both themes without throwing', () => {
