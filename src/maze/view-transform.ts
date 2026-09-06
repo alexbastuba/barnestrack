@@ -1,5 +1,12 @@
+// Adapted from talmolab/vibes/labelroi (BSD-3-Clause, commit d9410fa)
+// Copyright (c) 2025, Talmo Lab at the Salk Institute.
 /**
- * Zoom and pan as a *view* transform. D15.
+ * Zoom and pan as a *view* transform. D15, D38.
+ *
+ * `screenToVideo` and the device-pixel-ratio backing store are the labelroi
+ * pattern named in D38 and `THIRD_PARTY_NOTICES.md`, re-implemented here as
+ * pure functions so they can be unit-tested without a DOM; `canvas-view.ts`
+ * holds the DOM half and explains what was changed and why.
  *
  * The frame layer is a canvas at the video's native pixel size carrying
  * `transform: translate(panX, panY) scale(zoom)` with `transform-origin: 0 0`;

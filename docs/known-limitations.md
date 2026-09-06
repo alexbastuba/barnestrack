@@ -17,10 +17,12 @@ session it is found (D39).
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
   threshold was invented to round it away, but it is visible in a saved session file's
   `mazeTransform.rotationDeg`.
-- **The frame-rate figure and the scrubber read differently.** The card shows the file's nominal
-  frame rate for orientation; the scrubber shows each frame's own timestamp. On these clips the two
-  disagree by up to 0.43 s by the end of the video (see "Findings about the sample data"). This is
-  correct behaviour, not a bug, but the two numbers next to each other can look like one.
+- **One autosave slot per browser, not per session.** The IndexedDB record is stored under a single
+  `current` key, so two BarnesTrack tabs open at once overwrite each other's autosave without
+  noticing: the last tab to make a change wins, and the other tab's cohort is gone after its next
+  reload. D27 speaks of autosave "keyed by video fingerprint"; this build has one slot. Until it is
+  fixed, work in one tab at a time, and use Save session file before opening a second. A fix would
+  refuse to overwrite a record saved after the one this tab loaded, and say so.
 
 ## Excluded scope
 
@@ -94,6 +96,11 @@ session it is found (D39).
   difference and the generated hole ring sits a few pixels inside the real holes on the near side.
   Individual holes can be nudged where it matters; no perspective correction is applied (see
   "Excluded scope").
+- **The nominal frame rate and the per-frame timestamps disagree, by design.** The video card shows
+  the file's nominal frame rate for orientation; the scrubber shows each frame's own timestamp from
+  the sample table. On these clips the two drift apart by up to 0.43 s by the end of the video, so
+  the two numbers next to each other are not two readings of the same thing. Every measurement uses
+  the timestamp (D7, O11).
 - **test51 opens with the start cylinder on the platform.** Frame 0 shows the cylinder near the
   centre of the maze and no visible animal, which is what makes it the useful frame for marking the
   maze and the reason trial start is detected rather than assumed to be frame 0 (O5).

@@ -5,9 +5,9 @@
  * surviving save → reset → load unchanged.
  *
  * Everything else in the chunk's acceptance list is a manual Chrome pass,
- * recorded in `notes/cc/chunk-03-report.md`. Like chunk 1's spec this runs
- * against the installed Google Chrome and is not part of CI; it is skipped
- * unless BARNESTRACK_SAMPLE_DIR points at the sample-data folder.
+ * recorded in `tests/browser/README.md`. Like chunk 1's spec this runs against
+ * the installed Google Chrome and is not part of CI; it is skipped unless
+ * BARNESTRACK_SAMPLE_DIR points at the sample-data folder.
  */
 import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

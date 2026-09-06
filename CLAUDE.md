@@ -69,7 +69,8 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
   and lints every edited `.ts` file.
 - Every chunk ends with the test suite green and `docs/known-limitations.md` reviewed for anything
   discovered during that chunk (D39, D40).
-- Browser-only behaviour (WebCodecs) is checked with `npx playwright test` against the installed
-  Google Chrome (`playwright.config.ts`, `tests/browser/`); it is not part of CI yet. Set
-  `BARNESTRACK_SAMPLE_DIR` to the upstream `data/barnes-maze/` folder to include the sample videos
-  in both Vitest and Playwright runs.
+- Browser-only behaviour (WebCodecs, drag-and-drop, reload) is checked with `npx playwright test`
+  against the installed Google Chrome (`playwright.config.ts`, `tests/browser/`); it is not part of
+  CI yet. Set `BARNESTRACK_SAMPLE_DIR` to the upstream `data/barnes-maze/` folder to include the
+  sample videos in both Vitest and Playwright runs. `tests/browser/README.md` says what each spec
+  covers and records the checks that were made by hand instead (D36).
