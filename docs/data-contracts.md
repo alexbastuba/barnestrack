@@ -306,7 +306,13 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   produces its corrected event, pinned, without `autoShadow`; an orphaned `delete` is reported as a
   review flag, never a silent resurrection. Corrections apply in `timestamp` then `id` order.
 - **Durations.** For every event kind `durationSeconds = endTime_s − startTime_s`, first to last
-  frame of the event; the O1 and O4 minimum-duration tests use the same quantity.
+  frame of the event; the O1 and O4 minimum-duration tests use the same quantity. A quality-report
+  gap's `durationSeconds` is the time between the positioned frames either side of it (the
+  unpositioned time), the same quantity O10 tests against `gapFilling.maxDuration_s`.
+- **Trial window.** Investigations are detected between the trial start and the trial end, so
+  one still in progress at a cutoff ends there and says so in its evidence; an escape entry or a
+  tracking failure keeps the span of its loss. When an event correction deletes or moves the first
+  persistent escape entry, detection runs again with the corrected trial end.
 - **Scopes.** `TrialMetrics.trackedFraction` and the quality report's state fractions, gaps and tier
   are judged over the trial window (trial start to trial end) when a trial start exists, and over
   the whole video otherwise, so that an empty platform before the animal is placed does not count
