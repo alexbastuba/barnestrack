@@ -33,17 +33,23 @@ BarnesTrack turns a folder of Barnes maze videos into defensible, auditable beha
 
 ## Repo layout (keep current as it evolves)
 
-- `src/contracts/` TypeScript types for the track, session, maze map and export-row data contracts (D7–D12)
+- `src/contracts/` TypeScript types for the track, session, maze map and export-row data contracts (D7–D12, D47)
 - `src/video/` MP4 demuxing, decoding, sample-table frame identity
 - `src/analysis/` pure metric/event/cleaning functions, no DOM or video dependency
-- `src/session/` session file read/write, IndexedDB autosave, correction application
-- `src/ui/` DOM + canvas UI: timeline, frame viewer, correction tools, exports
+- `src/maze/` pure maze geometry — circle fit, parametric hole ring, similarity fit for map
+  reuse, and the zoom/pan view transform. No DOM, no video (D10, D13, D15)
+- `src/session/` session file read/write, IndexedDB autosave, video intake, correction application
+- `src/ui/` DOM + canvas UI: app shell and stepper, videos step, maze step, two-layer canvas,
+  scrubber; later the timeline, correction tools and exports
+- `src/styles/` the one stylesheet; system fonts only, no external asset (D2)
 - `prototypes/` dev-only evidence pages served by `npm run dev`, not part of the shipped build
   (`prototypes/frame-server/` records the chunk-1 frame-server measurements in its `RESULTS.md`)
 - `scripts/` one-off maintenance/build scripts
-- `tests/` unit tests for everything in `src/analysis/`, `src/contracts/`, `src/video/` parsing and
-  file I/O; `tests/fixtures/` holds the ffprobe per-frame timestamps of the sample videos;
-  `tests/browser/` holds the Playwright specs
+- `tests/` unit tests for everything in `src/analysis/`, `src/contracts/`, `src/maze/`,
+  `src/session/` and `src/video/` parsing and file I/O; `tests/fixtures/` holds the ffprobe
+  per-frame timestamps of the sample videos; `tests/browser/` holds the Playwright specs.
+  There is no `tests/ui/`: `src/ui/` is DOM- and canvas-bound and the project has no DOM test
+  environment, so it is covered by typecheck, by `tests/browser/` and by a recorded manual pass
 - `docs/` data-contracts.md, decisions.md, known-limitations.md
 - `.claude/` agents and commands used to build this project (committed deliberately)
 - `AI_NOTES.md` written at the end; do not generate or pad it speculatively

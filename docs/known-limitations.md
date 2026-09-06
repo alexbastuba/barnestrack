@@ -7,7 +7,20 @@ session it is found (D39).
 
 ## Defects
 
-_None recorded yet._
+- **The maze click count is not in the session file.** The "Maze step: N clicks on the image" badge
+  is the on-screen evidence for the D29 click budget, but `SessionFile` has no field for it (D47
+  did not add one), so it lives only in the browser's autosave record. It therefore survives a
+  reload and is restored with the session, but a session file saved, reset and loaded again comes
+  back with the badge at zero. The maze itself is unaffected.
+- **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a
+  similarity from circle correspondences, whose true rotation is exactly zero; the least-squares
+  fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
+  threshold was invented to round it away, but it is visible in a saved session file's
+  `mazeTransform.rotationDeg`.
+- **The frame-rate figure and the scrubber read differently.** The card shows the file's nominal
+  frame rate for orientation; the scrubber shows each frame's own timestamp. On these clips the two
+  disagree by up to 0.43 s by the end of the video (see "Findings about the sample data"). This is
+  correct behaviour, not a bug, but the two numbers next to each other can look like one.
 
 ## Excluded scope
 
@@ -31,6 +44,25 @@ _None recorded yet._
   leading pictures from their keyframe: it reports "frame N was not produced by the decoder" for
   them and decodes the rest of the group normally; it never substitutes a neighbouring frame.
 
+- **No perspective correction.** The platform is fitted as a circle in image pixels. A camera that
+  is not directly overhead images the platform as an ellipse, and a circle fit then splits the
+  difference between the long and short axes; `px_per_cm` is a single number for the whole
+  platform, so distances near the far rim are slightly under-measured and near the close rim
+  slightly over-measured. Correcting this needs a homography from four rim points and a
+  ground-plane assumption, which is a larger change to the maze map contract than this tool needs
+  for the sample data (see the test51 note below).
+
+- **No automated tests of the DOM layer.** `src/maze/` and `src/session/` are pure and unit-tested
+  in Node; `src/ui/` is DOM- and canvas-bound, and the project has no DOM test environment (D3
+  keeps the dependency list short). The UI is covered by TypeScript, by the browser checks in
+  `tests/browser/app.spec.ts`, and by a recorded manual pass in Google Chrome. Adding jsdom or a
+  component-test runner is deliberately not done.
+
+- **The video is never stored, only its fingerprint.** After a reload a video is present but "not
+  attached" until the same file is dropped again (D27). BarnesTrack could keep the file in
+  IndexedDB and re-open it automatically, but that would put copies of a lab's video data in the
+  browser profile without the user asking, so it is not done.
+
 ## Findings about the sample data
 
 - **Frame timing anomalies.** All three sample videos contain duplicate presentation timestamps
@@ -51,3 +83,17 @@ _None recorded yet._
   decoded frames show soft edges and smoothed texture (no blocking), and the mouse remains a
   well-separated dark blob on the white platform. Noted as a property of the inputs; whether it
   limits nose detection is measured in the tracker chunk.
+- **test50 and test53 share a rig and a framing; test51 does not.** Fitted in Chrome from three rim
+  clicks each: test53 and test50 both give a platform at (327.8, 239.7) px with radius 208.5 px, so
+  a maze map made on one applies to the other with no adjustment at all. test51's platform is
+  larger and left of centre — (280.0, 239.9) px, radius 222.5 px — giving 4.838 px/cm against
+  4.533 px/cm for the other two, so its map needs the three-click "Adjust". This is why the maze
+  map is shared but the placement is stored per video (D10, D28).
+- **test51's platform is not quite circular in frame.** Its rim measures about 15 % wider than it
+  is tall in the image, so the camera is not directly overhead. The circle fit splits the
+  difference and the generated hole ring sits a few pixels inside the real holes on the near side.
+  Individual holes can be nudged where it matters; no perspective correction is applied (see
+  "Excluded scope").
+- **test51 opens with the start cylinder on the platform.** Frame 0 shows the cylinder near the
+  centre of the maze and no visible animal, which is what makes it the useful frame for marking the
+  maze and the reason trial start is detected rather than assumed to be frame 0 (O5).
