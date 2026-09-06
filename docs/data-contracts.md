@@ -216,11 +216,103 @@ so hole numbering stays consistent across a cohort.
 
 ## 6. Parameters
 
-Every event-defining or cleaning threshold lives in one `Parameters` value (`src/contracts/parameters.ts`), never
-inline in analysis code. It is hashed into `parametersHash`, embedded in every export, and drives
-live recomputation (D20). The full default values and the single configuration module that owns
-them are added in chunk 5 — this section is a placeholder until then; the shape (which fields
-exist) is fixed by `src/contracts/parameters.ts` today.
+Every event-defining or cleaning threshold lives in one `Parameters` value
+(`src/contracts/parameters.ts`), never inline in analysis code. Defaults and the one-sentence
+definitions the UI shows verbatim live in the single configuration module
+`src/analysis/parameters.ts` (`DEFAULT_PARAMETERS`, `PARAMETER_DEFINITIONS`, `PARAMETER_UNITS`,
+`PARAMETER_DECISIONS`, keyed by dotted path); the value is hashed into `parametersHash`, embedded in
+every export and drives live recomputation (D20). Spatial thresholds are centimetres or multiples of
+the hole radius, converted per video from the maze calibration (D14, D44); temporal thresholds are
+seconds applied to each frame's own timestamp (D7).
+
+### Analysis parameters (O1–O17)
+
+| Field                                  | Unit               | Default | Definition                                                                                                                      | From |
+| -------------------------------------- | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `holeInvestigation.radiusFactor`       | × hole radius      | 1.5     | An investigation is counted while the event point (nose when its heading confidence clears the cutoff, else centroid) is within this multiple of the hole radius of a hole centre. | O1 |
+| `holeInvestigation.minDuration_s`      | s                  | 0.2     | Time at a hole, first to last frame within the radius, that a bout needs to count as an investigation.                           | O1 |
+| `holeInvestigation.mergeGap_s`         | s                  | 0.5     | Bouts at the same hole separated by less than this merge into one investigation; a longer gap makes the return a separate event. | O1 |
+| `escapeEntry.radiusFactor`             | × hole radius      | 1.0     | An escape-box entry is a loss of detection whose last-seen event point was within this multiple of the hole radius of the target. | O4 |
+| `escapeEntry.minDuration_s`            | s                  | 1.0     | A loss must last at least this long, with no reappearance away from the hole, to be an entry; at a non-target hole it is an investigation flagged physically unlikely; elsewhere it is a tracking failure. | O4 |
+| `escapeEntry.persistCutoff_s`          | s                  | 3       | The trial ends at the first entry lasting at least this long or to the end of the video; total latency is its first lost frame.  | O4 |
+| `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review`.          | O5 |
+| `targetQuadrant.holeSpan`              | holes              | 2.5     | The target quadrant reaches this many hole spacings either side of the target hole (2.5 on a 20-hole ring = 90°).               | O6 |
+| `kinematicsSmoothingWindowFrames`      | frames             | 3       | Median filter width applied to centroid positions for path length and speed only; stored track and events use raw positions.    | O9 |
+| `gapFilling.enabled`                   | on/off             | on      | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
+| `gapFilling.maxDuration_s`             | s                  | 0.1     | Only gaps no longer than this (between the positioned frames either side) are filled, never when either side is within one hole radius of a hole. | O10 |
+| `kinematics.speedWindowFrames`         | frames             | 2       | Speed at a frame is the path over the centred window of this many frames either side, over the span of their timestamps.         | O11 |
+| `kinematics.duplicateTimestampFactor`  | × nominal interval | 0.25    | Consecutive frames closer in time than this fraction of the nominal interval carry a duplicate stamp: skipped for speed and the outlier test, kept for path length. | O11 |
+| `kinematics.dropGapFactor`             | × nominal interval | 1.5     | Consecutive frames farther apart than this multiple of the nominal interval are a dropped-frame gap: counted, path keeps the straight segment. | O11 |
+| `noseConfidenceCutoff`                 | 0–1                | 0.5     | Events use the nose when its heading confidence is at least this (or it was placed by hand), otherwise the centroid; `pointUsed` records which. | O16 |
+| `outlierVelocityThreshold_cmPerS`      | cm/s               | 150     | A centroid moving faster than this from the previous positioned frame is an outlier: marked invalid, kept, never replaced.        | O17 |
+
+The nominal frame interval used by the O11 and O17 rules is the median of the positive
+timestamp differences over the whole track, computed once per derive run.
+
+### Maze defaults (O8)
+
+`MAZE_DEFAULTS` in the same module: 20 holes, ring ratio 0.89, hole diameter 5 cm, platform diameter
+hint 92 cm. `src/maze/ring.ts` re-exports them under its original names.
+
+### Proposed additions to `Parameters` (not in the contract; not hashed; ASK)
+
+`DEFAULT_ANALYSIS_OPTIONS` in the same module holds thresholds the analysis needs that the contract
+does not carry yet, grouped as the fields proposed for `Parameters` so that adding them is one edit.
+Until then they are neither hashed into `parametersHash` nor stamped on exports:
+
+| Proposed field                        | Default | Definition                                                                                          | From |
+| ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------- | ---- |
+| `trialCensoring.censorToCutoff`       | off     | Report the cutoff as total latency for a trial that never reached the escape box, for statistics.   | O5 |
+| `strategy.spatialMaxErrors`           | 3       | Spatial: at most this many errors before the target.                                                | O7 |
+| `strategy.spatialMaxHoleDistance`     | 2       | Spatial: every error hole within this many holes of the target.                                     | O7 |
+| `strategy.spatialMaxCentreCrossings`  | 1       | Spatial: at most this many centre crossings before the target.                                      | O7 |
+| `strategy.serialMinRun`               | 3       | Serial: a run of at least this many adjacent-hole investigations with no centre crossing during it. | O7 |
+| `strategy.centreZoneRadiusFraction`   | 0.5     | The centre zone is this fraction of the platform radius.                                            | O7 |
+| `quality.goodMinPositionedFraction`   | 0.9     | GOOD when at least this fraction of trial frames carry a positioned centroid.                       | D30 |
+| `quality.poorMaxPositionedFraction`   | 0.7     | POOR below this fraction; REVIEW between the two.                                                   | D30 |
+
+Fixed model constants (`ANALYSIS_MODEL`, not user-adjustable): the blob-area trend window before a
+loss (10 frames), the minimum smoothed step that contributes heading change to tortuosity (1 cm),
+and the nose-confidence histogram bin count (5).
+
+### Hashing (D51)
+
+`hashParameters(p)` and `hashTrackingParameters(p.tracking)` are the lower-case hex SHA-256 of the
+canonical JSON of the value: object keys sorted by UTF-16 code unit, arrays in their order, no
+whitespace, scalars exactly as `JSON.stringify` writes them, `undefined` properties dropped, hashed
+as UTF-8 bytes. The tracking hash keys the `auto` layer; the full hash keys the `derived` layer and
+stamps every export. Any other implementation (chunk 4's auto-layer writer) must match byte for byte.
+
+### Derived-layer definitions
+
+- **Derived reason strings.** Besides the tracker's eight, the derived track uses `outlier_velocity`
+  (O17; `detectionState: 'ambiguous'`, both points `valid: false` with their coordinates kept, never
+  replaced), `not_visible` and `in_escape_box` (range corrections; `detectionState: 'not_detected'`,
+  points invalid at (0, 0) with `source: 'corrected'`).
+- **Filled points** (O10) carry `source: 'filled'` on the centroid only, linearly interpolated in
+  time between the positioned frames either side; the nose stays invalid and `detectionState` /
+  `reason` keep the tracker's values. Gaps that touch an outlier or contain a hand-corrected point are
+  never filled. The automatic layer never contains a filled point (D16).
+- **Not-recorded numbers.** A `number` field the contract does not allow to be `null`
+  (`trialStart_s` with no trial start, `meanSpeed_cmPerS` with no tracked time,
+  `minNoseDistance_cm` when the nose was never usable during an event) is `NaN`; JSON serialises it
+  as `null`, so consumers treat non-finite and `null` alike (`isRecorded()`) and a CSV writer emits an
+  empty cell.
+- **Event ids and correction matching.** Automatic ids are deterministic from content:
+  `auto-<kind>-h<holeIndex|x>-f<startFrame>`; user-added events are `user-<correctionId>`. An event
+  correction matches its automatic event by exact id first; otherwise by the automatic event of the
+  same kind and hole whose frame span contains the start frame named in the id (an `edit` also
+  matches an overlap with its own new span); otherwise it is orphaned — an orphaned `edit` still
+  produces its corrected event, pinned, without `autoShadow`; an orphaned `delete` is reported as a
+  review flag, never a silent resurrection. Corrections apply in `timestamp` then `id` order.
+- **Durations.** For every event kind `durationSeconds = endTime_s − startTime_s`, first to last
+  frame of the event; the O1 and O4 minimum-duration tests use the same quantity.
+- **Scopes.** `TrialMetrics.trackedFraction` and the quality report's state fractions, gaps and tier
+  are judged over the trial window (trial start to trial end) when a trial start exists, and over
+  the whole video otherwise, so that an empty platform before the animal is placed does not count
+  against the video; the timebase anomalies are properties of the file and are always whole-video,
+  recounted from the frame timestamps with the session's O11 factors (the MP4 index counts exact
+  ties with its own factor).
 
 ### Tracking parameters (`parameters.tracking`, D6)
 

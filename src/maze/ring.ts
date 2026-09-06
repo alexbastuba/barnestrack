@@ -9,17 +9,20 @@
  * `y = cy + R·sin θ`. Video pixels have y pointing down, so an increasing angle
  * runs clockwise on screen. Hole 0 sits at `phase_deg`.
  */
+import { MAZE_DEFAULTS } from '../analysis/parameters.js';
 import type { HoleRing, MazeMapFile, PlatformCircle } from '../contracts/mazeMap.js';
 import { angleDifferenceDeg, distance, normaliseDeg, type Point } from './types.js';
 
+// The O8 defaults live in the single configuration module (D20); these names
+// are kept for the maze step and its tests.
 /** O8 · hole diameter default, centimetres. The one hole dimension a user may change. */
-export const DEFAULT_HOLE_DIAMETER_CM = 5;
+export const DEFAULT_HOLE_DIAMETER_CM: number = MAZE_DEFAULTS.holeDiameter_cm;
 /** O8 · hole-ring radius as a fraction of the platform radius, measured on the sample videos. */
-export const DEFAULT_RING_RATIO = 0.89;
+export const DEFAULT_RING_RATIO: number = MAZE_DEFAULTS.ringRatio;
 /** O8 · hole count. */
-export const DEFAULT_HOLE_COUNT = 20;
+export const DEFAULT_HOLE_COUNT: number = MAZE_DEFAULTS.holeCount;
 /** O8 · the hint shown beside the calibration field; the user must enter the real value. */
-export const TYPICAL_PLATFORM_DIAMETER_CM = 92;
+export const TYPICAL_PLATFORM_DIAMETER_CM: number = MAZE_DEFAULTS.typicalPlatformDiameter_cm;
 
 export interface HolePosition extends Point {
   holeIndex: number;
