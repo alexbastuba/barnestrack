@@ -86,6 +86,20 @@ export function phaseForClick(
   return normaliseDeg(clickAngle - k * step);
 }
 
+/**
+ * How far the ring must turn, in degrees, for the hole currently nearest the
+ * click to land on it. The same answer as `phaseForClick`, expressed as a
+ * change rather than an absolute angle, so it can be applied to one video's
+ * transform instead of to the shared map's phase.
+ */
+export function ringRotationForClick(
+  map: Pick<MazeMapFile, 'platform' | 'holes'>,
+  point: Point,
+): number | null {
+  const phase = phaseForClick(map, point);
+  return phase === null ? null : angleDifferenceDeg(phase, map.holes.phase_deg);
+}
+
 /** The angle of `point` seen from the platform centre, or null at the centre itself. */
 export function angleAt(platform: PlatformCircle, point: Point): number | null {
   const dx = point.x - platform.cx;

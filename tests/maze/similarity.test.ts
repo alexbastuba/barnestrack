@@ -7,6 +7,7 @@ import {
   fitSimilarity,
   IDENTITY_TRANSFORM,
   invertTransform,
+  rotationAbout,
   transformCircle,
   transformForResolution,
   transformFromCircles,
@@ -184,5 +185,39 @@ describe('transformForResolution', () => {
     expect(transformForResolution({ width: 640, height: 480 }, { width: 640, height: 480 })).toEqual(
       IDENTITY_TRANSFORM,
     );
+  });
+});
+
+describe('rotationAbout (the per-video ring alignment)', () => {
+  it('leaves the centre where it is and turns everything around it', () => {
+    const centre = { x: 320, y: 240 };
+    const spin = rotationAbout(30, centre);
+    const fixed = applyTransform(spin, centre);
+    expect(fixed.x).toBeCloseTo(centre.x, 9);
+    expect(fixed.y).toBeCloseTo(centre.y, 9);
+    expect(spin.scale).toBe(1);
+
+    const arm = { x: centre.x + 100, y: centre.y };
+    const turned = applyTransform(spin, arm);
+    expect(distance(turned, centre)).toBeCloseTo(100, 9);
+    expect(turned.x).toBeCloseTo(centre.x + 100 * Math.cos(Math.PI / 6), 9);
+    expect(turned.y).toBeCloseTo(centre.y + 100 * Math.sin(Math.PI / 6), 9);
+  });
+
+  it('turns one video’s ring without moving its platform or another video’s', () => {
+    const map = sourceMap();
+    const centre = { x: map.platform.cx, y: map.platform.cy };
+    const spun = composeTransform(rotationAbout(18, centre), IDENTITY_TRANSFORM);
+    const turned = transformMap(map, spun, map.referenceResolution);
+
+    expect(turned.platform.cx).toBeCloseTo(map.platform.cx, 8);
+    expect(turned.platform.cy).toBeCloseTo(map.platform.cy, 8);
+    expect(turned.platform.r).toBeCloseTo(map.platform.r, 9);
+    // One hole step on a 20-hole ring: hole 1 lands where hole 0 was.
+    const before = holeCentres(map);
+    const after = holeCentres(turned);
+    expect(distance(after[0]!, before[1]!)).toBeLessThan(1e-6);
+    // The shared map itself is untouched, so every other video is untouched.
+    expect(map.holes.phase_deg).toBe(sourceMap().holes.phase_deg);
   });
 });

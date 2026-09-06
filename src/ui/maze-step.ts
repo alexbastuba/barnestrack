@@ -21,23 +21,23 @@ import {
   holeDiameterCm,
   holeRadiusPx,
   nearestHole,
-  phaseForClick,
   pxPerCm,
   ringRadius,
+  ringRotationForClick,
   TYPICAL_PLATFORM_DIAMETER_CM,
   type HolePosition,
 } from '../maze/ring.js';
 import {
-  applyTransform,
   IDENTITY_TRANSFORM,
   composeTransform,
   invertTransform,
   transformForResolution,
+  rotationAbout,
   transformFromCircles,
   transformMap,
   transformVector,
 } from '../maze/similarity.js';
-import type { Point } from '../maze/types.js';
+import { angleDifferenceDeg, type Point } from '../maze/types.js';
 import { videoToViewport, type ViewTransform } from '../maze/view-transform.js';
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
@@ -92,12 +92,6 @@ export function createMazeStep(context: AppContext): Step {
     const video = currentVideo();
     if (!map || !video) return null;
     return transformMap(map, video.mazeTransform, video.referenceResolution);
-  }
-
-  function toMapPoint(videoPoint: Point): Point | null {
-    const video = currentVideo();
-    if (!video) return null;
-    return applyTransform(invertTransform(video.mazeTransform), videoPoint);
   }
 
   function toMapVector(videoVector: Point): Point | null {
@@ -169,9 +163,17 @@ export function createMazeStep(context: AppContext): Step {
       );
       return;
     }
-    const transform = transformFromCircles(existing.platform, circle);
-    if (!transform) return;
-    store.setMazeTransform(video.id, transform);
+    const placed = transformFromCircles(existing.platform, circle);
+    if (!placed) return;
+    // A circle carries no orientation, so re-fitting it would drop the ring
+    // alignment this video already has; spin it back about the new centre.
+    store.setMazeTransform(
+      video.id,
+      composeTransform(
+        rotationAbout(video.mazeTransform.rotationDeg, { x: circle.cx, y: circle.cy }),
+        placed,
+      ),
+    );
     context.announce(
       `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
     );
@@ -202,26 +204,19 @@ export function createMazeStep(context: AppContext): Step {
       return;
     }
     if (mode === 'align') {
-      const mapPoint = toMapPoint(videoPoint);
-      const shared = sharedMap();
-      if (!mapPoint || !shared) return;
-      const phase = phaseForClick(shared, mapPoint);
+      const turn = ringRotationForClick(map, videoPoint);
       countClick();
       mode = 'idle';
-      if (phase === null) {
+      if (turn === null) {
         context.announce('That click is at the platform centre, which does not name an angle. Click on a hole.');
       } else {
-        updateMap((m) => ({ ...m, holes: { ...m.holes, phase_deg: phase } }));
-        context.announce(`Ring aligned: hole 0 is now at ${phase.toFixed(1)}°.`);
+        rotateRing(turn);
       }
       render();
       return;
     }
     if (mode === 'target') {
-      const mapPoint = toMapPoint(videoPoint);
-      const shared = sharedMap();
-      if (!mapPoint || !shared) return;
-      const found = nearestHole(shared, mapPoint);
+      const found = nearestHole(map, videoPoint);
       countClick();
       mode = 'idle';
       if (found) {
@@ -242,6 +237,29 @@ export function createMazeStep(context: AppContext): Step {
       context.announce('Platform selected. Arrow keys nudge the circle; hold Shift for 10 pixels.');
     }
     render();
+  }
+
+  /**
+   * Turns the hole ring in *this* video only, by rotating its transform about
+   * its own platform centre. The shared `phase_deg` is never written after the
+   * map is created: it identifies holes for the whole cohort, so aligning the
+   * ring on a second video must not move the first one's (D10, D28).
+   */
+  function rotateRing(degrees: number): void {
+    const video = currentVideo();
+    const map = videoMap();
+    if (!video || !map || degrees === 0) return;
+    store.setMazeTransform(
+      video.id,
+      composeTransform(
+        rotationAbout(degrees, { x: map.platform.cx, y: map.platform.cy }),
+        video.mazeTransform,
+      ),
+    );
+    const after = videoMap();
+    context.announce(
+      `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
+    );
   }
 
   function nudge(dx: number, dy: number): void {
@@ -521,6 +539,13 @@ export function createMazeStep(context: AppContext): Step {
 
   // ---- control widgets ------------------------------------------------------
 
+  /**
+   * A number field that cannot put a value into the maze map that the map
+   * cannot mean. `min`/`max` on the element are advisory — the browser will
+   * hand you −3 holes if the user types it — so the value is clamped (and
+   * rounded to whole numbers when the step is one) before it is committed,
+   * and the user is told when that happened.
+   */
   function numberField(
     label: string,
     config: { step?: string; min?: string; max?: string; hint?: string },
@@ -532,8 +557,22 @@ export function createMazeStep(context: AppContext): Step {
     if (config.min !== undefined) input.min = config.min;
     if (config.max !== undefined) input.max = config.max;
     input.addEventListener('change', () => {
-      const value = Number(input.value);
-      if (Number.isFinite(value)) onCommit(value);
+      const typed = Number(input.value);
+      if (input.value.trim() === '' || !Number.isFinite(typed)) {
+        context.announce(`${label} needs a number.`);
+        render();
+        return;
+      }
+      const low = config.min === undefined ? -Infinity : Number(config.min);
+      const high = config.max === undefined ? Infinity : Number(config.max);
+      const whole = input.step === '1' ? Math.round(typed) : typed;
+      const value = Math.min(high, Math.max(low, whole));
+      if (value !== typed) {
+        context.announce(
+          `${label} must be ${describeRange(low, high, input.step === '1')}, so ${typed} became ${value}.`,
+        );
+      }
+      onCommit(value);
     });
     const hint = config.hint === undefined ? null : el('span', { class: 'hint', text: config.hint });
     if (hint) {
@@ -548,6 +587,14 @@ export function createMazeStep(context: AppContext): Step {
       ]),
       input,
     };
+  }
+
+  function describeRange(low: number, high: number, whole: boolean): string {
+    const unit = whole ? 'a whole number' : 'a number';
+    if (low > -Infinity && high < Infinity) return `${unit} from ${low} to ${high}`;
+    if (low > -Infinity) return `${unit} of at least ${low}`;
+    if (high < Infinity) return `${unit} of at most ${high}`;
+    return unit;
   }
 
   function modeButton(target: Mode, text: string): HTMLButtonElement {
@@ -601,11 +648,20 @@ export function createMazeStep(context: AppContext): Step {
   const targetButton = modeButton('target', 'Click the target hole');
   const adjustButton = modeButton('adjust', 'Adjust: click 3 rim points');
 
-  const cxField = numberField('Centre x (px)', { step: '0.1' }, (v) => resizePlatform({ cx: v }));
-  const cyField = numberField('Centre y (px)', { step: '0.1' }, (v) => resizePlatform({ cy: v }));
+  const cxField = numberField('Centre x (px)', { step: '0.1', min: '-10000', max: '10000' }, (v) =>
+    resizePlatform({ cx: v }),
+  );
+  const cyField = numberField('Centre y (px)', { step: '0.1', min: '-10000', max: '10000' }, (v) =>
+    resizePlatform({ cy: v }),
+  );
   const rField = numberField(
     'Radius (px)',
-    { step: '0.1', min: '1', hint: 'Typing any of these three creates the platform without clicking the rim.' },
+    {
+      step: '0.1',
+      min: '1',
+      max: '10000',
+      hint: 'Typing any of these three creates the platform without clicking the rim.',
+    },
     (v) => resizePlatform({ r: v }),
   );
 
@@ -626,11 +682,18 @@ export function createMazeStep(context: AppContext): Step {
   );
   const holeDiameterField = numberField(
     'Hole diameter (cm)',
-    { step: '0.1', min: '0.1', hint: 'Default 5 cm (O8).' },
+    { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm (O8).' },
     (v) => updateMap((m) => withHoleRadius(m, v)),
   );
-  const phaseField = numberField('Ring angle of hole 0 (°)', { step: '0.1' }, (v) =>
-    updateMap((m) => ({ ...m, holes: { ...m.holes, phase_deg: v } })),
+  const phaseField = numberField(
+    'Ring angle of hole 0 (°)',
+    { step: '0.1', min: '-360', max: '360', hint: 'The angle in this video; other videos keep theirs.' },
+    (v) => {
+      const map = videoMap();
+      if (!map) return;
+      rotateRing(angleDifferenceDeg(v, map.holes.phase_deg));
+      render();
+    },
   );
   const targetField = numberField('Target hole number', { min: '0' }, (v) => {
     const map = sharedMap();
@@ -658,7 +721,12 @@ export function createMazeStep(context: AppContext): Step {
 
   const diameterField = numberField(
     'Platform diameter (cm)',
-    { step: '0.1', min: '1', hint: `Required. A typical mouse Barnes maze is about ${TYPICAL_PLATFORM_DIAMETER_CM} cm across.` },
+    {
+      step: '0.1',
+      min: '1',
+      max: '1000',
+      hint: `Required. A typical mouse Barnes maze is about ${TYPICAL_PLATFORM_DIAMETER_CM} cm across.`,
+    },
     (v) => {
       updateMap((m) => withHoleRadius({ ...m, calibration: { platformDiameter_cm: v } }, currentHoleDiameterCm()));
       context.announce(`Platform diameter set to ${v} cm.`);

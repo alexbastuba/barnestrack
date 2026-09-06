@@ -11,6 +11,7 @@ import {
   phaseForClick,
   pxPerCm,
   ringRadius,
+  ringRotationForClick,
 } from '../../src/maze/ring.js';
 import { distance } from '../../src/maze/types.js';
 
@@ -141,5 +142,31 @@ describe('calibration (D14, D44, O8)', () => {
     expect(pxPerCm({ cx: 0, cy: 0, r: 200 }, 0)).toBeNull();
     expect(pxPerCm({ cx: 0, cy: 0, r: 200 }, -92)).toBeNull();
     expect(pxPerCm({ cx: 0, cy: 0, r: 0 }, 92)).toBeNull();
+  });
+});
+
+describe('ringRotationForClick', () => {
+  it('is the turn that phaseForClick describes as an absolute angle', () => {
+    const m = map({ holes: { n: 20, ringRatio: DEFAULT_RING_RATIO, holeRadius_px: 11, phase_deg: 4 } });
+    const radius = ringRadius(m.platform, m.holes);
+    const click = {
+      x: 320 + radius * Math.cos((57 * Math.PI) / 180),
+      y: 240 + radius * Math.sin((57 * Math.PI) / 180),
+    };
+    const turn = ringRotationForClick(m, click)!;
+    const phase = phaseForClick(m, click)!;
+    expect(m.holes.phase_deg + turn).toBeCloseTo(phase, 9);
+    expect(Math.abs(turn)).toBeLessThanOrEqual(180);
+  });
+
+  it('takes the short way round the wrap', () => {
+    const m = map({ holes: { n: 20, ringRatio: DEFAULT_RING_RATIO, holeRadius_px: 11, phase_deg: 358 } });
+    const radius = ringRadius(m.platform, m.holes);
+    const click = { x: 320 + radius * Math.cos((2 * Math.PI) / 180), y: 240 + radius * Math.sin((2 * Math.PI) / 180) };
+    expect(ringRotationForClick(m, click)!).toBeCloseTo(4, 9);
+  });
+
+  it('has no answer at the platform centre', () => {
+    expect(ringRotationForClick(map(), { x: 320, y: 240 })).toBeNull();
   });
 });

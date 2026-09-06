@@ -129,6 +129,25 @@ export function fitSimilarity(
 }
 
 /**
+ * A rotation about a fixed point, as a similarity. Rotating a video's maze
+ * transform about its own platform centre turns the hole ring where it stands,
+ * which is what "align the ring on this video" means (D10: the map is shared,
+ * the fit onto each video is the per-video transform).
+ */
+export function rotationAbout(degrees: number, centre: Point): SimilarityTransform {
+  const spun = applyTransform(
+    { scale: 1, rotationDeg: degrees, translateX: 0, translateY: 0 },
+    centre,
+  );
+  return {
+    scale: 1,
+    rotationDeg: normaliseDeg(degrees),
+    translateX: centre.x - spun.x,
+    translateY: centre.y - spun.y,
+  };
+}
+
+/**
  * The transform taking circle `from` onto circle `to`. Built from three
  * correspondences so there is one fitting routine, not two: a circle carries no
  * orientation, so the fit comes back with rotation 0 and the map's `phase_deg`,

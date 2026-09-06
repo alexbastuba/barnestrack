@@ -273,8 +273,10 @@ export class SessionStore {
   }
 
   private changed(): void {
-    this.emit();
+    // Schedule first: `scheduleSave` moves the save state to 'pending', and the
+    // page must render that, not the stale 'saved' from before the edit.
     this.scheduleSave();
+    this.emit();
   }
 
   private cancelPendingSave(): void {
