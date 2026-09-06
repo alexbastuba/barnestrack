@@ -48,6 +48,9 @@ export interface FigureFrame {
 
 export const DEFAULT_MARGINS: Margins = { top: 34, right: 18, bottom: 64, left: 62 };
 
+/** The title sits at the same place whatever the margins are. */
+const TITLE_X = 14;
+
 export interface BeginFigureOptions {
   title: string;
   defaultSize: FigureSize;
@@ -79,7 +82,7 @@ export function beginFigure(
   ctx.font = figureFont(TITLE_SIZE, 'bold');
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(options.title, margins.left - 46, 20);
+  ctx.fillText(options.title, TITLE_X, 20);
 
   return {
     ctx,

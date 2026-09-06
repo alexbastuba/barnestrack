@@ -88,6 +88,27 @@ export function centroidPath(analysis: VideoAnalysis): PathPoint[] {
 }
 
 /**
+ * The path split wherever frames are missing. A gap is never bridged by a
+ * straight line: a missing frame stays visibly missing, so a figure cannot
+ * imply the animal walked somewhere it was not seen.
+ */
+export function pathRuns(path: readonly PathPoint[]): PathPoint[][] {
+  const runs: PathPoint[][] = [];
+  let current: PathPoint[] = [];
+  let previousIndex: number | null = null;
+  for (const point of path) {
+    if (previousIndex !== null && point.frame.frameIndex !== previousIndex + 1) {
+      if (current.length > 0) runs.push(current);
+      current = [];
+    }
+    current.push(point);
+    previousIndex = point.frame.frameIndex;
+  }
+  if (current.length > 0) runs.push(current);
+  return runs;
+}
+
+/**
  * Speed at each path point, cm/s, over a centred window of `windowFrames` on
  * either side using the frames' own timestamps (O11). Steps whose elapsed time
  * is zero — a duplicate presentation timestamp — contribute nothing rather than
