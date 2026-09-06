@@ -469,7 +469,12 @@ export interface AutoEvents {
  * progress at a cutoff ends there and says so. A loss event keeps the span of
  * its loss. Only events that begin within the trial are emitted.
  */
-export function detectAutoEvents(ctx: EventContext, startFrame: number | null): AutoEvents {
+export function detectAutoEvents(
+  ctx: EventContext,
+  startFrame: number | null,
+  /** A trial end decided after event corrections (a deleted or edited escape entry), replacing the automatic one. */
+  endOverride?: { endFrame: number; endReason: TrialEndReason },
+): AutoEvents {
   const { frames, a, g, p, pts } = ctx;
   const flags: ReviewFlag[] = [];
   if (startFrame === null || a.length === 0) {
@@ -493,7 +498,7 @@ export function detectAutoEvents(ctx: EventContext, startFrame: number | null): 
       break;
     }
   }
-  const end = resolveTrialEnd(a, startFrame, cutoff, persistentEscapeStartFrame);
+  const end = endOverride ?? resolveTrialEnd(a, startFrame, cutoff, persistentEscapeStartFrame);
   const endFrame = end.endFrame!;
   const events: EventRecord[] = [];
 

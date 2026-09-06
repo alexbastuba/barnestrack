@@ -78,7 +78,7 @@ function median(values: Float64Array, count: number): number {
  */
 export function smoothPositions(
   a: TrackArrays,
-  window: FrameWindow,
+  frameWindow: FrameWindow,
   windowFrames: number,
 ): { x: Float64Array; y: Float64Array } {
   const x = new Float64Array(a.length).fill(Number.NaN);
@@ -86,14 +86,14 @@ export function smoothPositions(
   const half = Math.max(0, Math.floor(windowFrames / 2));
   const scratchX = new Float64Array(2 * half + 1);
   const scratchY = new Float64Array(2 * half + 1);
-  let i = window.startFrame;
-  while (i <= window.endFrame) {
+  let i = frameWindow.startFrame;
+  while (i <= frameWindow.endFrame) {
     if (a.cValid[i] === 0) {
       i++;
       continue;
     }
     const runStart = i;
-    while (i <= window.endFrame && a.cValid[i] === 1) i++;
+    while (i <= frameWindow.endFrame && a.cValid[i] === 1) i++;
     const runEnd = i - 1;
     for (let j = runStart; j <= runEnd; j++) {
       if (half === 0 || j - half < runStart || j + half > runEnd) {
@@ -118,17 +118,17 @@ export function computeKinematics(
   a: TrackArrays,
   g: MazeGeometry,
   p: Parameters,
-  window: FrameWindow | null,
+  frameWindow: FrameWindow | null,
 ): KinematicsSummary {
-  if (window === null || a.length === 0 || window.endFrame < window.startFrame)
+  if (frameWindow === null || a.length === 0 || frameWindow.endFrame < frameWindow.startFrame)
     return emptySummary(a);
-  const { startFrame: s, endFrame: e } = window;
+  const { startFrame: s, endFrame: e } = frameWindow;
   const nominal = a.nominalDt_s;
   const dupBelow = Number.isFinite(nominal) ? p.kinematics.duplicateTimestampFactor * nominal : 0;
   const dropAbove = Number.isFinite(nominal)
     ? p.kinematics.dropGapFactor * nominal
     : Number.POSITIVE_INFINITY;
-  const smoothed = smoothPositions(a, window, p.kinematicsSmoothingWindowFrames);
+  const smoothed = smoothPositions(a, frameWindow, p.kinematicsSmoothingWindowFrames);
 
   let pathRaw = 0;
   let pathSmoothed = 0;
