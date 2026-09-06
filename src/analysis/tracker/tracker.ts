@@ -69,6 +69,37 @@ export interface TrackerOptions {
   holes?: readonly HoleCircle[];
   /** Warnings from preparation (background contamination), carried into the summary. */
   warnings?: readonly string[];
+  /**
+   * Called every `livePreviewEvery` frames with the frame's provisional pick,
+   * for the live thumbnail of a running pass (D17). Absent by default, never
+   * consulted by the tracker's own logic, and emitted after the frame's timing
+   * is accumulated — so a run with the callback produces the same
+   * `TrackerResult` as one without it.
+   *
+   * It carries only what `onFrame` has genuinely computed. The nose and the
+   * detection state are decided in `finish()` from cross-frame cues (the
+   * learned expected area, the velocity window, the previous position), so a
+   * mid-pass value for either would be a plausible lie (D16) and is not
+   * offered here.
+   */
+  onLivePreview?: (live: LivePreview) => void;
+  /** Frames between `onLivePreview` calls. Default 15; ignored without the callback. */
+  livePreviewEvery?: number;
+}
+
+/** A frame's provisional pick, for a live overlay only. Not part of the track contract. */
+export interface LivePreview {
+  presIndex: number;
+  /**
+   * Centroid of the largest candidate, or of the merged union when the pieces
+   * were merged (D48); null when no candidate reached the minimum area.
+   * Provisional: `finish()` may select a different candidate by proximity.
+   */
+  centroid: { x: number; y: number } | null;
+  /** Candidates at or above the minimum area this frame. */
+  candidateCount: number;
+  /** The pick's body axis, already computed for its candidate record. */
+  axis: BodyAxis | null;
 }
 
 export interface Tracker {
@@ -197,12 +228,30 @@ function asBlob(c: CandidateRecord): CandidateBlob {
   return { area: c.area, cx: c.cx, cy: c.cy, rimContact: c.rimContact };
 }
 
+function bodyAxisOf(c: CandidateRecord): BodyAxis {
+  return {
+    ax: c.ax,
+    ay: c.ay,
+    bx: c.bx,
+    by: c.by,
+    major: c.major,
+    minor: c.minor,
+    angle_rad: Math.atan2(c.uy, c.ux),
+    tail: c.tail,
+    tailPixels: c.tailPixels,
+    tailOffset_px: c.tailOffset_px,
+  };
+}
+
 function selectedRecord(o: Observation, s: Selection): CandidateRecord | null {
   if (s.merged) return o.union;
   return s.index >= 0 ? (o.candidates[s.index] ?? null) : null;
 }
 
 const EMPTY_RECT: PixelRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+
+/** Matches the decoder's progress interval, so one preview rides each progress post. */
+const DEFAULT_PREVIEW_EVERY = 15;
 
 function invalidPoint(): NamedPoint {
   return { x: 0, y: 0, confidence: 0, valid: false, source: 'auto' };
@@ -220,6 +269,8 @@ function lowerMedian(values: number[]): number | null {
 
 export function createTracker(options: TrackerOptions): Tracker {
   const { width, height, platform, pxPerCm, params, background, threshold } = options;
+  const onLivePreview = options.onLivePreview;
+  const livePreviewEvery = Math.max(1, Math.floor(options.livePreviewEvery ?? DEFAULT_PREVIEW_EVERY));
   const size = width * height;
   if (background.length !== size) {
     throw new RangeError(`background has ${background.length} bytes, expected ${size}`);
@@ -506,6 +557,17 @@ export function createTracker(options: TrackerOptions): Tracker {
     }
     observations.push(observation);
     elapsedMs += performance.now() - started;
+
+    // After the timing, so watching a pass cannot change what it reports.
+    if (onLivePreview && presIndex % livePreviewEvery === 0) {
+      const pick = observation.union ?? observation.candidates[0] ?? null;
+      onLivePreview({
+        presIndex,
+        centroid: pick ? { x: pick.cx, y: pick.cy } : null,
+        candidateCount: observation.candidates.length,
+        axis: pick ? bodyAxisOf(pick) : null,
+      });
+    }
   }
 
   function finish(): TrackerResult {
@@ -638,18 +700,7 @@ export function createTracker(options: TrackerOptions): Tracker {
           source: 'auto',
         };
         blobArea_px2 = c.area;
-        axes[i] = {
-          ax: c.ax,
-          ay: c.ay,
-          bx: c.bx,
-          by: c.by,
-          major: c.major,
-          minor: c.minor,
-          angle_rad: Math.atan2(c.uy, c.ux),
-          tail: c.tail,
-          tailPixels: c.tailPixels,
-          tailOffset_px: c.tailOffset_px,
-        };
+        axes[i] = bodyAxisOf(c);
         boundingBox = {
           x: c.minX,
           y: c.minY,
