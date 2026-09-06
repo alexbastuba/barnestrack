@@ -158,8 +158,6 @@ export function computeStrategyFeatures(
   const { events, kinematics, a, g, bounds } = input;
   if (bounds.startFrame === null || bounds.endFrame === null) return emptyFeatures();
   const start = bounds.startFrame;
-  const positionOf = new Map<number, number>();
-  for (let i = 0; i < a.length; i++) positionOf.set(i, i);
   const target = firstTargetEvent(events);
   const phaseEndFrameIndex = target === null ? null : target.startFrame;
   // frameIndex is the presentation position (D7): use it directly, clamped to the track

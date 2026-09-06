@@ -101,7 +101,12 @@ function blobTrend(a: TrackArrays, before: number): string {
   if (count < 2)
     return `no blob-area trend available (${count} positioned frame${count === 1 ? '' : 's'} in the ${w} before the loss)`;
   const ratio = first > 0 ? last / first : 1;
-  const verb = ratio < 0.8 ? 'fell' : ratio > 1.25 ? 'rose' : 'was steady';
+  const verb =
+    ratio < ANALYSIS_MODEL.blobTrendFallRatio
+      ? 'fell'
+      : ratio > ANALYSIS_MODEL.blobTrendRiseRatio
+        ? 'rose'
+        : 'was steady';
   return `blob area ${verb} from ${first.toFixed(0)} to ${last.toFixed(0)} px² over the ${count} positioned frames before the loss`;
 }
 
@@ -241,12 +246,14 @@ function classifyLoss(
       g.investigationRadius_px;
   const base = { loss, lastSeenHole, lastSeenDistance_px, reappearNearSameHole };
   if (loss.inEscapeBoxFrom >= 0) {
+    // the user says where the animal went in; whether it stayed follows the same O4 rule as any entry
+    const markedDuration = a.t[loss.end]! - a.t[loss.inEscapeBoxFrom]!;
     return {
       ...base,
       outcome: {
         kind: 'escape_entry',
         hole: g.targetIndex,
-        persistent: true,
+        persistent: loss.toEnd || markedDuration >= p.escapeEntry.persistCutoff_s,
         startFrame: loss.inEscapeBoxFrom,
         byUser: true,
       },
@@ -566,7 +573,7 @@ export function detectAutoEvents(
     const evidence = lossEvidence(c, a, frames, g, p, pts);
     if (o.kind === 'escape_entry') {
       const head = o.byUser
-        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion; the trial ends here.`
+        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion${o.persistent ? `; persistent (${c.loss.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}), so the trial ends here.` : `; the marked range lasts less than ${p.escapeEntry.persistCutoff_s} s and the animal is positioned again afterwards, so the trial continues.`}`
         : `Escape-box entry at the target hole ${hole}: ${evidence} ${o.persistent ? `Persistent (${c.loss.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}): the trial ends at the first lost frame.` : `Not persistent (< ${p.escapeEntry.persistCutoff_s} s and the animal reappeared at the same hole), so the trial continues.`}`;
       const tail = spanStart >= 0 ? ` ${noseSentence(d)}` : '';
       events.push(
@@ -752,7 +759,7 @@ export function applyEventCorrections(
     const head =
       target === null
         ? `Corrected by the user (correction ${c.id}); the automatic event it corrected no longer exists under the current parameters, so the corrected values are kept as pinned.`
-        : `Corrected by the user (correction ${c.id}): ${changes.length > 0 ? changes.join(', ') : 'no change to hole or frames'}; automatic values kept as autoShadow.`;
+        : `Corrected by the user (correction ${c.id}): ${changes.length > 0 ? changes.join(', ') : 'no change to hole or frames'}; ${target.autoShadow !== undefined || target.source === 'auto' ? 'automatic values kept as autoShadow' : 'the event it corrects is itself a pinned correction with no automatic values'}.`;
     const ev: EventRecord = {
       ...record(
         ctx,
@@ -768,11 +775,17 @@ export function applyEventCorrections(
       source: 'corrected',
     };
     if (target !== null) {
-      ev.autoShadow = target.autoShadow ?? {
-        holeIndex: target.holeIndex,
-        startFrame: target.startFrame,
-        endFrame: target.endFrame,
-      };
+      // a pinned orphan (corrected, no automatic values) stays without autoShadow: user values are never labelled automatic
+      const shadow =
+        target.autoShadow ??
+        (target.source === 'auto'
+          ? {
+              holeIndex: target.holeIndex,
+              startFrame: target.startFrame,
+              endFrame: target.endFrame,
+            }
+          : undefined);
+      if (shadow !== undefined) ev.autoShadow = shadow;
       events = events.map((x) => (x === target ? ev : x));
     } else {
       events.push(ev);

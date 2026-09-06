@@ -199,6 +199,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     videoId,
     corrected: correctedArrays,
     cleaned: a,
+    frames: cleaned.track,
     g,
     p: parameters,
     options,

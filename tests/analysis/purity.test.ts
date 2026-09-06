@@ -20,6 +20,8 @@ function tsFiles(dir: string): string[] {
 }
 
 const IMPORT = /^\s*(import|export)\s+(type\s+)?[^'"]*from\s+['"]([^'"]+)['"]/gm;
+/** Side-effect imports (`import './x.js'`) and dynamic imports (`import('./x.js')`). */
+const BARE_OR_DYNAMIC_IMPORT = /\bimport\s*\(?\s*['"]([^'"]+)['"]/g;
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -48,6 +50,11 @@ describe('src/analysis/ is pure', () => {
           expect(allowed, `${rel} imports ${spec}${isType ? ' (type)' : ''}`).toBe(true);
         }
         expect(spec, `${rel} imports ${spec}`).not.toMatch(/^(node:|fs|path|crypto)/);
+      }
+      for (const m of stripComments(source).matchAll(BARE_OR_DYNAMIC_IMPORT)) {
+        expect.fail(
+          `${rel} has a side-effect or dynamic import of ${m[1]}; only static named imports are allowed`,
+        );
       }
     });
 

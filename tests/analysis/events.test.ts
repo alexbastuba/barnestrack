@@ -324,7 +324,41 @@ describe('losses of detection (O4, D19)', () => {
     expect(auto.events).toEqual([]);
   });
 
-  it('takes a user-marked in-escape-box range as a persistent entry from its first frame', () => {
+  it('takes a user-marked in-escape-box range as an entry from its first frame, persistent by the same rule as any entry', () => {
+    const script: Segment[] = [
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', seconds: 3 },
+    ];
+    const from = scriptTrack(script, { g }).segmentStarts[2]! + 15;
+    const range = (endFrame: number): CorrectionsLayer => ({
+      entries: [
+        {
+          id: 'r1',
+          kind: 'range',
+          timestamp: at(1),
+          source: 'user',
+          rangeType: 'in_escape_box',
+          startFrame: from,
+          endFrame,
+        },
+      ],
+    });
+    const short = run(script, { corrections: range(from + 20) });
+    const shortEntry = short.auto.events.find((e) => e.kind === 'escape_entry')!;
+    expect(shortEntry.startFrame).toBe(from);
+    expect(shortEntry.evidence).toContain('the trial continues');
+    expect(short.auto.persistentEscapeStartFrame).toBeNull();
+    expect(short.auto.endReason).toBe('end_of_video');
+    const long = run(script, { corrections: range(from + 100) }); // 100 frames ≥ 3 s at 30 fps
+    expect(long.auto.events.find((e) => e.kind === 'escape_entry')!.evidence).toContain(
+      'the trial ends here',
+    );
+    expect(long.auto.persistentEscapeStartFrame).toBe(from);
+    expect(long.auto.endReason).toBe('escape');
+  });
+
+  it('takes a user-marked in-escape-box range to the end of the video as a persistent entry from its first frame', () => {
     const scripted = scriptTrack(
       [
         { kind: 'moveToHole', hole: 7, seconds: 0.5 },
@@ -518,6 +552,36 @@ describe('event corrections (D20, D25)', () => {
     expect(pinned.holeIndex).toBe(5);
     expect(pinned.autoShadow).toBeUndefined();
     expect(pinned.evidence).toContain('no longer exists');
+    // a second edit of the pinned orphan still carries no autoShadow: user values are never labelled automatic
+    const { events: twice } = corrected(
+      [
+        {
+          id: 'e3',
+          kind: 'event',
+          timestamp: at(1),
+          source: 'user',
+          action: 'edit',
+          eventId: second.id,
+          holeIndex: 5,
+          startFrame: second.startFrame,
+          endFrame: second.endFrame,
+        },
+        {
+          id: 'e4',
+          kind: 'event',
+          timestamp: at(2),
+          source: 'user',
+          action: 'edit',
+          eventId: second.id,
+          holeIndex: 6,
+        },
+      ],
+      withoutSecond,
+    );
+    const again = twice.find((e) => e.id === second.id)!;
+    expect(again.holeIndex).toBe(6);
+    expect(again.autoShadow).toBeUndefined();
+    expect(again.evidence).toContain('pinned correction with no automatic values');
   });
 
   it('adds a user event, applies corrections in timestamp order, and validates the span', () => {

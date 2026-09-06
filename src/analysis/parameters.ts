@@ -268,9 +268,9 @@ export const ANALYSIS_OPTION_DEFINITIONS: Record<AnalysisOptionPath, string> = {
   'strategy.centreZoneRadiusFraction':
     'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
   'quality.goodMinPositionedFraction':
-    'A video is GOOD when at least this fraction of the trial frames carry a positioned centroid (tracked or low confidence); judged over the trial window so empty pre-trial frames do not count against it (fraction; D30).',
+    'A video is GOOD when at least this fraction of the trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count); judged over the trial window so empty pre-trial frames do not count against it (fraction; D30).',
   'quality.poorMaxPositionedFraction':
-    'A video is POOR when fewer than this fraction of the trial frames carry a positioned centroid; between the two thresholds it is REVIEW (fraction; D30).',
+    'A video is POOR when fewer than this fraction of the trial frames were positioned by the tracker (tracked or low confidence); between the two thresholds it is REVIEW (fraction; D30).',
 };
 
 // ---------------------------------------------------------------------------
@@ -281,6 +281,10 @@ export const ANALYSIS_OPTION_DEFINITIONS: Record<AnalysisOptionPath, string> = {
 export const ANALYSIS_MODEL = {
   /** Frames before a loss whose blob areas form the area trend in the loss evidence (O4, D19). */
   blobTrendWindowFrames: 10,
+  /** The evidence says the blob area "fell" when the last area is below this fraction of the first (D19). */
+  blobTrendFallRatio: 0.8,
+  /** The evidence says the blob area "rose" when the last area is above this multiple of the first (D19). */
+  blobTrendRiseRatio: 1.25,
   /** Smoothed steps shorter than this do not contribute heading change to tortuosity, cm (O7). */
   tortuosityMinStep_cm: 1,
   /** Equal-width bins of the nose-heading-confidence histogram over [0, 1] (D30). */
@@ -290,6 +294,10 @@ export const ANALYSIS_MODEL = {
 export const ANALYSIS_MODEL_DEFINITIONS: Record<keyof typeof ANALYSIS_MODEL, string> = {
   blobTrendWindowFrames:
     'Number of frames before a loss of detection over which the blob-area trend (shrinking as the animal enters a hole) is described in the event evidence.',
+  blobTrendFallRatio:
+    'The loss evidence reads "blob area fell" when the last positioned area before the loss is below this fraction of the first area in the trend window (D19).',
+  blobTrendRiseRatio:
+    'The loss evidence reads "blob area rose" when the last positioned area before the loss is above this multiple of the first area in the trend window; between the two it "was steady" (D19).',
   tortuosityMinStep_cm:
     'Heading change is accumulated only over smoothed steps at least this long, so a stationary animal does not read as tortuous (cm).',
   noseConfidenceHistogramBins:

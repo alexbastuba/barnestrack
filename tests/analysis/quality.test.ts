@@ -35,7 +35,8 @@ function report(
   const scripted = scriptTrack(segments, { g, ...opts.anomalies });
   const frames = applyTrackCorrections(scripted.frames, none).frames;
   const corrected = buildTrackArrays(frames, g);
-  const cleaned = buildTrackArrays(cleanTrack(frames, corrected, g, p).track, g);
+  const cleanedFrames = cleanTrack(frames, corrected, g, p).track;
+  const cleaned = buildTrackArrays(cleanedFrames, g);
   const proposal = proposeTrialStart(frames, corrected, none);
   const start = opts.withTrial === false ? null : proposal.startFrame;
   const bounds: TrialBounds = trialBounds(
@@ -50,6 +51,7 @@ function report(
     videoId: 'v',
     corrected,
     cleaned,
+    frames: cleanedFrames,
     g,
     p,
     options: DEFAULT_ANALYSIS_OPTIONS,
@@ -130,8 +132,9 @@ describe('qualityReport (D30)', () => {
 
   it('classes a leading gap by the first frame after it', () => {
     const p = holePoint(g, 9);
-    const a = buildTrackArrays(buildTrack([null, null, [p.x, p.y], [p.x, p.y]]), g);
-    expect(findGaps(a, g, 0, 3)).toEqual([
+    const frames = buildTrack([null, null, [p.x, p.y], [p.x, p.y]]);
+    const a = buildTrackArrays(frames, g);
+    expect(findGaps(a, frames, g, 0, 3)).toEqual([
       {
         startFrame: 0,
         endFrame: 1,
@@ -140,8 +143,15 @@ describe('qualityReport (D30)', () => {
         holeIndex: 9,
       },
     ]);
-    const nothing = buildTrackArrays(buildTrack([null, null]), g);
-    expect(findGaps(nothing, g, 0, 1)[0]!.locationClass).toBe('open_platform');
+    const nothingFrames = buildTrack([null, null]);
+    const nothing = buildTrackArrays(nothingFrames, g);
+    expect(findGaps(nothing, nothingFrames, g, 0, 1)[0]!.locationClass).toBe('open_platform');
+    // gaps are named by frameIndex (D7), not by array position
+    const offset = frames.map((f) => ({ ...f, frameIndex: f.frameIndex + 1000 }));
+    expect(findGaps(buildTrackArrays(offset, g), offset, g, 0, 3)[0]).toMatchObject({
+      startFrame: 1000,
+      endFrame: 1001,
+    });
   });
 
   it('histograms the nose-heading confidence of positioned frames into five bins', () => {
@@ -219,14 +229,21 @@ describe('qualityReport (D30)', () => {
       { kind: 'dwell', seconds: 0.5 },
     ]);
     expect(review.q.tier).toBe('REVIEW');
-    // filled frames are positioned: a fillable short gap does not lower the tier
-    const filled = report([
-      { kind: 'dwell', seconds: 0.3 },
+    // filled frames never count toward the tier: gap filling on or off gives the same answer (D16)
+    const script: Segment[] = [
+      { kind: 'dwell', seconds: 0.5 },
       { kind: 'lost', seconds: 0.05 },
-      { kind: 'dwell', seconds: 0.3 },
-    ]);
-    expect(filled.q.tier).toBe('GOOD');
-    expect(filled.q.gaps).toHaveLength(1); // but the gap is still reported
+      { kind: 'dwell', seconds: 0.2 },
+      { kind: 'lost', seconds: 0.05 },
+      { kind: 'dwell', seconds: 0.2 },
+    ];
+    const on = report(script);
+    const off = report(script, {
+      p: { ...DEFAULT_PARAMETERS, gapFilling: { enabled: false, maxDuration_s: 0.1 } },
+    });
+    expect(on.q.tier).toBe('REVIEW');
+    expect(off.q.tier).toBe(on.q.tier);
+    expect(on.q.gaps).toHaveLength(2); // the gaps are still reported
   });
 
   it('carries the calibration and the parameters hash', () => {

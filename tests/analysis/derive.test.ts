@@ -235,6 +235,37 @@ describe('derive', () => {
     expect(d.metrics.primaryErrors).toBe(2);
   });
 
+  it('keeps a short user-marked escape-box range consistent between its evidence and the metrics', () => {
+    const script: Segment[] = [
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', seconds: 3 },
+    ];
+    const from = scriptTrack(script, { g }).segmentStarts[2]! + 15;
+    const range = (endFrame: number): CorrectionEntry => ({
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: from,
+      endFrame,
+    });
+    const d = derive(inputFor(script, { corrections: [range(from + 20)] }).input);
+    const entry = d.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry.evidence).toContain('the trial continues');
+    expect(d.metrics.escaped).toBe(false);
+    expect(d.trial.endReason).toBe('end_of_video');
+    expect(d.metrics.status).toBe('review');
+    const toEnd = derive(inputFor(script, { corrections: [range(10_000)] }).input);
+    expect(toEnd.metrics.escaped).toBe(true);
+    expect(toEnd.trial.endReason).toBe('escape');
+    expect(toEnd.metrics.totalLatency_s).toBeCloseTo(
+      toEnd.trial.endTime_s - toEnd.trial.startTime_s,
+      12,
+    );
+  });
+
   it('flags oversized foreground inside the trial without moving the start', () => {
     const d = derive(
       inputFor([
