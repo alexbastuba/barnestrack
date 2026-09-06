@@ -309,6 +309,10 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   frame of the event; the O1 and O4 minimum-duration tests use the same quantity. A quality-report
   gap's `durationSeconds` is the time between the positioned frames either side of it (the
   unpositioned time), the same quantity O10 tests against `gapFilling.maxDuration_s`.
+- **Readings of O3 and O9 in the metrics.** `primaryLatency_s` ends at the first target event of
+  either kind — the first target investigation (O3) or, when the animal enters without a detected
+  investigation, the escape entry — so primary latency never exceeds total latency.
+  `meanSpeed_cmPerS` is the smoothed path (O9) over the tracked time within the trial.
 - **Trial window.** Investigations are detected between the trial start and the trial end, so
   one still in progress at a cutoff ends there and says so in its evidence; an escape entry or a
   tracking failure keeps the span of its loss. When an event correction deletes or moves the first

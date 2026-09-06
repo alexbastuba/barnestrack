@@ -85,10 +85,22 @@ session it is found (D39).
   before the first target visit only, test50 — which walks the ring hole by hole for two minutes
   *after* its first target visit at 12.7 s — classifies as spatial from two errors at hole 5.
   Whether post-target behaviour should enter the classification is an O7 question.
-- **Adjacent runs are direction-agnostic.** The serial rule's "run of adjacent-hole
-  investigations" counts a step of one hole in either direction, so 12→13→12→11 is a run of four;
-  a same-direction reading would make it three. Both satisfy O7's default of three; the wording is
-  Alex's call.
+- **Adjacent runs are direction-agnostic and may end at the target visit.** The serial rule's
+  "run of adjacent-hole investigations" counts a step of one hole in either direction, so
+  12→13→12→11 is a run of four (a same-direction reading would make it three), and the target
+  visit may be the run's last element, so 9→8→7 with target 7 is a run of three where O7's
+  "precedes the target visit" could be read as two. Both readings are stated in the serial rule's
+  definition text; the wording is Alex's call.
+- **Thresholds outside the contract are not in the parameters hash.** The O5 censoring switch,
+  the five O7 rule numbers and the two D30 tier thresholds live in `DEFAULT_ANALYSIS_OPTIONS`
+  (`trialCensoring.censorToCutoff`, `strategy.spatialMaxErrors`, `strategy.spatialMaxHoleDistance`,
+  `strategy.spatialMaxCentreCrossings`, `strategy.serialMinRun`, `strategy.centreZoneRadiusFraction`,
+  `quality.goodMinPositionedFraction`, `quality.poorMaxPositionedFraction`) because `Parameters` has
+  no field for them; they are neither hashed into `parametersHash` nor stamped on exports. Two
+  derived layers or exports can therefore carry the same `parameters_hash` and disagree on
+  `strategy`, `total_latency_s` or the quality tier if these were changed between them. Until the
+  fields join the contract, the defaults are the only values in use and the tool version identifies
+  them.
 - **Some derived numbers cannot be null in the contract.** `TrialMetrics.trialStart_s` and
   `meanSpeed_cmPerS`, and `EventRecord.minNoseDistance_cm` (when the nose was never usable during
   an event, a common case on these clips) are `NaN`, which JSON writes as `null`; consumers must
