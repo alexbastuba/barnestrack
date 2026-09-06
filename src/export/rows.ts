@@ -4,6 +4,10 @@
  * hash, plus every event-defining threshold as its own column — so a row is
  * still self-describing months later without a legend.
  *
+ * `toolVersion` defaults to the version recorded in the session and can be
+ * overridden by the build doing the exporting, since the derived layer is
+ * recomputed on load (D9, D12).
+ *
  * Pure: no DOM, no video, no I/O. `parametersHash` is copied from the video's
  * quality report, where chunk 5 stamps the hash of the full parameter set (D51);
  * nothing here computes a hash.
@@ -52,9 +56,9 @@ function analysedVideos(session: SessionFile): AnalysedVideo[] {
   return out;
 }
 
-function provenance(session: SessionFile, analysis: VideoAnalysis) {
+function provenance(session: SessionFile, analysis: VideoAnalysis, toolVersion: string) {
   return {
-    toolVersion: session.toolVersion,
+    toolVersion,
     schemaVersion: EXPORT_SCHEMA_VERSION,
     parametersHash: analysis.derived.quality.parametersHash,
   } as const;
@@ -77,7 +81,10 @@ function thresholdColumns(parameters: Parameters) {
   } as const;
 }
 
-export function trialRows(session: SessionFile): TrialRow[] {
+export function trialRows(
+  session: SessionFile,
+  toolVersion: string = session.toolVersion,
+): TrialRow[] {
   const parameters = session.parameters;
   if (!parameters) return [];
   const thresholds = thresholdColumns(parameters);
@@ -106,7 +113,7 @@ export function trialRows(session: SessionFile): TrialRow[] {
       trackedFraction: metrics.trackedFraction,
       correctionCount: metrics.correctionCount,
       ...thresholds,
-      ...provenance(session, analysis),
+      ...provenance(session, analysis, toolVersion),
     };
   });
 }
@@ -117,7 +124,10 @@ export function trialRows(session: SessionFile): TrialRow[] {
  * documented `kind` domain is `investigation | escape_entry`. The failure keeps
  * its `EventRecord` — it is reported in `quality.csv` and in the timeline.
  */
-export function eventRows(session: SessionFile): EventRow[] {
+export function eventRows(
+  session: SessionFile,
+  toolVersion: string = session.toolVersion,
+): EventRow[] {
   const rows: EventRow[] = [];
   for (const { descriptor, analysis } of analysedVideos(session)) {
     for (const event of analysis.derived.events) {
@@ -144,14 +154,17 @@ export function eventRows(session: SessionFile): EventRow[] {
         autoHoleIndex: corrected ? (event.autoShadow?.holeIndex ?? null) : null,
         autoStartFrame: corrected ? (event.autoShadow?.startFrame ?? null) : null,
         autoEndFrame: corrected ? (event.autoShadow?.endFrame ?? null) : null,
-        ...provenance(session, analysis),
+        ...provenance(session, analysis, toolVersion),
       });
     }
   }
   return rows;
 }
 
-export function qualityRows(session: SessionFile): QualityRow[] {
+export function qualityRows(
+  session: SessionFile,
+  toolVersion: string = session.toolVersion,
+): QualityRow[] {
   return analysedVideos(session).map(({ descriptor, analysis }) => {
     const quality = analysis.derived.quality;
     return {
@@ -169,7 +182,7 @@ export function qualityRows(session: SessionFile): QualityRow[] {
       platformDiameter_cm: centimetres(quality.platformDiameter_cm),
       pxPerCm: quality.pxPerCm,
       tier: quality.tier,
-      ...provenance(session, analysis),
+      ...provenance(session, analysis, toolVersion),
     };
   });
 }
