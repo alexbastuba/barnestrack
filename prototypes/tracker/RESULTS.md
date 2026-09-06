@@ -302,7 +302,18 @@ experimental and let events default to the centroid — and let Alex decide, fro
 sheets, whether a tail-only nose (0.5) deserves to clear the cutoff; the evidence here says the tail
 cue is right whenever it exists, but the cutoff is his call, not this chunk's.
 
-## Verdicts against the acceptance criteria (§5 of the chunk prompt)
+## Verdicts against the acceptance criteria
+
+The criteria the tracker was accepted against, in words, so this file stands on its own: on each
+sample video, at least 95 % of the frames where the mouse is visible resolve to a single correct
+blob and a centroid within one body width of the animal; no frame of test53's empty start and none
+of test51's start-cylinder frames is reported `tracked`; frames containing the experimenter's hand
+are `ambiguous / oversized_blob`; the nose is on the correct end of the body on at least 80 % of
+moving frames; the pass runs at 150 frames per second or better in Node; two runs over the same
+video are identical; the background contamination check reports what it found honestly; lint,
+typecheck, test and build are green with no video and nothing from `out/` committed and the
+evidence sheets at most 700 KB; and, if test51's lighter surround defeated the plain threshold, the
+D6 fallback ladder was climbed and recorded.
 
 | criterion | test50 | test51 | test53 | evidence |
 | --------- | :----: | :----: | :----: | -------- |

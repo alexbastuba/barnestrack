@@ -37,6 +37,11 @@ function makeSteps(context: AppContext): Step[] {
 const appRoot = document.getElementById('app');
 if (appRoot) {
   const store = new SessionStore(storage, toolVersion);
+  // Dev only, and stripped from the build: the browser checks need to plant a
+  // corrections layer before the correction UI exists to make one.
+  if (import.meta.env.DEV) {
+    (globalThis as unknown as Record<string, unknown>)['__barnestrackStore'] = store;
+  }
   // A reload must never lose the last few hundred milliseconds of work (D27).
   window.addEventListener('pagehide', () => void store.flush());
   const app = mountApp(appRoot, store, toolVersion, makeSteps);

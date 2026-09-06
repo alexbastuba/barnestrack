@@ -44,13 +44,16 @@ session it is found (D39).
   sample videos — 0.9 cm beyond the merge distance; their union of 1610–1692 px² sits at the
   oversized bound of 1611 px², so the area bound alone would not exclude them, and the robust
   exclusion of the start is the trial-start marker, O5).
-- **The nose is often unavailable, and a tail-only nose never clears O16.** The tail cue exists on
-  70 % / 75 % / 51 % of frames with a blob (test51 / test53 / test50) and no cue at all on 24 % /
-  21 % / 32 %: the re-encoded tail is frequently below the foreground threshold along its whole
-  length, and a hunched, nearly round body has no defined major axis. Where only the tail cue exists
-  the heading confidence is 0.5, below O16's 0.6 cutoff, so events would fall back to the centroid on
-  nearly every hole visit (the animal is stationary there, so the velocity cue is unavailable by
-  design). Measured in `prototypes/tracker/RESULTS.md`; the nose ships as experimental (D18).
+- **The nose is often unavailable, and where it exists it usually rests on a single cue.** The tail
+  cue exists on 70 % / 75 % / 51 % of frames with a blob (test51 / test53 / test50) and no cue at all
+  on 24 % / 21 % / 32 %: the re-encoded tail is frequently below the foreground threshold along its
+  whole length, and a hunched, nearly round body has no defined major axis. Where only the tail cue
+  exists the heading confidence is 0.5, which exactly meets O16's cutoff as revised on 2026-09-05 —
+  so on those frames events use the nose on the strength of one cue, with no second cue agreeing.
+  (At the original 0.6 the nose would instead have been unused on nearly every hole visit, since the
+  animal is stationary there and the velocity cue is unavailable by design.) The two cues agree, and
+  the confidence reaches 1.0, on only 42 / 96 / 672 frames per clip. Measured in
+  `prototypes/tracker/RESULTS.md`; the nose ships as experimental (D18).
 - **Velocity and tail cues can disagree on the left rim of test50.** With the moving threshold at
   8 cm/s the two cues still name opposite ends in 12 % of test50's frames that have both (88 of 760),
   mostly with the animal hanging over the left rim, where the grey wall lets part of the animal's
@@ -62,6 +65,30 @@ session it is found (D39).
   holes near the far platform edge are seen obliquely as small crescents). A baked-in animal of at
   least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
   to flag.
+- **Edited tracking parameters are not in the session file.** D51 stamps `SessionFile.parameters` at
+  the first *analysis* run, not the first tracking run, so until the analysis engine lands there is
+  nowhere in the contract for a tracking threshold the user changed to live. It is kept in the
+  browser's autosave record instead, beside the maze draft and the click count: it survives a reload
+  but a session file saved, reset and loaded again comes back at the defaults. The automatic layer's
+  `parametersHash` still records *which* parameters produced it, so a mismatch is detectable even
+  though the values themselves are not yet in the file. Closes when chunk 5 stamps `parameters`.
+- **A reload during a tracking pass loses the pass, silently.** No run state is persisted, so a video
+  whose pass was interrupted by a reload comes back simply "not tracked" rather than saying that a
+  run was interrupted. The guarantee that matters holds — the automatic layer is written once, at the
+  end, so nothing half-written can exist — but the user is not told why the video they left tracking
+  is untracked. A fix would persist a run marker and clear it on completion.
+- **The tracked percentage in the summary counts only the `tracked` state.** test53 reads "Tracked
+  65.2 % of frames" when 150 of its 905 frames have no animal on the platform at all and 165 more are
+  `low_confidence` — frames that do carry a position. The breakdown line beneath gives all four
+  counts, which is why it is there, but the headline number reads worse than the tracking is. A
+  fuller headline would separate "no animal present" from "animal present, not resolved", which needs
+  the trial bounds (O5) that land with the analysis engine.
+- **A cohort of long videos makes a large session file.** A 5,539-frame automatic layer is 3.96 MB of
+  session JSON on its own (measured), so the three sample videos together come to about 5.3 MB and a
+  cohort of twenty 3-minute videos would be near 80 MB. It round-trips in 14 ms and IndexedDB holds
+  it without complaint, but it is a large thing to email. The file is pretty-printed for
+  readability; compact JSON, or a per-frame encoding narrower than one object per frame, would cut it
+  substantially and is a contract change, not a formatting one.
 
 ## Excluded scope
 
@@ -93,11 +120,20 @@ session it is found (D39).
   ground-plane assumption, which is a larger change to the maze map contract than this tool needs
   for the sample data (see the test51 note below).
 
+- **The live thumbnail during a pass is provisional, and says so.** It shows the frame's largest
+  foreground blob (or the D48 union when the animal is split), not a result: the nose and the
+  detection state are decided at the end of the pass from cues across frames — the learned body area,
+  the velocity window, the previous position — so a mid-pass value for either would be a plausible
+  lie (D16). The thumbnail's caption and `aria-label` both read "provisional — final track computed
+  at end of pass", and it is drawn as an outline and a cross rather than a filled marker. Showing the
+  settled state live would mean running the tracker twice.
 - **No automated tests of the DOM layer.** `src/maze/` and `src/session/` are pure and unit-tested
   in Node; `src/ui/` is DOM- and canvas-bound, and the project has no DOM test environment (D3
-  keeps the dependency list short). The UI is covered by TypeScript, by the browser checks in
-  `tests/browser/app.spec.ts`, and by a recorded manual pass in Google Chrome. Adding jsdom or a
-  component-test runner is deliberately not done.
+  keeps the dependency list short). The DOM-free parts of a step — the summary sentence the Track
+  step prints, and the like — are extracted and unit-tested in `tests/ui/`; everything that touches
+  an element or a canvas is covered by TypeScript, by the browser checks in `tests/browser/`, and by
+  a recorded manual pass in Google Chrome. Adding jsdom or a component-test runner is deliberately
+  not done.
 
 - **The video is never stored, only its fingerprint.** After a reload a video is present but "not
   attached" until the same file is dropped again (D27). BarnesTrack could keep the file in

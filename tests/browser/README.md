@@ -19,11 +19,20 @@ BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
   reload plus re-attach by fingerprint including a renamed copy, and save → reset → load compared as
   a parsed deep-equal. Key order is not part of the session contract, so the comparison is on the
   parsed object, not the bytes.
+- `track.spec.ts` (chunk 4) — the four tracking behaviours that need a real worker and a real
+  decoder: the Track step naming what it is waiting for until the maze is finished, a pass writing
+  an automatic layer that survives a reload, a cancelled pass leaving *nothing* in storage, and
+  re-tracking with changed parameters leaving a corrections layer untouched. The corrections layer
+  is planted through `window.__barnestrackStore`, which `main.ts` exposes under `import.meta.env.DEV`
+  only and the production build strips — the correction UI that would make one lands in a later
+  chunk.
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 
-The rest of the chunk-3 acceptance list was verified by hand in Google Chrome on macOS against
-`npm run dev`. What was checked, and what it showed:
+What each chunk's acceptance list needed that its specs do not cover was verified by hand in Google
+Chrome on macOS against `npm run dev`, one section per chunk. What was checked, and what it showed:
+
+### Chunk 3 — intake, maze and the shell
 
 **Intake.** Loading `test53.mp4`, `test51.mp4` and `test50.mp4` together gives three cards reading
 905 · 30.000 fps · 0:30, 741 · 14.985 fps · 0:49 and 5539 · 30.000 fps · 3:05, in load order, each
@@ -59,3 +68,59 @@ namespace `http://www.w3.org/2000/svg`, which is an XML namespace identifier pas
 there is no horizontal scrolling and every control stays within the viewport. Text contrast was
 measured against the palette in `src/styles/app.css`: the lowest text pair is 6.56:1 and the two
 non-text borders are 3.04:1 and 3.37:1, against the 4.5:1 and 3:1 requirements.
+
+### Chunk 4 — tracking in the app
+
+Driven in Google Chrome against `npm run dev`, on the same M1 Pro / 32 GB / macOS 15.5 as the
+earlier measurements. Each video was loaded on its own, the maze built from the numeric fields, and
+**Track** pressed once.
+
+| video | frames | wall time, click → summary | tracker | session JSON | states |
+| ----- | -----: | -------------------------: | ------: | -----------: | ------ |
+| test53 | 905 | 1.8 s | 1,910 fps | 0.65 MB | 150 not detected, 165 low confidence, 590 tracked |
+| test51 | 741 | 2.3 s | 1,482 fps | 0.54 MB | 75 ambiguous, 83 low confidence, 583 tracked |
+| test50 | 5,539 | 4.4 s | 2,148 fps | 4.14 MB | 150 not detected, 1,302 low confidence, 4,087 tracked |
+
+Wall time is the whole thing a user waits for — background sampling, the median, and the pass — so
+test50's 5,539 frames at 4.4 s is about 1,260 frames per second end to end, against the ≥ 150 fps
+criterion and a 40 s target. The states line up with what chunk 2 measured offline: test53's empty
+first 150 frames are `not_detected`, and test51's start-cylinder frames are `ambiguous`.
+
+**The tracked percentage counts only the `tracked` state.** test53 reads "65.2 % of frames" because
+150 frames have no animal on the platform at all and 165 more are `low_confidence`; the breakdown
+line under it gives all four counts, which is why it is there.
+
+**Responsiveness during a pass (D17).** Sampling `requestAnimationFrame` on the main thread for the
+whole of a test50 pass: 286 frames, median 16.7 ms, worst 21.2 ms — a steady 60 fps with no dropped
+frame. The Videos and Maze steps were both opened and used mid-pass and rendered normally; the pass
+kept running and finished. Decoding and tracking are in the worker, and progress never touches the
+session store, so the main thread only paints.
+
+**The live thumbnail updates.** A 214 × 160 preview, sampled twice during one pass, differs between
+samples. It is captioned and `aria-label`-led "provisional — final track computed at end of pass"
+throughout.
+
+**Cancel.** Cancelling mid-pass leaves the card reading "Cancelled — nothing was written, so the
+video is still untracked", and the IndexedDB record's `analyses` is empty. Nothing half-written can
+exist because the layer is written once, at the end.
+
+**Reload during a pass.** The video comes back **untracked**, not marked cancelled: no run state is
+persisted, by design. A video whose pass had already finished is still there. Checked directly
+against the stored record, which listed only the completed video.
+
+**Reload after a pass.** The finished layer is present and the card reads "905 frames on record".
+Wait for the header to say "All changes saved in this browser" first — a reload inside the ~500 ms
+autosave window can lose the last change, which is a limitation already recorded in
+`docs/known-limitations.md`, and the browser spec waits for that signal for the same reason.
+
+**`peakHeapBytes` is absent on the worker path.** `performance.memory` is not exposed inside a
+worker, so `usedHeapBytes()` returns undefined and the `done` message carries no `peakHeapBytes`.
+The field stays in the protocol as optional; nothing reads it.
+
+**Keyboard only.** The whole Track step is reachable and operable from the keyboard: `Tab` through
+Track / Cancel / Track all untracked, the parameters disclosure opens with `Enter` or `Space`, and
+every parameter is a labelled number input or select with its definition as its `aria-describedby`
+hint. The progress text is `aria-live="off"`; only the transitions — started, finished with the
+summary sentence, cancelled, failed — are announced through the shell's live region, so a screen
+reader is told what happened without a running commentary. Status is carried by words, with colour
+only echoing it.
