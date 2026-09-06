@@ -24,6 +24,7 @@ import {
 } from '../session/tracking-runs.js';
 import type { VideoId } from '../session/stored.js';
 import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
+import { describeFrameRanges, formatFrameRanges, parseFrameRanges } from './frame-ranges.js';
 import type { AppContext, Step } from './step.js';
 import {
   formatClock,
@@ -57,6 +58,11 @@ export function createTrackStep(context: AppContext): Step {
     onChange: (state) => {
       cardFor.get(state.videoId)?.showRun(state);
       refreshQueueControls();
+      // Only when a run settles, not on every progress tick: a finished pass
+      // may have a learned body area to offer the other videos (D29).
+      if (state.phase === 'done' || state.phase === 'failed' || state.phase === 'cancelled') {
+        parameterPanel.refresh();
+      }
       announcePhase(state);
     },
     onComplete: (videoId, auto) => {
@@ -545,6 +551,13 @@ function createParameterPanel(
   });
   modeSelect.setAttribute('aria-describedby', thresholdHint.id);
 
+  const manualHint = el('span', {
+    class: 'hint',
+    id: `${manualInput.id}-hint`,
+    text: 'Used only when the threshold mode above is Manual.',
+  });
+  manualInput.setAttribute('aria-describedby', manualHint.id);
+
   rows.push(
     el('div', { class: 'field track-param' }, [
       el('label', { text: 'Foreground threshold', attrs: { for: modeSelect.id } }),
@@ -556,7 +569,40 @@ function createParameterPanel(
       el('label', { text: 'Manual threshold (0–255)', attrs: { for: manualInput.id } }),
       manualInput,
       el('span', { class: 'track-param-default', text: 'default 40' }),
-      el('span', { class: 'hint', text: 'Used only when the threshold mode above is Manual.' }),
+      manualHint,
+    ]),
+  );
+
+  // Background exclude ranges: the remedy the contamination warning names.
+  const excludeInput = el('input', { id: uniqueId('track-param'), class: 'range-input' });
+  excludeInput.type = 'text';
+  excludeInput.placeholder = 'e.g. 0-74, 200-210';
+  excludeInput.addEventListener('change', () => {
+    const parsed = parseFrameRanges(excludeInput.value);
+    if (!parsed.ok) {
+      context.announce(parsed.message);
+      refresh();
+      return;
+    }
+    commit({ backgroundExcludeRanges: parsed.ranges });
+    refresh();
+    context.announce(`Background exclude ranges: ${describeFrameRanges(parsed.ranges)}.`);
+  });
+
+  const excludeHint = el('span', {
+    class: 'hint',
+    id: `${excludeInput.id}-hint`,
+    text: TRACKING_PARAMETER_DEFINITIONS.backgroundExcludeRanges,
+  });
+  excludeInput.setAttribute('aria-describedby', excludeHint.id);
+  const excludeSummary = el('span', { class: 'track-param-default' });
+
+  rows.push(
+    el('div', { class: 'field track-param' }, [
+      el('label', { text: 'Background exclude ranges', attrs: { for: excludeInput.id } }),
+      excludeInput,
+      excludeSummary,
+      excludeHint,
     ]),
   );
 
@@ -660,6 +706,10 @@ function createParameterPanel(
       expectedInput.value =
         params.expectedBlobArea_cm2 === null ? '' : String(params.expectedBlobArea_cm2);
     }
+    if (document.activeElement !== excludeInput) {
+      excludeInput.value = formatFrameRanges(params.backgroundExcludeRanges);
+    }
+    excludeSummary.textContent = describeFrameRanges(params.backgroundExcludeRanges);
 
     const learned = firstLearnedArea();
     learnedNote.hidden = learned === null;
