@@ -91,8 +91,10 @@ export interface ContaminationCheck {
  * Dark components of the background inside the mask, excluding those that
  * reach the rim zone (the surround is dark too and cannot be told apart from
  * an animal at the edge). With twenty similar holes the median dark blob is
- * hole-sized; a blob much larger than it, or mouse-sized and elongated, is
- * reported as a warning naming the `backgroundExcludeRanges` remedy.
+ * hole-sized; a blob much larger than it, or at least hole-sized and
+ * elongated, is reported as a warning naming the `backgroundExcludeRanges`
+ * remedy. (Obliquely seen holes at the platform edge are small crescents and
+ * must not trigger it.)
  */
 export function checkBackgroundContamination(
   background: Uint8Array,
@@ -142,8 +144,12 @@ export function checkBackgroundContamination(
   for (const b of kept) {
     b.areaRatio = medianArea > 0 ? b.area_px2 / medianArea : 1;
     const tooLarge = kept.length >= 2 && b.areaRatio >= CONFIDENCE_MODEL.contaminationAreaFactor;
+    // Holes seen obliquely near the platform edge are crescents: small and elongated. A
+    // stationary animal is at least hole-sized, so the elongation rule needs the area too.
     const elongated =
-      b.area_px2 <= px.maxBlobArea_px2 && b.elongation >= CONFIDENCE_MODEL.contaminationElongation;
+      b.areaRatio >= 1 &&
+      b.area_px2 <= px.maxBlobArea_px2 &&
+      b.elongation >= CONFIDENCE_MODEL.contaminationElongation;
     if (tooLarge || elongated) {
       b.flagged = true;
       warnings.push(

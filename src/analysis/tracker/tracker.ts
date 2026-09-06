@@ -104,8 +104,48 @@ export interface TrackerTiming {
   fps: number;
 }
 
+/** Body geometry of the selected blob, for overlays and evidence; not part of the track contract. */
+export interface BodyAxis {
+  /** Contour extremes along the major axis (A farthest along +u, B along −u). */
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  /** Semi-axis lengths, px. */
+  major: number;
+  minor: number;
+  angle_rad: number;
+  tail: TailDirection | null;
+  /** Pixels attributed to the tail (before the direction checks) and their centroid's offset from the body centroid, px. */
+  tailPixels: number;
+  tailOffset_px: number;
+}
+
+/** Which head-direction cues were available per frame (evidence for O16); not part of the track contract. */
+export interface NoseCueRecord {
+  tail: boolean;
+  velocity: boolean;
+  hole: boolean;
+  moving: boolean;
+  speed_pxPerS: number | null;
+}
+
+/** A plausible component of one frame (evidence for the quality report and for reviewing ambiguous frames); not part of the track contract. */
+export interface CandidateSummary {
+  area_px2: number;
+  cx: number;
+  cy: number;
+  rimContact: boolean;
+}
+
 export interface TrackerResult {
   frames: TrackFrame[];
+  /** One entry per frame: every candidate at or above the minimum area, largest first. */
+  candidates: CandidateSummary[][];
+  /** One entry per frame: the selected blob's axis, or null when no blob was selected. */
+  axes: (BodyAxis | null)[];
+  /** One entry per frame: the nose cues that were available (all false when no blob was selected). */
+  noseCues: NoseCueRecord[];
   summary: TrackerSummary;
   timing: TrackerTiming;
 }
@@ -129,6 +169,9 @@ interface CandidateRecord {
   bx: number;
   by: number;
   tail: TailDirection | null;
+  /** Pixels attributed to the tail before the direction checks, and their centroid's distance from the body centroid. */
+  tailPixels: number;
+  tailOffset_px: number;
 }
 
 interface Observation {
@@ -258,6 +301,40 @@ export function createTracker(options: TrackerOptions): Tracker {
           rawChildCount[r] = rawChildCount[r]! + 1;
           rawChildIndex[r] = b;
         }
+        // A detached piece (no body of its own) close to exactly one body is that body's tail.
+        const attachGap = CONFIDENCE_MODEL.tailAttachGapFactor * disc.radius;
+        for (let r = 1; r <= nRaw; r++) {
+          if (rawChildCount[r] !== 0) continue;
+          const piece = rawComponents[r - 1]!;
+          if (piece.area < CONFIDENCE_MODEL.noseTailMinPixels) continue;
+          const pieceShape = ellipseFromComponent(piece);
+          if (
+            pieceShape.minor <= 0 ||
+            pieceShape.major / pieceShape.minor < CONFIDENCE_MODEL.tailPieceMinElongation
+          ) {
+            continue;
+          }
+          let near = -1;
+          let nearCount = 0;
+          for (let b = 0; b < nBody; b++) {
+            const c = bodyComponents[b]!;
+            const gap = Math.max(
+              0,
+              piece.minX - c.maxX - 1,
+              c.minX - piece.maxX - 1,
+              piece.minY - c.maxY - 1,
+              c.minY - piece.maxY - 1,
+            );
+            if (gap <= attachGap) {
+              nearCount++;
+              near = b;
+            }
+          }
+          if (nearCount === 1) {
+            rawChildCount[r] = 1;
+            rawChildIndex[r] = near;
+          }
+        }
         for (let y = extent.bbox.y0; y < extent.bbox.y1; y++) {
           const row = y * width;
           for (let x = extent.bbox.x0; x < extent.bbox.x1; x++) {
@@ -316,6 +393,14 @@ export function createTracker(options: TrackerOptions): Tracker {
               CONFIDENCE_MODEL.noseTailMinPixels,
               CONFIDENCE_MODEL.noseTailMinOffsetFraction * e.major,
             ),
+            tailPixels: tailCount[b]!,
+            tailOffset_px:
+              tailCount[b]! > 0
+                ? Math.hypot(
+                    tailSumX[b]! / tailCount[b]! - e.cx,
+                    tailSumY[b]! / tailCount[b]! - e.cy,
+                  )
+                : 0,
           });
         }
       }
@@ -384,6 +469,9 @@ export function createTracker(options: TrackerOptions): Tracker {
     const noses = assignNose(noseInputs, px, options.holes ?? []);
 
     const frames: TrackFrame[] = new Array<TrackFrame>(observations.length);
+    const axes: (BodyAxis | null)[] = new Array<BodyAxis | null>(observations.length);
+    const noseCues: NoseCueRecord[] = new Array<NoseCueRecord>(observations.length);
+    const candidatesOut: CandidateSummary[][] = new Array<CandidateSummary[]>(observations.length);
     const stateCounts: Record<DetectionState, number> = {
       tracked: 0,
       not_detected: 0,
@@ -402,6 +490,14 @@ export function createTracker(options: TrackerOptions): Tracker {
       const o = observations[i]!;
       const s = selections[i]!;
       const nose = noses[i]!;
+      axes[i] = null;
+      noseCues[i] = { ...nose.cues, moving: nose.moving, speed_pxPerS: nose.speed_pxPerS };
+      candidatesOut[i] = o.candidates.map((c) => ({
+        area_px2: c.area,
+        cx: c.cx,
+        cy: c.cy,
+        rimContact: c.rimContact,
+      }));
       stateCounts[s.state]++;
       reasonCounts[s.reason]++;
       let centroid = invalidPoint();
@@ -436,6 +532,18 @@ export function createTracker(options: TrackerOptions): Tracker {
           source: 'auto',
         };
         blobArea_px2 = c.area;
+        axes[i] = {
+          ax: c.ax,
+          ay: c.ay,
+          bx: c.bx,
+          by: c.by,
+          major: c.major,
+          minor: c.minor,
+          angle_rad: Math.atan2(c.uy, c.ux),
+          tail: c.tail,
+          tailPixels: c.tailPixels,
+          tailOffset_px: c.tailOffset_px,
+        };
         boundingBox = {
           x: c.minX,
           y: c.minY,
@@ -485,6 +593,9 @@ export function createTracker(options: TrackerOptions): Tracker {
     };
     return {
       frames,
+      candidates: candidatesOut,
+      axes,
+      noseCues,
       summary,
       timing: {
         frames: frames.length,
@@ -552,6 +663,8 @@ export interface PrepareOptions {
   params: TrackingParameters;
   /** Sample frames (gray planes) chosen with `backgroundSampleIndices`. */
   samples: readonly Uint8Array[];
+  /** A median background already computed from `samples` (skips recomputing it). */
+  background?: Uint8Array;
 }
 
 export interface Preparation {
@@ -569,7 +682,10 @@ export function prepareTracking(options: PrepareOptions): Preparation {
   const pxPerCm = pxPerCmFromPlatform(platform, options.platformDiameter_cm);
   const px = toPixelUnits(params, platform, pxPerCm);
   const mask = platformMask(width, height, platform, px.maskRadius_px);
-  const background = medianBackground(samples, width, height);
+  const background = options.background ?? medianBackground(samples, width, height);
+  if (background.length !== width * height) {
+    throw new RangeError(`background has ${background.length} bytes, expected ${width * height}`);
+  }
   const threshold = chooseThreshold(background, samples, mask, params);
   const contamination = checkBackgroundContamination(background, mask, px);
   return { pxPerCm, background, threshold, mask, px, warnings: [...contamination.warnings] };

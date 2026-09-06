@@ -25,7 +25,7 @@ export const DEFAULT_TRACKING_PARAMETERS: TrackingParameters = {
   smallBlobFactor: 0.5,
   tailOpeningRadius_cm: 0.8,
   noseCueWindowFrames: 3,
-  noseMovingSpeed_cmPerS: 2,
+  noseMovingSpeed_cmPerS: 8,
   rimContactMargin_cm: 1.0,
   proximityRadius_cm: 6,
 };
@@ -54,7 +54,7 @@ export const TRACKING_PARAMETER_DEFINITIONS: Record<keyof TrackingParameters, st
   noseCueWindowFrames:
     'Half-width, in frames, of the centred window over which the centroid velocity is measured as a head-direction cue.',
   noseMovingSpeed_cmPerS:
-    'Centroid speed below which the animal counts as stationary: the velocity cue is unavailable and the hole-proximity cue may apply (cm/s).',
+    'Centroid speed below which the animal counts as stationary: the velocity cue is unavailable and the hole-proximity cue may apply (cm/s). Below walking speed the centroid direction is jitter, not heading.',
   rimContactMargin_cm:
     'A blob with any pixel within this distance of the platform edge, or beyond it, is low_confidence / partial_at_rim (cm).',
   proximityRadius_cm:
@@ -71,6 +71,10 @@ export const CONFIDENCE_MODEL = {
   noseCueMinCos: 0.5,
   /** The tail cue needs at least this many pixels removed by the opening. */
   noseTailMinPixels: 4,
+  /** A foreground piece with no body of its own is attributed as tail to the one body whose bounding box lies within this × the opening radius of it (the re-encoded tail base often falls below threshold and detaches). */
+  tailAttachGapFactor: 2,
+  /** A detached piece is attached only when its own second-moment ellipse is at least this elongated (a tail is a line; a shadow is a blob). */
+  tailPieceMinElongation: 2.5,
   /** The removed pixels' centroid must lie at least this fraction of the body's major semi-axis from the body centroid to be a tail (rounded edges removed all round are not). */
   noseTailMinOffsetFraction: 0.5,
   /** The hole cue applies when a hole centre lies within this multiple of the hole radius of either axis end. */
@@ -87,7 +91,7 @@ export const CONFIDENCE_MODEL = {
   maxCandidatesPerFrame: 8,
   /** Background contamination: a dark blob at least this multiple of the median dark-blob area (≈ one hole) is warned about. */
   contaminationAreaFactor: 1.5,
-  /** Background contamination: a mouse-sized dark blob with major ÷ minor axis at least this is warned about. */
+  /** Background contamination: a dark blob at least hole-sized (≥ the median) and no larger than maxBlobArea with major ÷ minor axis at least this is warned about. */
   contaminationElongation: 1.8,
 } as const;
 
@@ -95,6 +99,10 @@ export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL,
   noseCueMinCos:
     'A head-direction cue is used only when the angle between it and the body axis is within acos(this) (0.5 → 60°).',
   noseTailMinPixels: 'Fewer removed pixels than this and there is no tail cue.',
+  tailAttachGapFactor:
+    'Detached foreground pieces within this × the opening radius of exactly one body count as that body’s tail.',
+  tailPieceMinElongation:
+    'Detached pieces are attached as tail only when at least this elongated (major ÷ minor axis).',
   noseTailMinOffsetFraction:
     'Tail cue: the removed pixels’ centroid must be at least this × the major semi-axis away from the body centroid.',
   noseHoleRadiusFactor:
@@ -109,7 +117,7 @@ export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL,
   contaminationAreaFactor:
     'Background check: dark blob area ÷ median dark blob area at or above this is a stationary object or animal, not a hole.',
   contaminationElongation:
-    'Background check: a mouse-sized dark blob this elongated is a stationary animal, not a hole.',
+    'Background check: a dark blob at least hole-sized and this elongated is a stationary animal, not a hole.',
 };
 
 /**
@@ -117,9 +125,11 @@ export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL,
  * harness has no numbers of its own.
  */
 export const PLATFORM_ESTIMATE_MODEL = {
-  /** Only bright-region boundary pixels farther than this fraction of the area radius from the centre are rim points (excludes hole rims). */
-  boundaryFraction: 0.8,
-  /** Rim points farther than this from the fitted circle are dropped before the refit (px). */
+  /** Angle bins around the first-pass centre; the outermost boundary pixel of each bin is a rim point (hole rims are never outermost). */
+  angleBins: 720,
+  /** First rejection: rim points with a residual above this multiple of the median absolute residual are dropped. */
+  madFactor: 3,
+  /** Final rejection: rim points farther than this from the fitted circle are dropped before the last refit (px). */
   outlierResidual_px: 3,
 } as const;
 
@@ -127,10 +137,11 @@ export const PLATFORM_ESTIMATE_MODEL_DEFINITIONS: Record<
   keyof typeof PLATFORM_ESTIMATE_MODEL,
   string
 > = {
-  boundaryFraction:
-    'Fraction of the first-pass radius beyond which boundary pixels are taken as rim points.',
+  angleBins:
+    'Number of angle bins; each contributes its outermost bright-boundary pixel as a rim point.',
+  madFactor: 'Rim points beyond this × the median absolute residual of the first fit are dropped.',
   outlierResidual_px:
-    'Residual (px) beyond which a rim point is excluded from the second circle fit.',
+    'Residual (px) beyond which a rim point is excluded from the final circle fit.',
 };
 
 export function isFrameExcluded(frameIndex: number, ranges: readonly FrameRange[]): boolean {

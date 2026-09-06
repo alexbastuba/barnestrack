@@ -265,3 +265,54 @@ describe('parameter definitions', () => {
     }
   });
 });
+
+describe('tail attribution', () => {
+  function tailCueOn(objects: SceneObjects, frames = 9): { tail: boolean; noseValid: boolean } {
+    const s = setup();
+    const tracker = trackerFor(s);
+    const frame = renderScene(s.spec, objects);
+    for (let i = 0; i < frames; i++) tracker.onFrame(frame, i, t_s(i));
+    const result = tracker.finish();
+    const mid = Math.floor(frames / 2);
+    return { tail: result.noseCues[mid]!.tail, noseValid: result.frames[mid]!.nose.valid };
+  }
+
+  it('finds the tail when it is attached to the body', () => {
+    expect(tailCueOn({ mouse: { ...DEFAULT_MOUSE, x: 300, y: 220, heading: 0.5 } })).toEqual({
+      tail: true,
+      noseValid: true,
+    });
+  });
+
+  it('attaches a detached tail piece that lies within reach of the body', () => {
+    // A tail whose base is missing: drawn as a separate thin line starting 5 px behind the rear.
+    const s = setup();
+    const m = { ...DEFAULT_MOUSE, x: 300, y: 220, heading: 0, tailLength: 0 };
+    const frame = renderScene(s.spec, { mouse: m });
+    const rearX = m.x - m.bodyLength;
+    for (let x = rearX - 30; x <= rearX - 5; x++) {
+      for (let dy = -1; dy <= 1; dy++) frame[(m.y + dy) * s.spec.width + x] = 40;
+    }
+    const tracker = trackerFor(s);
+    for (let i = 0; i < 9; i++) tracker.onFrame(frame, i, t_s(i));
+    const result = tracker.finish();
+    expect(result.noseCues[4]!.tail).toBe(true);
+    expect(result.axes[4]!.tail!.dx).toBeLessThan(-0.9);
+    expect(result.frames[4]!.nose.x).toBeGreaterThan(m.x + 10); // head end is +x
+  });
+
+  it('does not attach a compact dark spot near the body', () => {
+    const s = setup();
+    const m = { ...DEFAULT_MOUSE, x: 300, y: 220, heading: 0, tailLength: 0 };
+    const frame = renderScene(s.spec, {
+      mouse: m,
+      hand: { x: m.x - m.bodyLength - 8, y: m.y, radius: 4, darkness: 150 },
+    });
+    const tracker = trackerFor(s);
+    for (let i = 0; i < 9; i++) tracker.onFrame(frame, i, t_s(i));
+    const result = tracker.finish();
+    expect(result.noseCues[4]!.tail).toBe(false);
+    expect(result.frames[4]!.nose.valid).toBe(false);
+    expect(result.candidates[4]!.length).toBe(1);
+  });
+});

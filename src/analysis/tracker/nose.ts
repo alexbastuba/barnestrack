@@ -45,6 +45,8 @@ export interface NoseResult {
   headingConfidence: number;
   /** Centroid speed over the window was measurable and at or above the moving threshold. */
   moving: boolean;
+  /** Centroid speed over the window, px/s, or null when not measurable. */
+  speed_pxPerS: number | null;
   /** Which cues were available (for the evidence tables). */
   cues: { tail: boolean; velocity: boolean; hole: boolean };
 }
@@ -71,7 +73,15 @@ export function assignNose(
     const s = frames[i]!.shape;
     const cues = { tail: false, velocity: false, hole: false };
     if (!s) {
-      out[i] = { x: 0, y: 0, valid: false, headingConfidence: 0, moving: false, cues };
+      out[i] = {
+        x: 0,
+        y: 0,
+        valid: false,
+        headingConfidence: 0,
+        moving: false,
+        speed_pxPerS: null,
+        cues,
+      };
       continue;
     }
 
@@ -86,6 +96,7 @@ export function assignNose(
     let velocitySign = 0;
     let moving = false;
     let stationary = false;
+    let speedMeasured: number | null = null;
     let before = -1;
     for (let j = Math.max(0, i - window); j < i; j++) {
       if (frames[j]!.shape) {
@@ -108,6 +119,7 @@ export function assignNose(
         const vx = (b.shape!.cx - a.shape!.cx) / dt;
         const vy = (b.shape!.cy - a.shape!.cy) / dt;
         const speed = Math.hypot(vx, vy);
+        speedMeasured = speed;
         if (speed >= px.noseMovingSpeed_pxPerS) {
           moving = true;
           velocitySign = cueSign(s.ux, s.uy, vx / speed, vy / speed);
@@ -146,14 +158,30 @@ export function assignNose(
 
     const signs = [tailSign, velocitySign, holeSign].filter((v) => v !== 0);
     if (signs.length === 0) {
-      out[i] = { x: s.ax, y: s.ay, valid: false, headingConfidence: 0, moving, cues };
+      out[i] = {
+        x: s.ax,
+        y: s.ay,
+        valid: false,
+        headingConfidence: 0,
+        moving,
+        speed_pxPerS: speedMeasured,
+        cues,
+      };
       continue;
     }
     const first = signs[0]!;
     const agree = signs.every((v) => v === first);
     const headingConfidence = !agree ? 0 : signs.length >= 2 ? 1 : 0.5;
     const end = endFor(first, s);
-    out[i] = { x: end.x, y: end.y, valid: true, headingConfidence, moving, cues };
+    out[i] = {
+      x: end.x,
+      y: end.y,
+      valid: true,
+      headingConfidence,
+      moving,
+      speed_pxPerS: speedMeasured,
+      cues,
+    };
   }
   return out;
 }
