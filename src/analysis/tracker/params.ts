@@ -61,7 +61,7 @@ export const TRACKING_PARAMETER_DEFINITIONS: Record<keyof TrackingParameters, st
   proximityRadius_cm:
     'With several plausible blobs, the frame is tracked only if exactly one lies within this distance of the last valid centroid (cm).',
   fragmentMergeDistance_cm:
-    'Plausible pieces whose centroids all lie within this distance of each other are merged into one animal (low_confidence / fragmented) when the union satisfies the area bounds; one body length (8 cm): the sample videos split the animal at holes and the rim into pieces at most 6.5 cm apart, while the start cylinder’s two crescents are 8.9 cm apart.',
+    'Foreground pieces whose centroids all lie within this distance of each other are merged into one animal. Default 8 cm, about one mouse body length.',
 };
 
 /**
