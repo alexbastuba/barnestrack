@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { IndexedCanvas, contactPalette } from '../../../scripts/tracker-node/contact-sheet.js';
 import { crc32, decodePng, encodePng } from '../../../scripts/tracker-node/png.js';
-import { ffmpegHasLibx264 } from '../../video/synthetic-clip.js';
+import { SKIP_REASON, ffmpegHasLibx264 } from '../../video/synthetic-clip.js';
 
 const hasFfmpeg = ffmpegHasLibx264();
+if (!hasFfmpeg) console.warn(SKIP_REASON);
 
 describe('png encoder', () => {
   it('computes the standard CRC-32', () => {

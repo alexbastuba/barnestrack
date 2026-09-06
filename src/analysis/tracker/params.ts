@@ -69,7 +69,7 @@ export const TRACKING_PARAMETER_DEFINITIONS: Record<keyof TrackingParameters, st
 export const CONFIDENCE_MODEL = {
   /** Body-axis cue agreement: a cue counts only when |cos(angle between body axis and cue direction)| is at least this. */
   noseCueMinCos: 0.5,
-  /** The tail cue needs at least this many pixels removed by the opening. */
+  /** The tail cue needs at least this many pixels removed by the opening; a detached piece needs at least this many pixels to be attached at all. */
   noseTailMinPixels: 4,
   /** A foreground piece with no body of its own is attributed as tail to the one body whose bounding box lies within this × the opening radius of it (the re-encoded tail base often falls below threshold and detaches). */
   tailAttachGapFactor: 2,
@@ -98,7 +98,8 @@ export const CONFIDENCE_MODEL = {
 export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL, string> = {
   noseCueMinCos:
     'A head-direction cue is used only when the angle between it and the body axis is within acos(this) (0.5 → 60°).',
-  noseTailMinPixels: 'Fewer removed pixels than this and there is no tail cue.',
+  noseTailMinPixels:
+    'Fewer removed pixels than this and there is no tail cue; a detached piece smaller than this is never attached.',
   tailAttachGapFactor:
     'Detached foreground pieces within this × the opening radius of exactly one body count as that body’s tail.',
   tailPieceMinElongation:

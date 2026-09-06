@@ -67,7 +67,7 @@ describe('assignNose on constructed inputs', () => {
     const frames: NoseFrameInput[] = [];
     for (let i = 0; i < 9; i++) frames.push({ t_s: i / 30, shape: shape(100, 50, null) });
     const out = assignNose(frames, px);
-    expect(out[4]).toMatchObject({ valid: false, headingConfidence: 0, moving: false });
+    expect(out[4]).toMatchObject({ x: 0, y: 0, valid: false, headingConfidence: 0, moving: false });
     expect(out[4]!.cues).toEqual({ tail: false, velocity: false, hole: false });
   });
 

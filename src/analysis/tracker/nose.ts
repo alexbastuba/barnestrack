@@ -158,9 +158,10 @@ export function assignNose(
 
     const signs = [tailSign, velocitySign, holeSign].filter((v) => v !== 0);
     if (signs.length === 0) {
+      // No cue at all: no coordinate is offered (D16), not even an axis end.
       out[i] = {
-        x: s.ax,
-        y: s.ay,
+        x: 0,
+        y: 0,
         valid: false,
         headingConfidence: 0,
         moving,

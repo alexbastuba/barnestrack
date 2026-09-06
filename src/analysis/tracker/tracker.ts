@@ -525,8 +525,8 @@ export function createTracker(options: TrackerOptions): Tracker {
         const confidence = areaFactor * contrastFactor * candidateFactor * rimFactor;
         centroid = { x: c.cx, y: c.cy, confidence, valid: true, source: 'auto' };
         nosePoint = {
-          x: nose.x,
-          y: nose.y,
+          x: nose.valid ? nose.x : 0,
+          y: nose.valid ? nose.y : 0,
           confidence: nose.valid ? confidence * nose.headingConfidence : 0,
           valid: nose.valid,
           source: 'auto',

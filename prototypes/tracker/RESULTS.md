@@ -107,7 +107,8 @@ The contact sheet (`<video>.contact.png`) tiles the 30 uniformly sampled frames 
 same frames as 2 × crops around the centroid, which is where the judgements below were made. "Nose on
 head end" was judged only on frames the tracker marks moving (centroid speed ≥ 8 cm/s), as the brief
 asks; for the other frames the column is "–". The head end was judged from the animal's visible tail
-in the crop (the tail is unmistakable; the head is the other end). Alex will re-check the images.
+in the crop (the tail is unmistakable; the head is the other end). The images are here for a second reader
+to re-check the judgements.
 
 ### test51 (start cylinder, lighter surround; 30 uniform + 6 extra)
 

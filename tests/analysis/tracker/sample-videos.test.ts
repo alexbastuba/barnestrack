@@ -22,7 +22,7 @@ const PLATFORMS = {
 /** The start cylinder sits on the platform in these frames of test51 (checked by eye: lifted between frames 74 and 76). */
 const TEST51_CYLINDER_FRAMES: [number, number] = [0, 74];
 /** test53 starts with an empty platform; the animal is placed at frame 150. */
-const TEST53_EMPTY_FRAMES: [number, number] = [0, 59];
+const TEST53_EMPTY_FRAMES: [number, number] = [0, 149];
 
 const TIMEOUT_MS = 120_000;
 

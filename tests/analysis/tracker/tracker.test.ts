@@ -68,6 +68,7 @@ describe('createTracker output contract', () => {
         expect(p.confidence).toBeLessThanOrEqual(1);
         expect(typeof p.valid).toBe('boolean');
         expect(p.source).toBe('auto');
+        if (!p.valid) expect([p.x, p.y, p.confidence]).toEqual([0, 0, 0]);
       }
       expect(['tracked', 'not_detected', 'ambiguous', 'low_confidence']).toContain(
         f.detectionState,
