@@ -3,7 +3,8 @@ import { SessionStore } from './session/session-store.js';
 import { IndexedDbSessionStorage, MemorySessionStorage } from './session/storage.js';
 import { mountApp } from './ui/app.js';
 import { placeholderStep } from './ui/placeholder-step.js';
-import type { Step } from './ui/step.js';
+import { createVideosStep } from './ui/videos-step.js';
+import type { AppContext, Step } from './ui/step.js';
 
 const toolVersion = __BARNESTRACK_VERSION__;
 
@@ -11,15 +12,9 @@ const storage = IndexedDbSessionStorage.isAvailable()
   ? new IndexedDbSessionStorage()
   : new MemorySessionStorage();
 
-function makeSteps(): Step[] {
+function makeSteps(context: AppContext): Step[] {
   return [
-    placeholderStep({
-      id: 'videos',
-      label: 'Videos',
-      what: 'Load the videos of one cohort.',
-      definitions: [],
-      waitingFor: () => 'this step lands with the intake UI',
-    }),
+    createVideosStep(context),
     placeholderStep({
       id: 'maze',
       label: 'Maze',
