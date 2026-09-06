@@ -241,6 +241,19 @@ live recomputation (D20). The full default values and the single configuration m
 them are added in chunk 5 — this section is a placeholder until then; the shape (which fields
 exist) is fixed by `src/contracts/parameters.ts` today.
 
+**The hash (D51).** `parametersHash` is the lowercase hex SHA-256 of the *canonical JSON* of the
+value. Canonical means: object keys sorted ascending by code unit at every level; no whitespace
+anywhere; array order preserved, because order is part of the value; `undefined` members omitted,
+exactly as `JSON.stringify` omits them; numbers written as `JSON.stringify` writes them. Two layers
+whose hashes match were produced by the same parameters, so a hash that differed by a byte between
+two implementations would silently invalidate stored work — there is therefore one implementation,
+`src/session/parameters-hash.ts`, and everything else imports it rather than deriving its own.
+
+Which value is hashed depends on the layer: the `auto` layer is keyed by the hash of
+`parameters.tracking` alone, since nothing outside the tracking block changes a tracking run; the
+`derived` layer and the export stamp are keyed by the hash of the whole `Parameters` value. Changing
+an event threshold therefore invalidates the analysis but not an hour of tracking.
+
 ### Tracking parameters (`parameters.tracking`, D6)
 
 The thresholds of the tracking pass, added to `Parameters` without a schema bump (no schema-1

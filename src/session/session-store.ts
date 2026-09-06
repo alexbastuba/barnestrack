@@ -12,9 +12,13 @@
  * Nothing here mutates an `auto` layer: this store only ever replaces whole
  * descriptors, the maze map, and metadata.
  */
+import { DEFAULT_TRACKING_PARAMETERS } from '../analysis/tracker/params.js';
 import type { MazeMapFile, SimilarityTransform } from '../contracts/mazeMap.js';
+import type { TrackingParameters } from '../contracts/parameters.js';
 import type {
+  AutoLayer,
   SessionFile,
+  VideoAnalysis,
   VideoDescriptor,
   VideoFingerprint,
   VideoMetadata,
@@ -60,6 +64,7 @@ export interface SessionStoreOptions {
 export class SessionStore {
   private session: SessionFile;
   private draftMazeMap: MazeMapFile | null = null;
+  private workingTrackingParameters: TrackingParameters | null = null;
   private mazeClicks: Record<VideoId, number> = {};
   /** Bumped whenever the whole session is replaced, so views can drop cached state. */
   private sessionEpoch = 0;
@@ -125,6 +130,8 @@ export class SessionStore {
     this.session = record.file;
     this.draftMazeMap = record.draftMazeMap;
     this.mazeClicks = { ...record.mazeClicks };
+    // Records written before this field existed simply have no override.
+    this.workingTrackingParameters = record.trackingParameters ?? null;
     this.sessionEpoch += 1;
     this.emit();
     return true;
@@ -135,6 +142,7 @@ export class SessionStore {
     this.closeAttachments();
     this.session = session;
     this.draftMazeMap = null;
+    this.workingTrackingParameters = null;
     this.mazeClicks = {};
     this.sessionEpoch += 1;
     this.changed();
@@ -145,6 +153,7 @@ export class SessionStore {
     this.closeAttachments();
     this.session = createSessionFile(DEFAULT_SESSION_NAME, this.toolVersion);
     this.draftMazeMap = null;
+    this.workingTrackingParameters = null;
     this.mazeClicks = {};
     this.sessionEpoch += 1;
     this.cancelPendingSave();
@@ -219,6 +228,48 @@ export class SessionStore {
     return this.attachments.has(videoId);
   }
 
+  // ---- analyses ---------------------------------------------------------------
+
+  analysisFor(videoId: VideoId): VideoAnalysis | undefined {
+    return this.session.analyses[videoId];
+  }
+
+  /**
+   * Records the output of one tracking run. One `auto` layer per video,
+   * replaced whole by a later run; `corrections` is carried across untouched,
+   * so re-tracking never destroys human work (D9, D25). `derived` is null
+   * until an analysis run computes it (D52) — never a placeholder (D16).
+   */
+  setAutoLayer(videoId: VideoId, auto: AutoLayer): void {
+    if (!this.videoById(videoId)) return;
+    const existing = this.session.analyses[videoId];
+    this.session.analyses = {
+      ...this.session.analyses,
+      [videoId]: {
+        auto,
+        corrections: existing?.corrections ?? { entries: [] },
+        derived: null,
+      },
+    };
+    this.changed();
+  }
+
+  /**
+   * The tracking parameters in force for the next run. D51 stamps
+   * `SessionFile.parameters` at the first *analysis* run, not the first
+   * tracking run, so until that lands these live in the autosave record
+   * beside the maze draft and the click count — remembered across a reload,
+   * not written into a downloaded session file.
+   */
+  get trackingParameters(): TrackingParameters {
+    return this.workingTrackingParameters ?? DEFAULT_TRACKING_PARAMETERS;
+  }
+
+  setTrackingParameters(tracking: TrackingParameters): void {
+    this.workingTrackingParameters = tracking;
+    this.changed();
+  }
+
   // ---- maze -----------------------------------------------------------------
 
   /**
@@ -259,6 +310,7 @@ export class SessionStore {
       file: this.session,
       draftMazeMap: this.draftMazeMap,
       mazeClicks: { ...this.mazeClicks },
+      trackingParameters: this.workingTrackingParameters,
       savedAt: new Date().toISOString(),
     };
   }
