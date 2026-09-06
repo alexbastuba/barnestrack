@@ -25,6 +25,11 @@ transform for test50 and test53, and for test51 the similarity that takes that c
 (280.0, 239.9) px, radius 222.5 px. Parameters: `DEFAULT_PARAMETERS` (O1 1.5 × / 0.2 s / 0.5 s;
 O4 1.0 × / 1.0 s / 3 s; O5 180 s; O16 0.5; O17 150 cm/s; O10 on, 0.1 s). No corrections.
 
+In the tables, "tracked fraction (trial)" is `TrialMetrics.trackedFraction` — frames with
+`detectionState: 'tracked'` only — while the tier is judged on the frames the tracker positioned
+(tracked or low confidence, 0.97–1.00 in all three trials), which is why 0.76 and GOOD sit in one
+cell.
+
 ## Timing
 
 | track                                   | frames | events | derive, median of 5 |

@@ -316,9 +316,15 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
 - **Trial window.** Investigations are detected between the trial start and the trial end, so
   one still in progress at a cutoff ends there and says so in its evidence; an escape entry or a
   tracking failure keeps the span of its loss. When an event correction deletes or moves the first
-  persistent escape entry, detection runs again with the corrected trial end.
-- **Scopes.** `TrialMetrics.trackedFraction` and the quality report's state fractions, gaps and tier
-  are judged over the trial window (trial start to trial end) when a trial start exists, and over
+  persistent escape entry, detection runs again with the corrected trial end (a bounded number of
+  passes, so a later persistent entry revealed by the change can end the trial instead); an entry
+  moved before the trial start can never end it (D21) and is flagged for review. Only events that
+  begin inside the trial count toward errors and latencies (O2, O3): a user-added event outside it
+  is kept as annotation and says so.
+- **Scopes.** `TrialMetrics.trackedFraction` counts frames with `detectionState: 'tracked'` only, as
+  the contract says; the quality tier counts frames the tracker positioned (tracked or low
+  confidence), so the two numbers differ by the low-confidence share and neither counts filled
+  frames. Both, and the quality report's state fractions and gaps, are judged over the trial window (trial start to trial end) when a trial start exists, and over
   the whole video otherwise, so that an empty platform before the animal is placed does not count
   against the video; the timebase anomalies are properties of the file and are always whole-video,
   recounted from the frame timestamps with the session's O11 factors (the MP4 index counts exact
