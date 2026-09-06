@@ -118,7 +118,8 @@ export class SessionStore {
   /** Loads the autosave record, if there is one. Returns whether anything was restored. */
   async restore(): Promise<boolean> {
     const record = await this.storage.load();
-    if (!record) return false;
+    // Nothing to restore, and nothing worth overwriting work in memory with.
+    if (!record || record.file.videos.length === 0) return false;
     if (this.session.videos.length > 0) return false;
     this.closeAttachments();
     this.session = record.file;

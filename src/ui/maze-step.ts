@@ -10,7 +10,11 @@
  * A click on the image is therefore mapped back through the inverse transform
  * before it changes anything.
  */
-import { MAZE_MAP_SCHEMA_VERSION, type MazeMapFile, type PlatformCircle } from '../contracts/mazeMap.js';
+import {
+  MAZE_MAP_SCHEMA_VERSION,
+  type MazeMapFile,
+  type PlatformCircle,
+} from '../contracts/mazeMap.js';
 import type { VideoDescriptor } from '../contracts/session.js';
 import { fitCircle } from '../maze/circle-fit.js';
 import {
@@ -39,6 +43,7 @@ import {
 } from '../maze/similarity.js';
 import { angleDifferenceDeg, type Point } from '../maze/types.js';
 import { videoToViewport, type ViewTransform } from '../maze/view-transform.js';
+import { mazeMapFileName, parseMazeMapDocument } from '../session/maze-map-file.js';
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
 import { Scrubber } from './scrubber.js';
@@ -50,10 +55,17 @@ type Mode = 'idle' | 'rim' | 'align' | 'target' | 'adjust';
 type Selection = { kind: 'platform' } | { kind: 'hole'; holeIndex: number } | null;
 
 const RIM_POINTS_NEEDED = 3;
-/** Maze maps get their own suffix so they are never offered as session files. */
-const MAZE_MAP_FILE_NAME = 'maze-map.mazemap.json';
 /** How near a click must be to a hole, in screen-independent pixels, to select it. */
 const HOLE_PICK_SLACK_PX = 12;
+/** A hole is picked within this multiple of its own radius. */
+const HOLE_PICK_FACTOR = 1.5;
+/**
+ * A fitted platform larger than this multiple of the frame's diagonal is not a
+ * platform: three nearly collinear rim clicks fit an enormous circle whose
+ * radius looks reasonable to a `min`/`max` check but makes px/cm nonsense
+ * (D14, D44). Refuse it and say why, as with exactly collinear points.
+ */
+const MAX_PLATFORM_RADIUS_FACTOR = 1.5;
 const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 
@@ -74,6 +86,7 @@ export function createMazeStep(context: AppContext): Step {
   let selection: Selection = null;
   let hoverPoint: Point | null = null;
   let seekToken = 0;
+  let typedHoleDiameterCm = DEFAULT_HOLE_DIAMETER_CM;
 
   const body = el('div', { class: 'maze-step' });
 
@@ -116,11 +129,16 @@ export function createMazeStep(context: AppContext): Step {
     return pxPerCm(map.platform, map.calibration.platformDiameter_cm);
   }
 
+  /**
+   * The hole diameter in centimetres. It is derived from `holeRadius_px`, which
+   * cannot be computed before the platform diameter is known — so a value typed
+   * first is remembered here and applied the moment the calibration lands (O8).
+   */
   function currentHoleDiameterCm(): number {
     const map = sharedMap();
-    if (!map) return DEFAULT_HOLE_DIAMETER_CM;
+    if (!map) return typedHoleDiameterCm;
     const scale = pxPerCm(map.platform, map.calibration.platformDiameter_cm);
-    if (scale === null || map.holes.holeRadius_px <= 0) return DEFAULT_HOLE_DIAMETER_CM;
+    if (scale === null || map.holes.holeRadius_px <= 0) return typedHoleDiameterCm;
     return holeDiameterCm(map.holes.holeRadius_px, scale);
   }
 
@@ -188,6 +206,14 @@ export function createMazeStep(context: AppContext): Step {
     );
   }
 
+  /** Is this circle a platform in this frame, or the artefact of three near-collinear clicks? */
+  function plausiblePlatform(circle: PlatformCircle): boolean {
+    const video = currentVideo();
+    if (!video) return false;
+    const diagonal = Math.hypot(video.referenceResolution.width, video.referenceResolution.height);
+    return circle.r > 0 && circle.r <= diagonal * MAX_PLATFORM_RADIUS_FACTOR;
+  }
+
   function onPick(videoPoint: Point): void {
     const map = videoMap();
     if (mode === 'rim' || mode === 'adjust') {
@@ -197,8 +223,10 @@ export function createMazeStep(context: AppContext): Step {
         const circle = fitCircle(rimPoints);
         rimPoints = [];
         mode = 'idle';
-        if (!circle) {
-          context.announce('Those three points lie on a straight line, so no circle passes through them. Try again with points spread around the rim.');
+        if (!circle || !plausiblePlatform(circle)) {
+          context.announce(
+            'Those three points are too nearly in a straight line to name a circle. Try again with points spread around the rim — near the top, the side and the bottom.',
+          );
         } else {
           setPlatformInVideo(circle);
         }
@@ -238,7 +266,8 @@ export function createMazeStep(context: AppContext): Step {
     }
     // Idle: a click selects whatever it landed on, for the arrow keys.
     const found = nearestHole(map, videoPoint);
-    if (found && found.distance_px <= Math.max(map.holes.holeRadius_px, HOLE_PICK_SLACK_PX) * 1.5) {
+    const pickRadius = Math.max(map.holes.holeRadius_px, HOLE_PICK_SLACK_PX) * HOLE_PICK_FACTOR;
+    if (found && found.distance_px <= pickRadius) {
       selection = { kind: 'hole', holeIndex: found.hole.holeIndex };
       context.announce(`Hole ${found.hole.holeIndex} selected. Arrow keys nudge it; hold Shift for 10 pixels.`);
     } else {
@@ -322,8 +351,8 @@ export function createMazeStep(context: AppContext): Step {
   function exportMap(): void {
     const map = videoMap();
     if (!map || !calibrated()) return;
-    downloadText(MAZE_MAP_FILE_NAME, `${JSON.stringify(map, null, 2)}\n`);
-    context.announce(`Maze map saved as ${MAZE_MAP_FILE_NAME}.`);
+    downloadText(mazeMapFileName(), `${JSON.stringify(map, null, 2)}\n`);
+    context.announce(`Maze map saved as ${mazeMapFileName()}.`);
   }
 
   async function importMap(): Promise<void> {
@@ -339,21 +368,10 @@ export function createMazeStep(context: AppContext): Step {
 
   /** Returns a plain-language problem, or null when the map was adopted. */
   function adoptMapDocument(text: string): string | null {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return 'That file is not valid JSON, so it cannot be a maze map.';
-    }
-    const map = parsed as Partial<MazeMapFile>;
-    if (typeof map?.schemaVersion !== 'number') return 'That file is not a BarnesTrack maze map.';
-    if (map.schemaVersion !== MAZE_MAP_SCHEMA_VERSION) {
-      return `That maze map uses schema version ${map.schemaVersion}; this build reads version ${MAZE_MAP_SCHEMA_VERSION}.`;
-    }
-    if (!map.platform || !map.holes || !map.target || !map.calibration || !map.referenceResolution) {
-      return 'That maze map is missing its platform, holes, target or calibration.';
-    }
-    store.setMazeMap(map as MazeMapFile);
+    const parsed = parseMazeMapDocument(text);
+    if (!parsed.ok) return parsed.message;
+    const map = parsed.map;
+    store.setMazeMap(map);
     // Every video's transform was fitted against the platform of the map that
     // has just been replaced, so every one of them is now meaningless.
     for (const video of store.videos) {
@@ -589,9 +607,12 @@ export function createMazeStep(context: AppContext): Step {
       const whole = input.step === '1' ? Math.round(typed) : typed;
       const value = Math.min(high, Math.max(low, whole));
       onCommit(value);
-      // After the commit, so the explanation is the message left standing
-      // rather than the one the field's own announcement replaced.
       if (value !== typed) {
+        // `render` leaves a focused field alone, which is right while the user
+        // types and wrong here: the number on screen must be the one stored.
+        input.value = String(value);
+        // Announced after the commit, so the explanation is the message left
+        // standing rather than the one the field's own announcement replaced.
         context.announce(
           `${label} must be ${describeRange(low, high, input.step === '1')}, so ${typed} became ${value}.`,
         );
@@ -698,9 +719,29 @@ export function createMazeStep(context: AppContext): Step {
     render();
   });
 
-  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20 (O8).' }, (v) =>
-    updateMap((m) => ({ ...m, holes: { ...m.holes, n: Math.round(v) } })),
-  );
+  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20 (O8).' }, (v) => {
+    const n = Math.round(v);
+    const before = sharedMap();
+    updateMap((m) => ({
+      ...m,
+      holes: {
+        ...m.holes,
+        n,
+        // A nudge or a target naming a hole that no longer exists is a map the
+        // contract cannot mean, and it would reach the session file (D10).
+        ...(m.holes.offsets ? { offsets: m.holes.offsets.filter((o) => o.holeIndex < n) } : {}),
+      },
+      target: { holeIndex: Math.min(m.target.holeIndex, n - 1) },
+    }));
+    const after = sharedMap();
+    if (before && after && before.target.holeIndex !== after.target.holeIndex) {
+      context.announce(
+        `Ring set to ${n} holes, so the target moved from hole ${before.target.holeIndex} to hole ${after.target.holeIndex}.`,
+      );
+    }
+    if (selection?.kind === 'hole' && selection.holeIndex >= n) selection = null;
+    render();
+  });
   const ringRatioField = numberField(
     'Ring radius ÷ platform radius',
     { step: '0.01', min: '0.1', max: '1', hint: 'Default 0.89 (O8).' },
@@ -709,7 +750,16 @@ export function createMazeStep(context: AppContext): Step {
   const holeDiameterField = numberField(
     'Hole diameter (cm)',
     { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm (O8).' },
-    (v) => updateMap((m) => withHoleRadius(m, v)),
+    (v) => {
+      typedHoleDiameterCm = v;
+      updateMap((m) => withHoleRadius(m, v));
+      if (!calibrated()) {
+        context.announce(
+          `Hole diameter noted as ${v} cm. The hole size is drawn once the platform diameter is entered.`,
+        );
+      }
+      render();
+    },
   );
   const phaseField = numberField(
     'Ring angle of hole 0 (°)',
@@ -907,6 +957,21 @@ export function createMazeStep(context: AppContext): Step {
     }
     adjustButton.disabled = shared === null;
     exportButton.disabled = !calibrated();
+    // A field that silently does nothing is worse than one that is plainly not
+    // available yet: everything below needs a platform to change.
+    for (const control of [
+      holeCountField.input,
+      ringRatioField.input,
+      holeDiameterField.input,
+      phaseField.input,
+      targetField.input,
+      nudgeHoleField.input,
+      diameterField.input,
+      resetNudges,
+      selectPlatform,
+    ]) {
+      control.disabled = shared === null;
+    }
     applyButton.disabled = shared === null || applySelect.options.length === 0;
     alignButton.disabled = shared === null;
     targetButton.disabled = shared === null;
@@ -925,7 +990,9 @@ export function createMazeStep(context: AppContext): Step {
     setNumber(holeCountField.input, shared?.holes.n);
     setNumber(ringRatioField.input, shared?.holes.ringRatio, 3);
     setNumber(holeDiameterField.input, shared ? currentHoleDiameterCm() : undefined, 2);
-    setNumber(phaseField.input, shared?.holes.phase_deg, 2);
+    // The effective map, not the shared one: the ring turns per video, so the
+    // shared phase stays where the map was created and would read 0 forever.
+    setNumber(phaseField.input, map?.holes.phase_deg, 2);
     setNumber(targetField.input, shared?.target.holeIndex);
     setNumber(nudgeHoleField.input, selection?.kind === 'hole' ? selection.holeIndex : undefined);
     setNumber(diameterField.input, shared && shared.calibration.platformDiameter_cm > 0 ? shared.calibration.platformDiameter_cm : undefined, 2);

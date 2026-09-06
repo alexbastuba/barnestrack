@@ -17,6 +17,13 @@ session it is found (D39).
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
   threshold was invented to round it away, but it is visible in a saved session file's
   `mazeTransform.rotationDeg`.
+- **A reload inside the autosave window can lose the last edit.** Changes are written to IndexedDB
+  about half a second after the last one, and the page also asks the store to flush on `pagehide`.
+  That flush cannot be awaited — the browser may discard an IndexedDB transaction opened while the
+  page is going away — so a reload in the moment after an edit can lose it. The header says
+  "Saving…" until the write lands, and "All changes saved in this browser" once it has; wait for
+  that before reloading. A fix would write synchronously on `visibilitychange` to a store that
+  supports it.
 - **One autosave slot per browser, not per session.** The IndexedDB record is stored under a single
   `current` key, so two BarnesTrack tabs open at once overwrite each other's autosave without
   noticing: the last tab to make a change wins, and the other tab's cohort is gone after its next

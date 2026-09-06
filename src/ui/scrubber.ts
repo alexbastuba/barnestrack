@@ -7,7 +7,7 @@
  * (D7).
  */
 import type { Mp4Index } from '../video/mp4-index.js';
-import { button, el, formatDuration } from './dom.js';
+import { button, el, formatDuration, uniqueId } from './dom.js';
 
 const BIG_STEP = 10;
 
@@ -26,7 +26,9 @@ export class Scrubber {
   private frame = 0;
 
   constructor(private readonly options: ScrubberOptions) {
-    this.range = el('input', { id: 'frame-scrubber', class: 'frame-range' });
+    // Ids are unique per instance: the Track step will want a second scrubber,
+    // and duplicate ids break every `<label for>` on the page.
+    this.range = el('input', { id: uniqueId('frame-scrubber'), class: 'frame-range' });
     this.range.type = 'range';
     this.range.min = '0';
     this.range.max = '0';
@@ -36,7 +38,7 @@ export class Scrubber {
     this.range.addEventListener('input', () => this.seek(Number(this.range.value), false));
     this.range.addEventListener('keydown', (event) => this.onRangeKeyDown(event));
 
-    this.number = el('input', { id: 'frame-number', class: 'frame-number' });
+    this.number = el('input', { id: uniqueId('frame-number'), class: 'frame-number' });
     this.number.type = 'number';
     this.number.min = '0';
     this.number.step = '1';
@@ -50,7 +52,7 @@ export class Scrubber {
       this.range,
       button('Next frame', () => this.step(1), { class: 'step-button' }),
       el('div', { class: 'field frame-field' }, [
-        el('label', { text: 'Frame', attrs: { for: 'frame-number' } }),
+        el('label', { text: 'Frame', attrs: { for: this.number.id } }),
         this.number,
       ]),
       this.readout,

@@ -150,9 +150,9 @@ export function createVideosStep(context: AppContext): Step {
         done += 1;
         const remaining = queue.length;
         context.announce(
-          remaining === 0 && done === 1
-            ? `Reading ${file.name}…`
-            : `Reading ${file.name} (${remaining} more to go)…`,
+          remaining === 0
+            ? `Reading ${file.name}${done === 1 ? '' : ', the last one'}…`
+            : `Reading ${file.name}, ${remaining} more to go…`,
         );
         // One file at a time: memory stays flat and the status line stays truthful.
         await acceptOne(file);
@@ -215,8 +215,16 @@ export function createVideosStep(context: AppContext): Step {
   // ---- rendering ------------------------------------------------------------
 
   const cards = new Map<VideoId, { root: HTMLLIElement; update(): void }>();
+  let lastEpoch = store.epoch;
 
   function render(): void {
+    if (store.epoch !== lastEpoch) {
+      // Reset, load or restore replaced the session; "Not loaded" and the
+      // duplicate notes described the one before it.
+      lastEpoch = store.epoch;
+      rejections.length = 0;
+      notes.length = 0;
+    }
     const ids = store.videos.map((v) => v.id);
     if (ids.length !== cards.size || ids.some((id) => !cards.has(id))) {
       cards.clear();

@@ -9,7 +9,7 @@ browser. These specs are not part of CI (D36); run them locally, and set `BARNES
 to the upstream `data/barnes-maze/` folder to include the sample videos:
 
 ```
-BARNESTRACK_SAMPLE_DIR=../rse-takehome-2026/data/barnes-maze npx playwright test
+BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
 ```
 
 - `frame-server.spec.ts` (chunk 1) — WebCodecs decoding: frame identity, sequential order, random

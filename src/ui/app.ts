@@ -194,7 +194,15 @@ export function mountApp(
     await store.flush();
     const session = store.current;
     downloadText(sessionFileName(session.name), serializeSessionFile(session));
-    context.announce(`Saved ${sessionFileName(session.name)}.`);
+    // A maze without its platform diameter is not in the file (D14, D47), and
+    // the user must hear that before they reset and load it back.
+    const unfinishedMaze = session.mazeMap === null && store.workingMazeMap !== null;
+    context.announce(
+      `Saved ${sessionFileName(session.name)}.` +
+        (unfinishedMaze
+          ? ' The maze is not in it: enter the platform diameter on the Maze step, then save again.'
+          : ''),
+    );
   }
 
   const loadButton = button('Load session file', () => {
