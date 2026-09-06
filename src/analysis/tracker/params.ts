@@ -56,7 +56,7 @@ export const TRACKING_PARAMETER_DEFINITIONS: Record<keyof TrackingParameters, st
   noseMovingSpeed_cmPerS:
     'Centroid speed below which the animal counts as stationary: the velocity cue is unavailable and the hole-proximity cue may apply (cm/s).',
   rimContactMargin_cm:
-    'A blob with any pixel within this distance of the mask edge is low_confidence / partial_at_rim (cm).',
+    'A blob with any pixel within this distance of the platform edge, or beyond it, is low_confidence / partial_at_rim (cm).',
   proximityRadius_cm:
     'With several plausible blobs, the frame is tracked only if exactly one lies within this distance of the last valid centroid (cm).',
 };
@@ -71,6 +71,8 @@ export const CONFIDENCE_MODEL = {
   noseCueMinCos: 0.5,
   /** The tail cue needs at least this many pixels removed by the opening. */
   noseTailMinPixels: 4,
+  /** The removed pixels' centroid must lie at least this fraction of the body's major semi-axis from the body centroid to be a tail (rounded edges removed all round are not). */
+  noseTailMinOffsetFraction: 0.5,
   /** The hole cue applies when a hole centre lies within this multiple of the hole radius of either axis end. */
   noseHoleRadiusFactor: 1.5,
   /** Area confidence is 1 while |area ÷ expected − 1| ≤ this, falling linearly to 0 at twice it. */
@@ -93,6 +95,8 @@ export const CONFIDENCE_MODEL_DEFINITIONS: Record<keyof typeof CONFIDENCE_MODEL,
   noseCueMinCos:
     'A head-direction cue is used only when the angle between it and the body axis is within acos(this) (0.5 → 60°).',
   noseTailMinPixels: 'Fewer removed pixels than this and there is no tail cue.',
+  noseTailMinOffsetFraction:
+    'Tail cue: the removed pixels’ centroid must be at least this × the major semi-axis away from the body centroid.',
   noseHoleRadiusFactor:
     'Hole cue: the axis end nearer a hole centre within this × hole radius is the head, when stationary and holes are known.',
   areaTolerance: 'Blob-area confidence tolerance around the expected area, as a fraction of it.',

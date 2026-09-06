@@ -237,7 +237,7 @@ every export.
 | `tailOpeningRadius_cm`    | number                       | cm     | 0.8     | Disc radius of the morphological opening that strips the tail before the centroid is taken.        |
 | `noseCueWindowFrames`     | number                       | frames | 3       | Half-width of the centred window over which centroid velocity is measured as a head cue.           |
 | `noseMovingSpeed_cmPerS`  | number                       | cm/s   | 2       | Below this centroid speed the velocity cue is unavailable and the hole cue may apply.              |
-| `rimContactMargin_cm`     | number                       | cm     | 1.0     | A blob with any pixel within this distance of the mask edge is `low_confidence / partial_at_rim`.  |
+| `rimContactMargin_cm`     | number                       | cm     | 1.0     | A blob with any pixel within this distance of the platform edge, or beyond it, is `partial_at_rim`. |
 | `proximityRadius_cm`      | number                       | cm     | 6       | With several plausible blobs, tracked only if exactly one lies within this of the last centroid.   |
 
 The per-frame `reason` strings the tracker emits are fixed (`src/analysis/tracker/select.ts`):

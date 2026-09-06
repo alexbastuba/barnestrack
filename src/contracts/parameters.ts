@@ -91,7 +91,7 @@ export interface TrackingParameters {
   noseCueWindowFrames: number;
   /** Below this centroid speed the velocity cue is unavailable and the hole cue may apply, cm/s. */
   noseMovingSpeed_cmPerS: number;
-  /** A blob within this distance of the mask edge is `partial_at_rim`, cm. */
+  /** A blob with any pixel within this distance of the platform edge, or beyond it, is `partial_at_rim`, cm. */
   rimContactMargin_cm: number;
   /** With several plausible blobs, the one within this distance of the previous position is kept, cm. */
   proximityRadius_cm: number;
