@@ -258,7 +258,7 @@ export const ANALYSIS_OPTION_DEFINITIONS: Record<AnalysisOptionPath, string> = {
   'trialCensoring.censorToCutoff':
     'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
   'strategy.spatialMaxErrors':
-    'Spatial search: at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings (count; O7).',
+    'Spatial search: at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
   'strategy.spatialMaxHoleDistance':
     'Spatial search: every error hole lies within this many holes of the target around the ring (holes; O7).',
   'strategy.spatialMaxCentreCrossings':

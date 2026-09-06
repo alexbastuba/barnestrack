@@ -348,17 +348,22 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
       `Features over the search phase (trial start to ${features.targetReached ? 'the first target visit' : 'the trial end; the target was never reached'}): ${features.errors} error${features.errors === 1 ? '' : 's'}, holes visited ${features.sequence.length > 0 ? features.sequence.join('→') : 'none'}, max hole distance from the target ${features.maxHoleDistanceFromTarget}, longest adjacent run ${features.longestAdjacentRun}, centre crossings ${features.centreCrossings}, path efficiency ${Number.isFinite(features.pathEfficiency) ? features.pathEfficiency.toFixed(2) : 'n/a'}, tortuosity ${Number.isFinite(features.tortuosity_rad) ? `${features.tortuosity_rad.toFixed(2)} rad` : 'n/a'}.`,
     );
     for (const r of rules) {
+      // a rule that fired but lost to an earlier one in the order says so, never "did not fire"
       const verdict =
         r.strategy === winner
           ? 'fired'
-          : r.strategy === 'random'
-            ? 'is the fallback'
-            : 'did not fire';
+          : r.fired
+            ? `fired, outranked by ${winner} (rule order ${ORDER.join(' → ')})`
+            : r.strategy === 'random'
+              ? 'is the fallback'
+              : 'did not fire';
       reasoning.push(
         `${r.strategy} ${verdict}: ${r.conditions.map((c) => `${c.text} — ${c.satisfied ? 'yes' : 'no'}`).join('; ')}.`,
       );
     }
-    reasoning.push(`Classified as ${winner}; runner-up ${runnerUp}.`);
+    reasoning.push(
+      `Classified as ${winner} (the first rule to fire in the order ${ORDER.join(' → ')}); runner-up ${runnerUp}.`,
+    );
     if (!features.targetReached && features.sequence.length === 0) {
       reasoning.push(
         'No investigation and no target visit in the trial: the classification rests on an empty search and should be read with the trial status.',

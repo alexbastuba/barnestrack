@@ -26,7 +26,9 @@ describe('classifyStrategy (O7)', () => {
       'serial fired: longest run of adjacent holes with no centre crossing during it 5 (12→11→10→9→8)',
     );
     expect(r.strategy.reasoning.join('\n')).toContain('4 errors');
-    expect(r.strategy.reasoning.join('\n')).toContain('Classified as serial; runner-up random.');
+    expect(r.strategy.reasoning.join('\n')).toContain(
+      'Classified as serial (the first rule to fire in the order spatial → serial → random); runner-up random.',
+    );
     expect(r.metrics.strategy).toBe('serial');
   });
 
@@ -119,6 +121,22 @@ describe('classifyStrategy (O7)', () => {
     const empty = pipeline([{ kind: 'dwell', seconds: 1 }]);
     expect(empty.strategy.strategy).toBe('spatial'); // the O7 placeholder fires vacuously — flagged in the reasoning
     expect(empty.strategy.reasoning.join('\n')).toContain('No investigation and no target visit');
+  });
+
+  it('says a rule was outranked when it fired but lost to an earlier one', () => {
+    // 5 → 6 → 7 (target 7): two errors next to the target and a run of three adjacent holes
+    const r = pipeline(visitHoles([5, 6, 7]));
+    expect(r.strategy.strategy).toBe('spatial');
+    expect(r.strategy.runnerUp).toBe('serial');
+    expect(r.strategy.rules.find((x) => x.strategy === 'serial')!.fired).toBe(true);
+    const text = r.strategy.reasoning.join('\n');
+    expect(text).toContain(
+      'serial fired, outranked by spatial (rule order spatial → serial → random)',
+    );
+    expect(text).not.toMatch(/did not fire.*— yes\.$/m);
+    expect(text).toContain(
+      'Classified as spatial (the first rule to fire in the order spatial → serial → random); runner-up serial.',
+    );
   });
 
   it('is random and unclassified without a trial start', () => {

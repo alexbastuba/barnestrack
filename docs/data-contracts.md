@@ -271,6 +271,10 @@ Until then they are neither hashed into `parametersHash` nor stamped on exports:
 | `quality.goodMinPositionedFraction`   | 0.9     | GOOD when at least this fraction of trial frames carry a positioned centroid.                       | D30 |
 | `quality.poorMaxPositionedFraction`   | 0.7     | POOR below this fraction; REVIEW between the two.                                                   | D30 |
 
+The strategy rules are tried in the order spatial, serial, random; the first rule to fire is the
+classification, a later rule that also fired is reported as "fired, outranked", and the runner-up
+is the rule that would fire next (O7, D23).
+
 Fixed model constants (`ANALYSIS_MODEL`, not user-adjustable): the blob-area trend window before a
 loss (10 frames), the minimum smoothed step that contributes heading change to tortuosity (1 cm),
 and the nose-confidence histogram bin count (5).
