@@ -1,32 +1,69 @@
-const CAPABILITY_MESSAGE_READY = 'Ready';
-const CAPABILITY_MESSAGE_UNSUPPORTED =
-  'This browser cannot decode video frames; use Chrome, Edge, Safari 16.4+ or Firefox 130+.';
+import './styles/app.css';
+import { SessionStore } from './session/session-store.js';
+import { IndexedDbSessionStorage, MemorySessionStorage } from './session/storage.js';
+import { mountApp } from './ui/app.js';
+import { placeholderStep } from './ui/placeholder-step.js';
+import type { Step } from './ui/step.js';
 
-function capabilityMessage(): string {
-  return 'VideoDecoder' in window ? CAPABILITY_MESSAGE_READY : CAPABILITY_MESSAGE_UNSUPPORTED;
-}
+const toolVersion = __BARNESTRACK_VERSION__;
 
-function render(root: HTMLElement): void {
-  root.innerHTML = '';
+const storage = IndexedDbSessionStorage.isAvailable()
+  ? new IndexedDbSessionStorage()
+  : new MemorySessionStorage();
 
-  const heading = document.createElement('h1');
-  heading.textContent = 'BarnesTrack';
-
-  const purpose = document.createElement('p');
-  purpose.textContent =
-    'Turns a folder of Barnes maze videos into defensible, auditable behavioral metrics.';
-
-  const capability = document.createElement('p');
-  capability.setAttribute('role', 'status');
-  capability.textContent = capabilityMessage();
-
-  const footer = document.createElement('footer');
-  footer.textContent = __BARNESTRACK_VERSION__;
-
-  root.append(heading, purpose, capability, footer);
+function makeSteps(): Step[] {
+  return [
+    placeholderStep({
+      id: 'videos',
+      label: 'Videos',
+      what: 'Load the videos of one cohort.',
+      definitions: [],
+      waitingFor: () => 'this step lands with the intake UI',
+    }),
+    placeholderStep({
+      id: 'maze',
+      label: 'Maze',
+      what: 'Mark the platform, the hole ring and the target hole.',
+      definitions: [],
+      waitingFor: () => 'this step lands with the maze UI',
+    }),
+    placeholderStep({
+      id: 'track',
+      label: 'Track',
+      what:
+        'Run the automatic tracking pass over each video, watch it work, and correct any frame ' +
+        'where it got the animal wrong.',
+      definitions: [
+        'Automatic values are never overwritten: a correction is stored beside the automatic layer and everything downstream is recomputed (D9, D25).',
+        'A frame the tracker could not resolve stays visibly missing; nothing is interpolated silently (D16).',
+      ],
+      waitingFor: () => 'tracking is built in a later chunk',
+    }),
+    placeholderStep({
+      id: 'review',
+      label: 'Review & Export',
+      what:
+        'Read the events, latencies, errors, path measures and search strategy for each trial, ' +
+        'check the quality report, and export tidy CSVs and an XLSX workbook.',
+      definitions: [
+        'Every threshold that defines an event travels with the numbers, as a column in the export (D11).',
+        'Each export is stamped with the tool version, the schema version and the parameters hash (D12).',
+      ],
+      waitingFor: () => 'metrics and exports are built in a later chunk',
+    }),
+  ];
 }
 
 const appRoot = document.getElementById('app');
 if (appRoot) {
-  render(appRoot);
+  const store = new SessionStore(storage, toolVersion);
+  const app = mountApp(appRoot, store, toolVersion, makeSteps);
+  void store.restore().then((restored) => {
+    app.refresh();
+    if (restored) {
+      app.context.announce(
+        `Restored your last session: ${store.videos.length} video${store.videos.length === 1 ? '' : 's'}. Drop each video file again to re-attach it.`,
+      );
+    }
+  });
 }
