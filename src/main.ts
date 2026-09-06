@@ -3,6 +3,7 @@ import { SessionStore } from './session/session-store.js';
 import { IndexedDbSessionStorage, MemorySessionStorage } from './session/storage.js';
 import { mountApp } from './ui/app.js';
 import { placeholderStep } from './ui/placeholder-step.js';
+import { createMazeStep } from './ui/maze-step.js';
 import { createVideosStep } from './ui/videos-step.js';
 import type { AppContext, Step } from './ui/step.js';
 
@@ -15,13 +16,7 @@ const storage = IndexedDbSessionStorage.isAvailable()
 function makeSteps(context: AppContext): Step[] {
   return [
     createVideosStep(context),
-    placeholderStep({
-      id: 'maze',
-      label: 'Maze',
-      what: 'Mark the platform, the hole ring and the target hole.',
-      definitions: [],
-      waitingFor: () => 'this step lands with the maze UI',
-    }),
+    createMazeStep(context),
     placeholderStep({
       id: 'track',
       label: 'Track',
