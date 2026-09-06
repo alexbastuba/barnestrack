@@ -21,7 +21,7 @@ import {
   type MazeGeometry,
 } from './geometry.js';
 import { ANALYSIS_MODEL } from './parameters.js';
-import type { TrackArrays } from './track-arrays.js';
+import { framePosition, type TrackArrays } from './track-arrays.js';
 import { cutoffFrame, resolveTrialEnd, type TrialEndReason } from './trial.js';
 import type { ReviewFlag } from './types.js';
 
@@ -672,13 +672,11 @@ export function applyEventCorrections(
   const flags: ReviewFlag[] = [];
   let events = [...autoEvents];
   let applied = 0;
-  const positionOf = new Map<number, number>();
-  for (let i = 0; i < frames.length; i++) positionOf.set(frames[i]!.frameIndex, i);
 
   const spanOf = (startFrame: number, endFrame: number): [number, number] | null => {
-    const s = positionOf.get(startFrame);
-    const e = positionOf.get(endFrame);
-    if (s === undefined || e === undefined || s > e) return null;
+    const s = framePosition(frames, startFrame);
+    const e = framePosition(frames, endFrame);
+    if (s < 0 || e < 0 || s > e) return null;
     return [s, e];
   };
 

@@ -63,13 +63,19 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
         ? parameters.trialCutoff_s
         : null;
 
-  const target = firstTargetEvent(events);
+  // only events that begin inside the trial count (O2, O3): a user-added event outside it is annotation
+  const inTrial = noTrial
+    ? []
+    : events.filter(
+        (ev) => ev.startTime_s >= bounds.startTime_s && ev.startTime_s <= bounds.endTime_s,
+      );
+  const target = firstTargetEvent(inTrial);
   const primaryLatency =
     target === null || noTrial ? null : target.startTime_s - bounds.startTime_s;
 
   let primaryErrors = 0;
   let totalErrors = 0;
-  for (const ev of events) {
+  for (const ev of inTrial) {
     if (ev.kind !== 'investigation' || ev.isTarget) continue;
     totalErrors++;
     if (target === null || ev.startFrame < target.startFrame) primaryErrors++;

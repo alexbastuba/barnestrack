@@ -5,7 +5,7 @@
  *
  * Order: validate → geometry → point/range corrections → cleaning → trial
  * start → losses and the automatic trial end → investigations → event
- * corrections → (a second detection pass when a correction moved the first
+ * corrections → (further detection passes while a correction moves the first
  * persistent escape entry, so the trial end follows the corrected events) →
  * kinematics → strategy → metrics → quality.
  */
@@ -26,6 +26,7 @@ import { mazeGeometry, type MazeGeometry } from './geometry.js';
 import { computeKinematics, type KinematicsSummary } from './kinematics.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
+  ANALYSIS_MODEL,
   DEFAULT_ANALYSIS_OPTIONS,
   assertValidParameters,
   hashParameters,
@@ -34,7 +35,7 @@ import {
 } from './parameters.js';
 import { qualityReport } from './quality.js';
 import { classifyStrategy, type StrategyResult } from './strategy.js';
-import { buildTrackArrays } from './track-arrays.js';
+import { buildTrackArrays, framePosition } from './track-arrays.js';
 import {
   OVERSIZED_REASON,
   proposeTrialStart,
@@ -115,20 +116,33 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     corrections,
     autoEvents.endFrame,
   );
+  const endFlags: ReviewFlag[] = [];
   if (proposal.startFrame !== null && autoEvents.endFrame !== null) {
-    // the trial end follows the corrected events: a deleted or edited escape entry moves it
+    // The trial end follows the corrected events: a deleted or moved escape entry moves it, and a
+    // later persistent entry revealed by the move can take over. The end only moves within the
+    // window, so a few passes reach a fixed point; the bound is a documented model constant.
     const lastFrameIndex = cleaned.track[cleaned.track.length - 1]!.frameIndex;
-    const positionOf = new Map<number, number>();
-    for (let i = 0; i < cleaned.track.length; i++) positionOf.set(cleaned.track[i]!.frameIndex, i);
-    let escapePosition: number | null = null;
-    for (const ev of correctedEvents.events) {
-      if (!isPersistentEscape(ev, lastFrameIndex, parameters)) continue;
-      const position = positionOf.get(ev.startFrame);
-      if (position !== undefined && (escapePosition === null || position < escapePosition))
-        escapePosition = position;
-    }
-    const end = resolveTrialEnd(a, proposal.startFrame, autoEvents.cutoffFrame, escapePosition);
-    if (end.endFrame !== autoEvents.endFrame || end.endReason !== autoEvents.endReason) {
+    for (let pass = 0; pass < ANALYSIS_MODEL.trialEndPasses; pass++) {
+      let escapePosition: number | null = null;
+      for (const ev of correctedEvents.events) {
+        if (!isPersistentEscape(ev, lastFrameIndex, parameters)) continue;
+        const position = framePosition(cleaned.track, ev.startFrame);
+        if (position < 0) continue;
+        if (position < proposal.startFrame) {
+          if (!endFlags.some((f) => f.eventId === ev.id)) {
+            endFlags.push({
+              code: 'correction_out_of_range',
+              eventId: ev.id,
+              frameIndex: ev.startFrame,
+              message: `Escape entry ${ev.id} starts at frame ${ev.startFrame}, before the trial start at frame ${cleaned.track[proposal.startFrame]!.frameIndex}; it cannot end the trial (D21). Check the correction that placed it.`,
+            });
+          }
+          continue;
+        }
+        if (escapePosition === null || position < escapePosition) escapePosition = position;
+      }
+      const end = resolveTrialEnd(a, proposal.startFrame, autoEvents.cutoffFrame, escapePosition);
+      if (end.endFrame === autoEvents.endFrame && end.endReason === autoEvents.endReason) break;
       autoEvents = detectAutoEvents(ctx, proposal.startFrame, {
         endFrame: end.endFrame!,
         endReason: end.endReason,
@@ -151,6 +165,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     ...proposal.flags,
     ...autoEvents.flags,
     ...correctedEvents.flags,
+    ...endFlags,
   ];
   if (bounds.startFrame !== null && bounds.endFrame !== null) {
     let count = 0;
@@ -179,6 +194,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     events: correctedEvents.events,
     kinematics,
     a,
+    frames: cleaned.track,
     g,
     bounds,
     corrections,

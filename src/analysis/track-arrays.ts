@@ -110,3 +110,15 @@ export function buildTrackArrays(
     nominalDt_s: nominalDt(t),
   };
 }
+
+/**
+ * The array position of a frame number. Under D7 `frameIndex` is the
+ * presentation position, so this is the identity; a track that disagrees is
+ * searched, and -1 means the frame is not in the track.
+ */
+export function framePosition(frames: readonly TrackFrame[], frameIndex: number): number {
+  const direct = frames[frameIndex];
+  if (direct !== undefined && direct.frameIndex === frameIndex) return frameIndex;
+  for (let i = 0; i < frames.length; i++) if (frames[i]!.frameIndex === frameIndex) return i;
+  return -1;
+}

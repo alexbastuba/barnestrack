@@ -7,7 +7,8 @@
 import type { CorrectionsLayer } from '../contracts/session.js';
 import type { TrackFrame } from '../contracts/track.js';
 import { latestCorrection } from './corrections.js';
-import { STATE_CODE, type TrackArrays } from './track-arrays.js';
+import { ANALYSIS_MODEL } from './parameters.js';
+import { STATE_CODE, framePosition, type TrackArrays } from './track-arrays.js';
 import type { ReviewFlag } from './types.js';
 
 /** The tracker's reason for a start cylinder or an experimenter's hand (D6, D8). */
@@ -75,9 +76,14 @@ export function proposeTrialStart(
       flags,
     };
   }
-  let startFrame = correction.frameIndex;
-  if (!Number.isInteger(startFrame) || startFrame < 0 || startFrame >= a.length) {
-    const clamped = Math.min(Math.max(0, Math.round(startFrame)), Math.max(0, a.length - 1));
+  let startFrame = Number.isInteger(correction.frameIndex)
+    ? framePosition(frames, correction.frameIndex)
+    : -1;
+  if (startFrame < 0) {
+    const clamped = Math.min(
+      Math.max(0, Math.round(correction.frameIndex)),
+      Math.max(0, a.length - 1),
+    );
     flags.push({
       code: 'correction_out_of_range',
       correctionId: correction.id,
@@ -92,12 +98,9 @@ export function proposeTrialStart(
   return { startFrame, source: 'corrected', autoStartFrame, lastOversizedFrame, flags };
 }
 
-/** Tolerance on the cutoff boundary, seconds: far below any sample-table tick, so `start + 180 s` lands on the frame it names. */
-const CUTOFF_EPSILON_S = 1e-9;
-
-/** The last frame whose timestamp is within `trialCutoff_s` of the start frame's. */
+/** The last frame whose timestamp is within `trialCutoff_s` of the start frame's (to the cutoff tolerance). */
 export function cutoffFrame(a: TrackArrays, startFrame: number, trialCutoff_s: number): number {
-  const limit = a.t[startFrame]! + trialCutoff_s + CUTOFF_EPSILON_S;
+  const limit = a.t[startFrame]! + trialCutoff_s + ANALYSIS_MODEL.cutoffTolerance_s;
   let last = startFrame;
   for (let i = startFrame + 1; i < a.length; i++) {
     if (a.t[i]! <= limit) last = i;
@@ -113,7 +116,12 @@ export function resolveTrialEnd(
   persistentEscapeStartFrame: number | null,
 ): { endFrame: number | null; endReason: TrialEndReason } {
   if (startFrame === null || cutoff === null) return { endFrame: null, endReason: 'no_start' };
-  if (persistentEscapeStartFrame !== null && persistentEscapeStartFrame <= cutoff) {
+  // an entry can end the trial only inside it: not before the start (D21) and not after the cutoff (O5)
+  if (
+    persistentEscapeStartFrame !== null &&
+    persistentEscapeStartFrame >= startFrame &&
+    persistentEscapeStartFrame <= cutoff
+  ) {
     return { endFrame: persistentEscapeStartFrame, endReason: 'escape' };
   }
   if (cutoff < a.length - 1) return { endFrame: cutoff, endReason: 'cutoff' };

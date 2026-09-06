@@ -289,6 +289,10 @@ export const ANALYSIS_MODEL = {
   tortuosityMinStep_cm: 1,
   /** Equal-width bins of the nose-heading-confidence histogram over [0, 1] (D30). */
   noseConfidenceHistogramBins: 5,
+  /** Upper bound on the detection passes derive makes while event corrections move the trial end (D20). */
+  trialEndPasses: 3,
+  /** Tolerance on the trial-cutoff boundary, seconds: far below any sample-table tick, so `start + cutoff` lands on the frame it names (O5). */
+  cutoffTolerance_s: 1e-9,
 } as const;
 
 export const ANALYSIS_MODEL_DEFINITIONS: Record<keyof typeof ANALYSIS_MODEL, string> = {
@@ -302,6 +306,10 @@ export const ANALYSIS_MODEL_DEFINITIONS: Record<keyof typeof ANALYSIS_MODEL, str
     'Heading change is accumulated only over smoothed steps at least this long, so a stationary animal does not read as tortuous (cm).',
   noseConfidenceHistogramBins:
     'Number of equal-width bins the quality report uses for the nose-heading-confidence histogram.',
+  trialEndPasses:
+    'How many times derive may re-detect events while event corrections move the first persistent escape entry; the end only moves within the trial, so the loop settles in one or two passes.',
+  cutoffTolerance_s:
+    'A frame whose timestamp is within this many seconds past the trial cutoff still counts as inside it, so floating-point rounding cannot drop the frame the cutoff names (seconds).',
 };
 
 /**

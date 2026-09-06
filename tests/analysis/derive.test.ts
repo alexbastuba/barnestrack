@@ -266,6 +266,150 @@ describe('derive', () => {
     );
   });
 
+  it('lets a later persistent entry end the trial when the first one is deleted', () => {
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'lost', seconds: 3.5 }, // persistent entry 1 (the animal comes back out)
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      ...visitHoles([5, 6]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'lost', seconds: 5 }, // persistent entry 2, to the end of the video
+    ];
+    const base = derive(inputFor(script).input);
+    const first = base.events.find((e) => e.kind === 'escape_entry')!;
+    expect(base.trial.endFrame).toBe(first.startFrame);
+    const d = derive(
+      inputFor(script, {
+        corrections: [
+          {
+            id: 'd1',
+            kind: 'event',
+            timestamp: at(1),
+            source: 'user',
+            action: 'delete',
+            eventId: first.id,
+          },
+        ],
+      }).input,
+    );
+    const entries = d.events.filter((e) => e.kind === 'escape_entry');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.startFrame).toBeGreaterThan(first.startFrame);
+    expect(d.trial.endReason).toBe('escape');
+    expect(d.trial.endFrame).toBe(entries[0]!.startFrame);
+    expect(d.metrics.escaped).toBe(true);
+    expect(d.metrics.totalLatency_s).toBeCloseTo(entries[0]!.startTime_s - d.trial.startTime_s, 12);
+    expect(d.metrics.totalErrors).toBe(3); // holes 3, 5, 6 — all inside the trial
+    expect(entries[0]!.evidence).toContain('the trial ends at the first lost frame');
+  });
+
+  it('never lets an entry retimed before the trial start end the trial, and flags it', () => {
+    const { input } = inputFor(escapeTrial);
+    const base = derive(input);
+    const entry = base.events.find((e) => e.kind === 'escape_entry')!;
+    const d = derive({
+      ...input,
+      corrections: {
+        entries: [
+          {
+            id: 'e1',
+            kind: 'event',
+            timestamp: at(1),
+            source: 'user',
+            action: 'edit',
+            eventId: entry.id,
+            startFrame: 5,
+            endFrame: 120,
+          },
+        ],
+      },
+    });
+    expect(d.trial.startFrame).toBe(30);
+    expect(d.trial.endReason).not.toBe('escape');
+    expect(d.trial.endFrame!).toBeGreaterThanOrEqual(d.trial.startFrame!);
+    expect(d.metrics.escaped).toBe(false);
+    expect(d.metrics.totalLatency_s).toBeNull();
+    expect(d.metrics.trackedFraction).toBeGreaterThan(0);
+    expect(d.reviewFlags.map((f) => f.code)).toContain('correction_out_of_range');
+    expect(d.metrics.status).toBe('review');
+    expect(Object.values(d.quality.detectionStateFractions).every(Number.isFinite)).toBe(true);
+  });
+
+  it('does not count a user-added event outside the trial as an error', () => {
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'lost', seconds: 4 },
+      { kind: 'dwell', seconds: 2 },
+    ];
+    const base = derive(inputFor(script).input);
+    const end = base.trial.endFrame!;
+    const d = derive(
+      inputFor(script, {
+        corrections: [
+          {
+            id: 'a1',
+            kind: 'event',
+            timestamp: at(1),
+            source: 'user',
+            action: 'add',
+            holeIndex: 5,
+            startFrame: end + 130,
+            endFrame: end + 150,
+          },
+        ],
+      }).input,
+    );
+    expect(d.events.some((e) => e.id === 'user-a1')).toBe(true);
+    expect(d.events.find((e) => e.id === 'user-a1')!.evidence).toContain('after the trial end');
+    expect(d.metrics.totalErrors).toBe(base.metrics.totalErrors);
+    expect(d.metrics.primaryErrors).toBe(base.metrics.primaryErrors);
+  });
+
+  it('gives the same answer when frame numbers are offset from array positions', () => {
+    const script = [...visitHoles([12, 11, 10, 9]), ...visitHoles([7])];
+    const plain = inputFor(script).input;
+    const shifted: DeriveInput = {
+      ...plain,
+      auto: {
+        ...plain.auto,
+        frames: plain.auto.frames.map((f) => ({ ...f, frameIndex: f.frameIndex + 1000 })),
+      },
+      corrections: {
+        entries: [
+          { id: 't', kind: 'trial_start', timestamp: at(1), source: 'user', frameIndex: 1020 },
+        ],
+      },
+    };
+    const a = derive({
+      ...plain,
+      corrections: {
+        entries: [
+          { id: 't', kind: 'trial_start', timestamp: at(1), source: 'user', frameIndex: 20 },
+        ],
+      },
+    });
+    const b = derive(shifted);
+    expect(b.trial.startFrame).toBe(20);
+    expect(b.reviewFlags).toEqual([]);
+    expect(b.metrics.strategy).toBe(a.metrics.strategy);
+    expect(b.strategy.features).toEqual(a.strategy.features);
+    expect(b.events.map((e) => [e.kind, e.holeIndex, e.startFrame - 1000])).toEqual(
+      a.events.map((e) => [e.kind, e.holeIndex, e.startFrame]),
+    );
+    expect(b.quality.gaps).toEqual(
+      a.quality.gaps.map((gap) => ({
+        ...gap,
+        startFrame: gap.startFrame + 1000,
+        endFrame: gap.endFrame + 1000,
+      })),
+    );
+  });
+
   it('flags oversized foreground inside the trial without moving the start', () => {
     const d = derive(
       inputFor([

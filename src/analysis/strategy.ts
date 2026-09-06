@@ -7,13 +7,14 @@
  * override wins and is stored as a correction.
  */
 import type { EventRecord } from '../contracts/events.js';
+import type { TrackFrame } from '../contracts/track.js';
 import type { CorrectionsLayer, SearchStrategy } from '../contracts/session.js';
 import { latestCorrection } from './corrections.js';
 import { holeIndexDistance, inCentreZone, type MazeGeometry } from './geometry.js';
 import type { KinematicsSummary } from './kinematics.js';
 import { ANALYSIS_MODEL, type AnalysisOptions } from './parameters.js';
 import { firstTargetEvent } from './metrics.js';
-import type { TrackArrays } from './track-arrays.js';
+import { framePosition, type TrackArrays } from './track-arrays.js';
 import type { TrialBounds } from './trial.js';
 
 export interface StrategyFeatures {
@@ -63,6 +64,8 @@ export interface StrategyInput {
   events: readonly EventRecord[];
   kinematics: KinematicsSummary;
   a: TrackArrays;
+  /** The cleaned frames, to map event frame numbers to positions (D7). */
+  frames: readonly TrackFrame[];
   g: MazeGeometry;
   bounds: TrialBounds;
   corrections: CorrectionsLayer;
@@ -155,22 +158,21 @@ function tortuosity(
 export function computeStrategyFeatures(
   input: Omit<StrategyInput, 'corrections' | 'options'>,
 ): StrategyFeatures {
-  const { events, kinematics, a, g, bounds } = input;
+  const { events, kinematics, a, g, bounds, frames } = input;
   if (bounds.startFrame === null || bounds.endFrame === null) return emptyFeatures();
   const start = bounds.startFrame;
   const target = firstTargetEvent(events);
-  const phaseEndFrameIndex = target === null ? null : target.startFrame;
-  // frameIndex is the presentation position (D7): use it directly, clamped to the track
+  const targetPosition = target === null ? -1 : framePosition(frames, target.startFrame);
   const phaseEnd =
-    phaseEndFrameIndex === null
+    target === null || targetPosition < 0
       ? bounds.endFrame
-      : Math.min(bounds.endFrame, Math.max(start, phaseEndFrameIndex));
+      : Math.min(bounds.endFrame, Math.max(start, targetPosition));
 
   const investigations = events
     .filter(
       (e) =>
         e.kind === 'investigation' &&
-        e.startFrame <= phaseEnd &&
+        framePosition(frames, e.startFrame) <= phaseEnd &&
         (target === null || e.startFrame <= target.startFrame),
     )
     .sort((x, y) => x.startFrame - y.startFrame);
@@ -197,11 +199,12 @@ export function computeStrategyFeatures(
     } else if (hole === last) {
       // a repeat of the same hole neither extends nor breaks the run
     } else {
-      const crossed = crossings.some((f) => f > runLastEnd && f < e.startFrame);
+      const startPosition = framePosition(frames, e.startFrame);
+      const crossed = crossings.some((f) => f > runLastEnd && f < startPosition);
       if (!crossed && holeIndexDistance(g, hole, last) === 1) run.push(hole);
       else run = [hole];
     }
-    runLastEnd = Math.max(runLastEnd, e.endFrame);
+    runLastEnd = Math.max(runLastEnd, framePosition(frames, e.endFrame));
     if (run.length > bestRun.length) bestRun = [...run];
   }
 

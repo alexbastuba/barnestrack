@@ -58,6 +58,7 @@ export function pipeline(segments: Segment[], opts: PipelineOptions = {}) {
       : { startFrame: bounds.startFrame, endFrame: bounds.endFrame };
   const kinematics = computeKinematics(a, g, p, window);
   const strategy = classifyStrategy({
+    frames,
     events: corrected.events,
     kinematics,
     a,
