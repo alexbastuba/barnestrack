@@ -18,16 +18,18 @@ session it is found (D39).
   the nose is available on only 53 % / 66 % / 21 % of fragmented frames (test50 / test53 / test51),
   and the union's bounding box spans the hole. Two pieces farther apart than the merge distance are
   still `ambiguous / multiple_blobs` (only the start cylinder's two crescents, 8.9 cm apart, in the
-  sample videos).
+  sample videos — 0.9 cm beyond the merge distance; their union of 1610–1692 px² sits at the
+  oversized bound of 1611 px², so the area bound alone would not exclude them, and the robust
+  exclusion of the start is the trial-start marker, O5).
 - **The nose is often unavailable, and a tail-only nose never clears O16.** The tail cue exists on
-  71 % / 78 % / 54 % of frames with a blob (test51 / test53 / test50) and no cue at all on 23 % /
+  70 % / 75 % / 51 % of frames with a blob (test51 / test53 / test50) and no cue at all on 24 % /
   21 % / 32 %: the re-encoded tail is frequently below the foreground threshold along its whole
   length, and a hunched, nearly round body has no defined major axis. Where only the tail cue exists
   the heading confidence is 0.5, below O16's 0.6 cutoff, so events would fall back to the centroid on
   nearly every hole visit (the animal is stationary there, so the velocity cue is unavailable by
   design). Measured in `prototypes/tracker/RESULTS.md`; the nose ships as experimental (D18).
 - **Velocity and tail cues can disagree on the left rim of test50.** With the moving threshold at
-  8 cm/s the two cues still name opposite ends in 10 % of test50's frames that have both (68 of 679),
+  8 cm/s the two cues still name opposite ends in 12 % of test50's frames that have both (88 of 760),
   mostly with the animal hanging over the left rim, where the grey wall lets part of the animal's
   shadow beyond the edge be attributed as "tail". Not resolved; such frames carry heading confidence
   0.0 and the nose is not trusted.
@@ -105,6 +107,6 @@ session it is found (D39).
   adaptive threshold was used. The animal's shadow on the grey wall when it hangs over the left rim of
   test50 is the one place the surround matters (see Defects).
 - **The animals are nearly stationary most of the time.** Median centroid speed 1.8 / 1.8 / 3.3 cm/s
-  (test51 / test53 / test50); only 82 / 98 / 1354 frames exceed 8 cm/s. Below walking speed the
+  (test51 / test53 / test50); only 82 / 127 / 1637 frames exceed 8 cm/s. Below walking speed the
   centroid's direction of motion is jitter (the head dipping into a hole shifts the blob), which is
   why the velocity cue for the nose applies only from 8 cm/s.

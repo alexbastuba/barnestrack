@@ -29,25 +29,44 @@ import {
 import { circleSamples, setup, t_s, trackerFor } from './helpers.js';
 
 /** A mixed sequence: empty start, hand placing the mouse, running, two mice, rim, empty end. */
-function mixedSequence(spec = DEFAULT_SCENE): SceneObjects[] {
-  const seq: SceneObjects[] = [];
+function mixedSequence(spec = DEFAULT_SCENE): SequenceEntry[] {
+  const seq: SequenceEntry[] = [];
   for (let i = 0; i < 5; i++) seq.push({ seed: i });
   for (let i = 0; i < 4; i++)
     seq.push({ hand: { x: 320, y: 240, radius: 40, darkness: 120 }, seed: 10 + i });
   for (let i = 0; i < 40; i++)
     seq.push({ mouse: { ...DEFAULT_MOUSE, ...mouseOnCircle(spec, t_s(i)) }, seed: 20 + i });
   for (let i = 0; i < 3; i++) seq.push({ mouse: mouseAtRim(spec, 1.2 + 0.05 * i), seed: 60 + i });
+  for (let i = 0; i < 3; i++)
+    seq.push({
+      mouse: { ...DEFAULT_MOUSE, x: 300, y: 250, heading: 0 },
+      seed: 80 + i,
+      split: true,
+    });
   for (let i = 0; i < 3; i++) seq.push({ seed: 70 + i });
   return seq;
 }
 
-function renderSequence(spec = DEFAULT_SCENE, seq = mixedSequence(spec)): FrameInput[] {
+/** A frame whose body is cut by a hole: the background shows through a stripe across the middle (D48). */
+type SequenceEntry = SceneObjects & { split?: boolean };
+
+function renderSequence(
+  spec = DEFAULT_SCENE,
+  seq: SequenceEntry[] = mixedSequence(spec),
+): FrameInput[] {
   const staticScene = renderStaticScene({ ...spec, noise: 0 });
-  return seq.map((objects, i) => ({
-    gray: renderScene(spec, objects, undefined, staticScene),
-    presIndex: i,
-    t_s: t_s(i),
-  }));
+  return seq.map((objects, i) => {
+    const gray = renderScene(spec, objects, undefined, staticScene);
+    if (objects.split && objects.mouse) {
+      const m = objects.mouse;
+      for (let y = Math.floor(m.y - 20); y <= Math.ceil(m.y + 20); y++) {
+        for (let x = Math.round(m.x) - 3; x <= Math.round(m.x) + 3; x++) {
+          gray[y * spec.width + x] = staticScene[y * spec.width + x]!;
+        }
+      }
+    }
+    return { gray, presIndex: i, t_s: t_s(i) };
+  });
 }
 
 describe('createTracker output contract', () => {
@@ -90,13 +109,20 @@ describe('createTracker output contract', () => {
     expect(states.slice(5, 9).every((x) => x === 'ambiguous/oversized_blob')).toBe(true);
     expect(states.slice(9, 49).every((x) => x === 'tracked/single_blob')).toBe(true);
     expect(states.slice(49, 52).every((x) => x === 'low_confidence/partial_at_rim')).toBe(true);
-    expect(states.slice(52).every((x) => x === 'not_detected/no_foreground')).toBe(true);
+    expect(states.slice(52, 55).every((x) => x === 'low_confidence/fragmented')).toBe(true);
+    expect(states.slice(55).every((x) => x === 'not_detected/no_foreground')).toBe(true);
     expect(result.summary.stateCounts).toEqual({
       tracked: 40,
       not_detected: 8,
       ambiguous: 4,
-      low_confidence: 3,
+      low_confidence: 6,
     });
+    expect(result.summary.reasonCounts.fragmented).toBe(3);
+    // the merged frames carry a centroid on the body and a union bounding box spanning the gap
+    for (const f of result.frames.slice(52, 55)) {
+      expect(Math.hypot(f.centroid.x - 300, f.centroid.y - 250)).toBeLessThan(4);
+      expect(f.boundingBox!.width).toBeGreaterThan(26);
+    }
     expect(result.summary.reasonCounts.oversized_blob).toBe(4);
   });
 

@@ -199,7 +199,7 @@ Derived (30 uniform frames): mouse visible in 25; single correct blob 25 / 25 = 
 within one body width 25 / 25 = **100 %**; nose on head end on the moving frames 3 / 3 plus one
 unresolvable (588). Whole clip: none of the 755 frames after the animal is placed is
 `multiple_blobs`; 76 are `fragmented` (the animal split by a hole, pieces within 6.5 cm of each
-other, median 4.1 cm, merged under D48). Frames 0–149 are all `not_detected / no_foreground` (the
+other, median 4.2 cm, merged under D48). Frames 0–149 are all `not_detected / no_foreground` (the
 animal appears at the right rim at frame 150; no hand is ever visible inside the mask).
 
 ### test50 (3 min; 30 uniform)
@@ -240,7 +240,7 @@ animal appears at the right rim at frame 150; no hand is ever visible inside the
 Derived (30 uniform frames): mouse visible in 29; single correct blob 29 / 29 = **100 %**; centroid
 within one body width 29 / 29 = **100 %**; nose on head end on the moving frames 12 / 12. Whole clip:
 none of the 5389 frames after the animal is placed is `multiple_blobs`; 483 are `fragmented` (pieces
-within 6.3 cm of each other, median 4.7 cm, merged under D48).
+within 6.3 cm of each other, median 4.8 cm, merged under D48).
 
 ### Nose on moving frames (`<video>.moving.png`: 30 frames sampled uniformly among the moving frames)
 
@@ -326,8 +326,10 @@ The first measurement, with the selection rule of the chunk prompt, made two pla
 `ambiguous / multiple_blobs` unless exactly one was near the previous position — both always were —
 and the single-blob and centroid criteria read 90 % / 96 % / 88 % on the sampled frames (92.2 % /
 97.9 % / 91.7 % over the clips). In every such frame of test50 and test53 the pieces lay within one
-body length of each other (max 6.3 / 6.5 cm, median 4.7 / 4.1 cm); the start cylinder's two
-crescents in test51 are 8.9 cm apart.
+body length of each other (max 6.3 / 6.5 cm; median 4.8 / 4.2 cm over the merged frames); the start
+cylinder's two crescents in test51 are 8.9 cm apart, 0.9 cm beyond the merge distance — the
+distance rule is what keeps them `ambiguous`; the robust exclusion of the start is the trial-start
+marker (O5).
 
 D48 merges plausible pieces whose centroids all lie within `fragmentMergeDistance_cm` (8 cm) into
 one candidate — union centroid, area, bounding box and summed moments, so the ellipse and the nose
@@ -338,7 +340,7 @@ bounds as a single blob (minimum area, and the oversized bound `min(maxBlobArea,
 | video  | `multiple_blobs` before → after | `fragmented` after | `tracked` before → after | single blob, sampled frames | single blob, whole clip |
 | ------ | ------------------------------: | -----------------: | -----------------------: | --------------------------: | ----------------------: |
 | test50 | 423 → 0 | 483 (the 423, plus 43 `proximity_to_previous` and 17 `small_blob` frames that also had two pieces within reach) | 4155 → 4112 | 90 % → 100 % | 92.2 % → 100 % |
-| test51 | 89 → 75 (the cylinder frames 0–74, crescents 8.9 cm apart, correctly not merged; as one blob their 1610 px² would also exceed the oversized bound of 3 × 537) | 14 | 576 → 576 | 96 % → 100 % | 97.9 % → 100 % |
+| test51 | 89 → 75 (the cylinder frames 0–74, crescents 8.9 cm apart, correctly not merged by the distance rule; the area bound alone would not reliably exclude them: their union is 1610–1692 px² against an oversized bound of 3 × 537 = 1611) | 14 | 576 → 576 | 96 % → 100 % | 97.9 % → 100 % |
 | test53 | 63 → 0 | 76 (the 63, plus 12 `proximity_to_previous` and 1 `small_blob`) | 602 → 590 | 88 % → 100 % | 91.7 % → 100 % |
 
 What the merge does not give: the union centroid is the area-weighted centroid of the visible

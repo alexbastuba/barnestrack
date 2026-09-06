@@ -48,6 +48,9 @@ describe.skipIf(!SAMPLE_DIR)('tracker on the sample videos (BARNESTRACK_SAMPLE_D
       }
       expect(run.result!.summary.stateCounts.tracked).toBeGreaterThan(500);
       expect(run.result!.summary.warnings).toEqual([]);
+      // D48: the animal split by a hole is merged, never left ambiguous
+      expect(run.result!.summary.reasonCounts.multiple_blobs).toBe(0);
+      expect(run.result!.summary.reasonCounts.fragmented).toBeGreaterThan(0);
       console.info(
         `test53: ${run.timing.trackerFps.toFixed(0)} fps tracker, ${run.timing.wallFps.toFixed(0)} fps with ffmpeg`,
       );
