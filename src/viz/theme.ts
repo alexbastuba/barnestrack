@@ -98,3 +98,15 @@ export const TITLE_SIZE = 14;
 export const AXIS_LABEL_SIZE = 12;
 export const TICK_SIZE = 11;
 export const ANNOTATION_SIZE = 10;
+
+/**
+ * Colours for the series of a cohort figure. In the print theme every series is
+ * black and told apart by its marker shape and dash pattern instead, which is
+ * what a grayscale printer leaves intact anyway (D26).
+ */
+const SERIES_WHEEL = ['#0a4d8c', '#9a2417', '#1c6b33', '#6b3fa0', '#b57b00'];
+
+export function seriesColour(index: number, theme: ThemeName): string {
+  if (theme === 'print') return PRINT.ink;
+  return SERIES_WHEEL[index % SERIES_WHEEL.length]!;
+}

@@ -48,9 +48,21 @@ export interface FigureDescription {
  * Which video a figure draws. Per-trial figures use `videoId`; cohort figures
  * (learning curve, group comparison) read the whole session and ignore it.
  */
+/** Metrics a cohort figure can plot; the field names of `TrialMetrics`. */
+export type PlottableMetric =
+  | 'primaryLatency_s'
+  | 'totalLatency_s'
+  | 'primaryErrors'
+  | 'totalErrors'
+  | 'pathLength_cm'
+  | 'meanSpeed_cmPerS'
+  | 'targetQuadrantTime_s';
+
 export interface FigureData {
   session: SessionFile;
   videoId: string;
+  /** Which measure the cohort figures plot; primary latency by default. */
+  metric?: PlottableMetric;
 }
 
 export interface FigureSpec {
