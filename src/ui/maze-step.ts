@@ -588,12 +588,14 @@ export function createMazeStep(context: AppContext): Step {
       const high = config.max === undefined ? Infinity : Number(config.max);
       const whole = input.step === '1' ? Math.round(typed) : typed;
       const value = Math.min(high, Math.max(low, whole));
+      onCommit(value);
+      // After the commit, so the explanation is the message left standing
+      // rather than the one the field's own announcement replaced.
       if (value !== typed) {
         context.announce(
           `${label} must be ${describeRange(low, high, input.step === '1')}, so ${typed} became ${value}.`,
         );
       }
-      onCommit(value);
     });
     const hint = config.hint === undefined ? null : el('span', { class: 'hint', text: config.hint });
     if (hint) {
@@ -755,7 +757,7 @@ export function createMazeStep(context: AppContext): Step {
     'Platform diameter (cm)',
     {
       step: '0.1',
-      min: '1',
+      min: '10',
       max: '1000',
       hint: `Required. A typical mouse Barnes maze is about ${TYPICAL_PLATFORM_DIAMETER_CM} cm across.`,
     },

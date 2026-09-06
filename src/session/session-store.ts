@@ -327,12 +327,16 @@ export class SessionStore {
     }, this.autosaveDelayMs);
   }
 
-  /** Serialises saves so a fast edit never overtakes a slower earlier write. */
+  /**
+   * Serialises saves so a fast edit never overtakes a slower earlier write.
+   * The record is built when the write actually starts, not when it is queued,
+   * so a save waiting behind a slow one still stores the current state rather
+   * than the state at the moment it joined the queue.
+   */
   private queueSave(): void {
-    const record = this.toStoredSession();
     this.saveChain = this.saveChain
       .then(async () => {
-        await this.storage.save(record);
+        await this.storage.save(this.toStoredSession());
         if (this.saveTimer === null) this.saveState = 'saved';
         this.emit();
       })
