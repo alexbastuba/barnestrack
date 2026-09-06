@@ -7,7 +7,35 @@ session it is found (D39).
 
 ## Defects
 
-_None recorded yet._
+- **An animal split in two is reported as ambiguous, not positioned.** When the animal straddles a
+  hole (dark in the background, so there is no difference signal under the body) or hangs over the
+  rim where the rim's shadow line cuts the difference image, the foreground is two plausible pieces
+  and the tracker's selection rule reports `ambiguous / multiple_blobs` with no centroid. This is
+  7.6 % of test50's frames and 7.0 % of test53's (423 and 63 frames), concentrated at holes — the
+  moments the assay cares about — and it is why the single-blob criterion of chunk 2 reads 92 % / 92 %
+  on those clips instead of ≥ 95 %. In every such frame the pieces lie within one body length of each
+  other (max 6.3 / 6.5 cm). Not fixed in chunk 2 because the remedy — merging pieces within one body
+  length into one candidate under a new reason such as `fragmented` at `low_confidence` — adds a
+  reason string to the fixed vocabulary and needs a decision; measured and proposed in
+  `prototypes/tracker/RESULTS.md`.
+- **The nose is often unavailable, and a tail-only nose never clears O16.** The tail cue exists on
+  71 % / 78 % / 54 % of frames with a blob (test51 / test53 / test50) and no cue at all on 23 % /
+  21 % / 32 %: the re-encoded tail is frequently below the foreground threshold along its whole
+  length, and a hunched, nearly round body has no defined major axis. Where only the tail cue exists
+  the heading confidence is 0.5, below O16's 0.6 cutoff, so events would fall back to the centroid on
+  nearly every hole visit (the animal is stationary there, so the velocity cue is unavailable by
+  design). Measured in `prototypes/tracker/RESULTS.md`; the nose ships as experimental (D18).
+- **Velocity and tail cues can disagree on the left rim of test50.** With the moving threshold at
+  8 cm/s the two cues still name opposite ends in 10 % of test50's frames that have both (68 of 679),
+  mostly with the animal hanging over the left rim, where the grey wall lets part of the animal's
+  shadow beyond the edge be attributed as "tail". Not resolved; such frames carry heading confidence
+  0.0 and the nose is not trusted.
+- **The background contamination check cannot see everything.** A stationary animal that touches the
+  rim zone is skipped (indistinguishable from the dark surround inside the mask margin), and one
+  smaller than a hole is not flagged (the elongation rule requires at least hole-sized area, because
+  holes near the far platform edge are seen obliquely as small crescents). A baked-in animal of at
+  least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
+  to flag.
 
 ## Excluded scope
 
@@ -51,3 +79,31 @@ _None recorded yet._
   decoded frames show soft edges and smoothed texture (no blocking), and the mouse remains a
   well-separated dark blob on the white platform. Noted as a property of the inputs; whether it
   limits nose detection is measured in the tracker chunk.
+- **No experimenter's hand, and the start cylinder is two crescents.** No hand appears inside the
+  platform mask in any clip: test53's animal simply appears at the right rim at frame 150 (the
+  platform is empty for frames 0–149), and test51's start cylinder is lifted between frames 74 and 76
+  without a visible hand. The `oversized_blob` rule is therefore exercised only by the synthetic-hand
+  tests. The cylinder itself (frames 0–74 of test51) thresholds as two crescents of ≈ 900 and 700 px²
+  8.9 cm apart, so those frames are `ambiguous / multiple_blobs` (never `tracked`), not
+  `oversized_blob`; as one blob its difference image (≈ 2000 px²) would be only 3.3–3.7 × the body
+  area, so the × 3 oversized factor has little margin. The robust way to exclude the start is the
+  trial-start marker (O5), not the blob rule.
+- **The tail after re-encoding.** The tail is visible to the eye in nearly every frame but its
+  difference from the background is often below the Otsu threshold (43–51) along most of its
+  length, and its base is frequently the first part to drop out, leaving a detached thin piece
+  beside the body. The tracker attaches such pieces to the one body within two opening radii when
+  they are elongated (a compact shadow next to the body is not a tail) and still gets no tail cue on
+  22–32 % of frames. The tail is thin enough that the 0.8 cm opening removes it wherever it is
+  above threshold, so the centroid is unaffected.
+- **Holes near the far platform edge are crescents.** The camera is not exactly overhead: the five
+  or six holes on the platform's left (test50, test53) or right (test51) edge appear as crescents
+  0.3–0.7 × the area of a face-on hole with elongation 1.8–2.5. The contamination check ignores
+  them; a parametric hole ring (D10) still fits their centres.
+- **test51's lighter surround needed no fallback.** With the median background the surround cancels
+  and Otsu lands at 48 (test50 51, test53 43); the 1.5 cm mask margin was not tightened and no
+  adaptive threshold was used. The animal's shadow on the grey wall when it hangs over the left rim of
+  test50 is the one place the surround matters (see Defects).
+- **The animals are nearly stationary most of the time.** Median centroid speed 1.8 / 1.8 / 3.3 cm/s
+  (test51 / test53 / test50); only 82 / 98 / 1354 frames exceed 8 cm/s. Below walking speed the
+  centroid's direction of motion is jitter (the head dipping into a hole shifts the blob), which is
+  why the velocity cue for the nose applies only from 8 cm/s.
