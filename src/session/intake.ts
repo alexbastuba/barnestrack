@@ -12,7 +12,7 @@ import { fingerprintVideo } from '../video/fingerprint.js';
 import { parseMp4Index, UnsupportedVideoError, type Mp4Index } from '../video/mp4-index.js';
 
 /** The one command that turns an unsupported file into one BarnesTrack reads (O13). */
-export const REENCODE_HINT = 'ffmpeg -i in.mov -c:v libx264 -pix_fmt yuv420p -g 15 -bf 0 out.mp4';
+export const REENCODE_HINT = 'ffmpeg -i in.avi -c:v libx264 -pix_fmt yuv420p -g 15 -bf 0 out.mp4';
 
 export type IntakeResult =
   | { kind: 'accepted'; file: File; index: Mp4Index; fingerprint: VideoFingerprint }

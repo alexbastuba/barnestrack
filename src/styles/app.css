@@ -29,6 +29,14 @@
   box-sizing: border-box;
 }
 
+/*
+ * `hidden` is how this app hides things, and several rules below set an
+ * explicit `display`, which would otherwise beat the user-agent rule.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html {
   font-size: 100%;
 }
@@ -514,6 +522,10 @@ label {
 .video-facts dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.video-facts dd .hint {
+  margin-left: 0.375rem;
 }
 
 .privacy-note {

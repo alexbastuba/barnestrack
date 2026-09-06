@@ -20,6 +20,7 @@ import type { AppContext, Step, StepId } from './step.js';
 
 const SUPPORTED_BROWSERS = 'Chrome or Edge 94 and later, Safari 16.4 and later, or Firefox 130 and later';
 const PRIVACY_LINE = 'Everything runs in this browser. No video and no result leaves your computer.';
+const READY_MESSAGE = 'Ready. Start by loading the videos of one cohort.';
 
 export interface App {
   context: AppContext;
@@ -37,6 +38,7 @@ export function mountApp(
   const status = el('p', {
     class: 'status',
     id: 'app-status',
+    text: READY_MESSAGE,
     attrs: { role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' },
   });
 
@@ -295,6 +297,10 @@ export function mountApp(
   panels.id = 'panels';
 
   replaceChildren(root, [skip, header, capability, status, tablist, panels, footer]);
+
+  // One subscription keeps the chrome honest: every store change re-derives the
+  // step readiness, the session name field and whether saving is possible.
+  store.subscribe(refresh);
 
   showStep('videos');
 
