@@ -67,7 +67,7 @@ hole.
 | test53 |           1998 fps   |                      1460 fps  |      120 ms |              195 ms |     620 ms | 1226 ms |
 
 Vitest's informational check on 200 synthetic 640 × 480 frames reports 2646 fps (the
-`tracker throughput` line of `npm test`). The ≥ 150 fps criterion holds with a ten-fold margin; the
+`tracker throughput` line printed by `npx vitest run tests/analysis/tracker/tracker.test.ts --reporter=verbose`). The ≥ 150 fps criterion holds with a ten-fold margin; the
 browser pass will be bounded by decoding (≈ 400–900 fps software, chunk 1), not by the tracker.
 
 ### Platform estimate (`estimatePlatformCircle`, harness-only, untuned)
@@ -110,7 +110,7 @@ asks; for the other frames the column is "–". The head end was judged from the
 in the crop (the tail is unmistakable; the head is the other end). The images are here for a second reader
 to re-check the judgements.
 
-### test51 (start cylinder, lighter surround; 30 uniform + 6 extra)
+### test51 (start cylinder, lighter surround; 30 uniform + 5 extra — 6 were requested, one coincided with a uniform frame)
 
 | frame | mouse visible? | single blob correct? | centroid within one body width? | nose on head end? (moving only) | state / reason |
 | ----: | -------------- | -------------------- | ------------------------------- | ------------------------------- | -------------- |
@@ -248,7 +248,7 @@ Judged tile by tile from the animal's visible tail. Confidence in brackets is th
 
 | video  | moving frames in the clip | sampled | nose on head end | notes |
 | ------ | ------------------------: | ------: | ---------------: | ----- |
-| test51 | 82 | 30 | **30 / 30** | 12 at 1.0, 18 at 0.5 |
+| test51 | 82 | 30 | **30 / 30** | 13 at 1.0, 17 at 0.5 |
 | test53 | 98 | 30 | **30 / 30** | 27 at 1.0, 3 at 0.5 (frames 519, 539, 542: tail cue only) |
 | test50 | 1354 | 30 | **29 / 30**, 1 not resolvable at 2 × (frame 2126: the tail is hidden under the body) | 17 at 1.0, 13 at 0.5 |
 
