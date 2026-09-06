@@ -3,6 +3,7 @@ import { centroidPath, trialSource } from '../../src/viz/data.js';
 import { heatmapFigure, occupancyGrid } from '../../src/viz/heatmap.js';
 import { holeRasterFigure, rasterGeometry } from '../../src/viz/hole-raster.js';
 import { qualityStripFigure, stateRuns } from '../../src/viz/quality-strip.js';
+import { paletteFor } from '../../src/viz/theme.js';
 import type { FigureData, FigureOpts } from '../../src/viz/types.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
 import { fakeContext } from './fake-context.js';
@@ -41,7 +42,7 @@ describe('hole raster', () => {
   it('gives every hole a numbered row and names the target row in words', () => {
     const ctx = fakeContext();
     holeRasterFigure.draw(ctx, data, LIGHT);
-    expect(ctx.joinedText).toContain('7  target');
+    expect(ctx.joinedText).toContain('7 · target');
     for (let hole = 0; hole < 20; hole++) {
       if (hole === 7) continue;
       expect(ctx.textContent).toContain(String(hole));
@@ -127,6 +128,27 @@ describe('heatmap figure', () => {
     expect(ctx.joinedText).toContain('Time in a 4 cm cell (s)');
     expect(ctx.joinedText).toContain('no time spent here');
     expect(ctx.joinedText).toContain('hole 7');
+  });
+
+  it('fills the platform disc once, so the cells are not painted over', () => {
+    const ctx = fakeContext();
+    heatmapFigure.draw(ctx, data, LIGHT);
+    const platform = paletteFor('light').platform;
+    const clipped = ctx.calls.findIndex((call) => call.name === 'clip');
+    const lastHoleNumber = ctx.calls
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => call.name === 'fillText' && call.args[0] === '19')
+      .at(-1)!.index;
+    // `fill` records the fill style in force. The disc is filled once before
+    // the cells and never again while the ring is drawn — a second fill there
+    // would cover the data with the platform colour.
+    const platformFills = ctx.calls
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => call.name === 'fill' && call.args[0] === platform);
+    expect(platformFills.filter(({ index }) => index < clipped)).toHaveLength(1);
+    expect(
+      platformFills.filter(({ index }) => index > clipped && index <= lastHoleNumber),
+    ).toHaveLength(0);
   });
 
   it('draws the hole ring over the cells', () => {

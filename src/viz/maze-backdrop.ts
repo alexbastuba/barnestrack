@@ -42,23 +42,18 @@ export function mazeView(frame: FigureFrame, source: TrialSource): MazeView {
   };
 }
 
-export interface BackdropOptions {
+export interface PlatformOptions {
   /** A still from the video, drawn inside the platform disc when supplied. */
   background?: CanvasImageSource;
-  /** Draw the hole ring over whatever else is there. Default true. */
-  holes?: boolean;
-  /** Number every hole. Default true. */
-  holeNumbers?: boolean;
 }
 
-export function drawMazeBackdrop(
+/** The platform disc, and the video's own still inside it when there is one. */
+export function drawPlatform(
   frame: FigureFrame,
   view: MazeView,
-  options: BackdropOptions = {},
+  options: PlatformOptions = {},
 ): void {
   const { ctx, palette } = frame;
-  const { source } = view;
-
   ctx.save();
   ctx.beginPath();
   ctx.arc(view.centre.x, view.centre.y, view.radius, 0, Math.PI * 2);
@@ -66,7 +61,7 @@ export function drawMazeBackdrop(
   ctx.fill();
 
   if (options.background) {
-    const resolution = source.descriptor.referenceResolution;
+    const resolution = view.source.descriptor.referenceResolution;
     const origin = view.toFigure({ x: 0, y: 0 });
     ctx.save();
     ctx.clip();
@@ -84,9 +79,25 @@ export function drawMazeBackdrop(
   ctx.strokeStyle = palette.platformEdge;
   ctx.stroke();
   ctx.restore();
+}
 
-  if (options.holes === false) return;
+export interface HoleRingOptions {
+  /** Number every hole. Default true. */
+  holeNumbers?: boolean;
+}
 
+/**
+ * The hole ring over whatever is already there. Drawn separately from the
+ * platform so a figure that paints inside the disc — the heatmap — can put its
+ * data between the two instead of having the disc repainted over it.
+ */
+export function drawHoleRing(
+  frame: FigureFrame,
+  view: MazeView,
+  options: HoleRingOptions = {},
+): void {
+  const { ctx, palette } = frame;
+  const { source } = view;
   const holeRadius = source.map.holes.holeRadius_px * view.pixelScale;
   ctx.save();
   ctx.font = figureFont(ANNOTATION_SIZE);
@@ -121,6 +132,18 @@ export function drawMazeBackdrop(
     }
   }
   ctx.restore();
+}
+
+export type BackdropOptions = PlatformOptions & HoleRingOptions;
+
+/** The platform and the ring together: what every spatial figure but the heatmap wants. */
+export function drawMazeBackdrop(
+  frame: FigureFrame,
+  view: MazeView,
+  options: BackdropOptions = {},
+): void {
+  drawPlatform(frame, view, options);
+  drawHoleRing(frame, view, options);
 }
 
 /** The words that name the target in a legend or caption. */

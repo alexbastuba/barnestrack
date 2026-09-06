@@ -155,6 +155,27 @@ export function niceTicks(min: number, max: number, count = 6): Tick[] {
   return ticks;
 }
 
+export interface Scale {
+  ticks: Tick[];
+  /** The value at the top of the axis: the first round tick at or above `max`. */
+  top: number;
+}
+
+/**
+ * A y scale that always has a tick at or above the largest value, so the
+ * highest point sits inside the plot rather than on its top edge.
+ */
+export function niceScale(max: number, count = 5): Scale {
+  const ticks = niceTicks(0, Math.max(max, Number.EPSILON), count);
+  const last = ticks[ticks.length - 1];
+  if (!last || last.value < max) {
+    const step = ticks.length > 1 ? ticks[1]!.value - ticks[0]!.value : Math.max(max, 1);
+    const value = (last?.value ?? 0) + step;
+    ticks.push({ value, label: formatNumber(value) });
+  }
+  return { ticks, top: ticks[ticks.length - 1]?.value ?? Math.max(max, 1) };
+}
+
 export function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return '—';
   if (Number.isInteger(value)) return String(value);

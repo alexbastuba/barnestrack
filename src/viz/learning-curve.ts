@@ -27,7 +27,7 @@ import {
   drawUnavailable,
   endFigure,
   formatNumber,
-  niceTicks,
+  niceScale,
 } from './figure.js';
 import { seriesColour } from './theme.js';
 import type { FigureDescription, FigureSpec, PlottableMetric } from './types.js';
@@ -138,9 +138,9 @@ export const learningCurveFigure: FigureSpec = {
     const values = curve.series.flatMap((series) =>
       series.points.map((point) => point.value).filter((value): value is number => value !== null),
     );
-    const top = Math.max(1, ...values);
-    const yTicks = niceTicks(0, top, 5);
-    const highest = Math.max(top, ...yTicks.map((tick) => tick.value));
+    const scale = niceScale(Math.max(1, ...values));
+    const yTicks = scale.ticks;
+    const highest = scale.top;
     const xOf = (x: number): number =>
       plot.x + ((x + 0.5) / Math.max(1, curve.xLabels.length)) * plot.width;
     const yOf = (value: number): number => plot.y + plot.height * (1 - value / highest);

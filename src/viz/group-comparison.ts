@@ -24,7 +24,7 @@ import {
   drawUnavailable,
   endFigure,
   formatNumber,
-  niceTicks,
+  niceScale,
 } from './figure.js';
 import { seriesColour } from './theme.js';
 import type { FigureDescription, FigureSpec, PlottableMetric } from './types.js';
@@ -107,8 +107,9 @@ export const groupComparisonFigure: FigureSpec = {
     }
     const { palette, plot } = frame;
     const all = comparison.groups.flatMap((group) => group.values);
-    const yTicks = niceTicks(0, Math.max(1, ...all), 5);
-    const highest = Math.max(1, ...all, ...yTicks.map((tick) => tick.value));
+    const scale = niceScale(Math.max(1, ...all));
+    const yTicks = scale.ticks;
+    const highest = scale.top;
     const slot = plot.width / Math.max(1, comparison.groups.length);
     const centreOf = (index: number): number => plot.x + slot * (index + 0.5);
     const yOf = (value: number): number => plot.y + plot.height * (1 - value / highest);

@@ -29,7 +29,7 @@ import type { FigureDescription, FigureSpec } from './types.js';
 
 const SIZE = { width: 660, height: 470 };
 const TITLE = 'Hole visits over time';
-const MARGINS = { top: 34, right: 24, bottom: 74, left: 62 };
+const MARGINS = { top: 34, right: 24, bottom: 74, left: 104 };
 const MIN_BAR_WIDTH = 2.5;
 
 export interface RasterGeometry {
@@ -126,9 +126,10 @@ export const holeRasterFigure: FigureSpec = {
       const isTarget = hole === source.targetIndex;
       ctx.fillStyle = isTarget ? palette.target : palette.inkSoft;
       ctx.font = figureFont(ANNOTATION_SIZE, isTarget ? 'bold' : 'normal');
-      ctx.fillText(isTarget ? `${hole}  target` : String(hole), plot.x - 8, y);
+      ctx.fillText(isTarget ? `${hole} · target` : String(hole), plot.x - 22, y);
       if (isTarget) {
-        drawGlyph(ctx, 'square', plot.x - 54, y, 8, palette.target);
+        // In the gutter between the row label and the axis, clear of both.
+        drawGlyph(ctx, 'square', plot.x - 12, y, 8, palette.target);
       }
     }
     ctx.restore();

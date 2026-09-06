@@ -12,7 +12,7 @@ import { CIVIDIS, colormapCss } from './colormaps.js';
 import type { TrialSource } from './data.js';
 import { centroidPath, trialLabel, trialSource } from './data.js';
 import { drawColorBar, drawLegend, formatNumber } from './figure.js';
-import { drawMazeBackdrop, targetLabel } from './maze-backdrop.js';
+import { drawHoleRing, drawPlatform, targetLabel } from './maze-backdrop.js';
 import { drawSpatialFigure, NO_DATA_SUMMARY, trialUnavailable } from './trial-figure.js';
 import type { FigureData, FigureDescription, FigureSpec } from './types.js';
 
@@ -120,8 +120,9 @@ export const heatmapFigure: FigureSpec = {
       { title: TITLE, defaultSize: SIZE, backdrop: false },
       (frame, source, view) => {
         const { palette } = frame;
-        // The platform first, then the cells, then the ring over the top.
-        drawMazeBackdrop(frame, view, { holes: false });
+        // The platform, then the cells inside it, then the ring over the top.
+        // The disc is never repainted, or it would cover its own data.
+        drawPlatform(frame, view, { background: opts.background });
 
         const grid = occupancyGrid(source);
         const hottest = Math.max(...grid.seconds, 0);
@@ -146,7 +147,7 @@ export const heatmapFigure: FigureSpec = {
         }
         ctx.restore();
 
-        drawMazeBackdrop(frame, view, { holes: true });
+        drawHoleRing(frame, view);
 
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {

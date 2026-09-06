@@ -26,8 +26,7 @@ import type { FigureDescription, FigureSpec } from './types.js';
 
 const SIZE = { width: 660, height: 260 };
 const TITLE = 'Tracking quality over the clip';
-const MARGINS = { top: 34, right: 24, bottom: 96, left: 62 };
-const STRIP_HEIGHT = 46;
+const MARGINS = { top: 34, right: 24, bottom: 114, left: 62 };
 
 /** The order the states are stacked in the legend and the description. */
 const STATES: readonly DetectionState[] = [
@@ -122,18 +121,20 @@ export const qualityStripFigure: FigureSpec = {
     const end = track[track.length - 1]?.t_s ?? 1;
     const span = Math.max(1e-6, end - start);
     const timeX = (t: number): number => plot.x + ((t - start) / span) * plot.width;
-    const stripY = plot.y + 8;
+    // The strip fills the plot area, so the time axis sits directly beneath it.
+    const stripY = plot.y;
+    const stripHeight = plot.height;
 
     for (const run of stateRuns(track)) {
       const x = timeX(run.startTime_s);
       const width = Math.max(1, timeX(run.endTime_s) - x + plot.width / Math.max(1, track.length));
-      paintState(frame, run.state, { x, y: stripY, width, height: STRIP_HEIGHT });
+      paintState(frame, run.state, { x, y: stripY, width, height: stripHeight });
     }
 
     ctx.save();
     ctx.strokeStyle = palette.lineStrong;
     ctx.lineWidth = palette.strokeScale;
-    ctx.strokeRect(plot.x, stripY, plot.width, STRIP_HEIGHT);
+    ctx.strokeRect(plot.x, stripY, plot.width, stripHeight);
     ctx.restore();
 
     const quality = source.analysis.derived.quality;
@@ -146,7 +147,7 @@ export const qualityStripFigure: FigureSpec = {
       `Tier ${quality.tier} · ${(quality.detectionStateFractions.tracked * 100).toFixed(1)}% tracked · ` +
         `${quality.gaps.length} gap${quality.gaps.length === 1 ? '' : 's'}, longest ${formatNumber(quality.longestGapSeconds)} s`,
       plot.x,
-      stripY + STRIP_HEIGHT + 22,
+      plot.y + plot.height + 52,
     );
     ctx.restore();
 
@@ -172,7 +173,7 @@ export const qualityStripFigure: FigureSpec = {
         glyph: state === 'tracked' ? 'square' : 'bar',
         hatched: state === 'low_confidence' || state === 'ambiguous',
       })),
-      plot.y + plot.height + 46,
+      plot.y + plot.height + 70,
     );
     endFigure(frame);
   },
