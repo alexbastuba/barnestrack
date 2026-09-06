@@ -62,10 +62,23 @@ function trackFrame(frameIndex: number): TrackFrame {
     centroid: { x: 100, y: 120, confidence: 0.9, valid: true, source: 'auto' },
     nose: { x: 106, y: 114, confidence: 0.7, valid: true, source: 'auto' },
     detectionState: 'tracked',
-    reason: 'single blob within area prior',
+    reason: 'single_blob',
     blobArea_px2: 842,
     boundingBox: { x: 90, y: 108, width: 30, height: 26 },
     noseHeadingConfidence: 0.7,
+  };
+}
+
+/**
+ * A video that has been tracked but not yet analysed: `derived` is null (D52).
+ * This is what chunk 4's tracking pass writes, so both branches of
+ * `VideoAnalysis.derived` are typed and round-tripped by the tests.
+ */
+export function trackedOnlyAnalysis(): VideoAnalysis {
+  return {
+    auto: { parametersHash: 'p_9f2a', frames: [trackFrame(0), trackFrame(1)] },
+    corrections: { entries: [] },
+    derived: null,
   };
 }
 
@@ -158,9 +171,16 @@ export function fullSession(): SessionFile {
         mazeTransform: { translateX: -12.5, translateY: 4, rotationDeg: 0, scale: 1.08 },
         metadata: {},
       }),
+      // Tracked but not yet analysed, so `derived: null` round-trips too (D52).
+      videoDescriptor({
+        id: 'vid_03',
+        filename: 'test53.mp4',
+        fingerprint: fingerprint({ byteLength: 556_032, frameCount: 905, sha256: 'c'.repeat(64) }),
+        metadata: {},
+      }),
     ],
     mazeMap: mazeMap(),
     parameters: null,
-    analyses: { vid_01: videoAnalysis() },
+    analyses: { vid_01: videoAnalysis(), vid_03: trackedOnlyAnalysis() },
   };
 }

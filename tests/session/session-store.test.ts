@@ -127,7 +127,7 @@ describe('SessionStore', () => {
     store.countMazeClick(descriptor.id, 5);
     store.replaceSession(fullSession());
     expect(store.current.name).toBe('cohort3 day1');
-    expect(store.videos).toHaveLength(2);
+    expect(store.videos).toHaveLength(3);
     expect(store.mazeClickCount('vid_01')).toBe(0);
   });
 });

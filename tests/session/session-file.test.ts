@@ -30,8 +30,20 @@ describe('serialize → parse round trip', () => {
 
   it('never writes an analyses entry for an untracked video', () => {
     const session = fullSession();
-    expect(Object.keys(session.analyses)).toEqual(['vid_01']);
+    expect(Object.keys(session.analyses)).toEqual(['vid_01', 'vid_03']);
     expect(session.videos.map((v) => v.id)).toContain('vid_02');
+  });
+
+  // D52: a video can be tracked long before it is analysed, and the honest
+  // value for its derived layer is a null, not a fabricated one (D16).
+  it('round-trips a tracked video whose derived layer is null', () => {
+    const session = fullSession();
+    const parsed = parseSessionDocument(serializeSessionFile(session));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.session.analyses['vid_03']?.derived).toBeNull();
+    expect(parsed.session.analyses['vid_03']?.auto.frames).toHaveLength(2);
+    expect(parsed.session.analyses['vid_01']?.derived).not.toBeNull();
   });
 });
 

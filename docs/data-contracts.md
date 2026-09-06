@@ -56,7 +56,7 @@ One record per frame of one video's track.
 | `centroid`              | NamedPoint      | px      | Body centroid. See below.                                            |
 | `nose`                  | NamedPoint      | px      | Head-end point. See below.                                           |
 | `detectionState`        | enum            | —       | `tracked \| not_detected \| ambiguous \| low_confidence`.            |
-| `reason`                | string          | —       | Why `detectionState` took this value.                                |
+| `reason`                | string          | —       | Why `detectionState` took this value. One of the eight fixed strings enumerated in §6. |
 | `blobArea_px2`          | number          | px²     | Foreground blob area at this frame.                                  |
 | `boundingBox`           | BBox \| null    | px      | `{ x, y, width, height }`, or `null` when nothing was detected.      |
 | `noseHeadingConfidence` | number          | 0–1     | Confidence in the head-end choice along the body ellipse's axis.     |
@@ -79,7 +79,7 @@ The automatic layer never contains a frame with `source: 'filled'` on either poi
   "centroid": { "x": 512.4, "y": 388.1, "confidence": 0.91, "valid": true, "source": "auto" },
   "nose": { "x": 528.9, "y": 371.0, "confidence": 0.58, "valid": true, "source": "auto" },
   "detectionState": "tracked",
-  "reason": "single blob within area prior",
+  "reason": "single_blob",
   "blobArea_px2": 842,
   "boundingBox": { "x": 498, "y": 360, "width": 46, "height": 40 },
   "noseHeadingConfidence": 0.58
@@ -93,9 +93,10 @@ transform, shared parameters, and per-video analyses in three layers.
 
 **A session exists before a maze or parameters do (D47).** The session is created the moment a
 video is loaded, so autosave and reload work from the first dropped file (D27). `mazeMap` is `null`
-until the maze step is finished; `parameters` is `null` until the first tracking run stamps the
-defaults in force at that time; `analyses` has no entry for a video that has not been tracked —
-never a placeholder `auto`/`derived` layer. `SESSION_SCHEMA_VERSION` stays 1: no schema-1 file had
+until the maze step is finished; `parameters` is `null` until the first analysis run stamps the
+defaults in force at that time (D51); `analyses` has no entry for a video that has not been tracked,
+and a tracked video's `derived` is `null` until it is analysed (D52) — never a placeholder
+`auto`/`derived` layer. `SESSION_SCHEMA_VERSION` stays 1: no schema-1 file had
 been written when this was decided.
 
 **No session-level calibration field.** `platformDiameter_cm` lives once in the shared `mazeMap`
@@ -112,7 +113,7 @@ superseding the session-level "calibration" field named in D9's prose).
 | `name`          | string                                    | User-editable cohort name; defaults to the first video's filename (D47). |
 | `videos`        | VideoDescriptor[]                        | See below.                                                 |
 | `mazeMap`       | `MazeMapFile \| null`                    | Shared across the cohort; `null` until the maze step is finished (D47). See §4. |
-| `parameters`    | `Parameters \| null`                     | Every event/cleaning threshold; `null` until the first tracking run (D47). See §6. |
+| `parameters`    | `Parameters \| null`                     | Every event/cleaning threshold; `null` until the first analysis run (D47, D51). See §6. |
 | `analyses`      | `Record<videoId, VideoAnalysis>`         | No entry until the video is tracked. See below.            |
 
 **VideoDescriptor**
@@ -134,9 +135,11 @@ superseding the session-level "calibration" field named in D9's prose).
 - **`corrections`** — `{ entries: CorrectionEntry[] }`. Sparse human edits — point corrections,
   range tools, event corrections, trial-start adjustment, strategy override — each carrying
   `source: 'user'` and an ISO 8601 `timestamp` (D25). Never mutates `auto`.
-- **`derived`** — `{ cleanedTrack, events, metrics, quality }`. Everything recomputed from
+- **`derived`** — `{ cleanedTrack, events, metrics, quality } | null`. Everything recomputed from
   `auto ⊕ corrections` on load: safe to discard and recompute at any time; never treated as the
   source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration value (D44).
+  `null` for a video that has been tracked but not yet analysed (D52) — a placeholder or fabricated
+  derived layer is forbidden (D16), so the honest value is a null.
 
 ```json
 {
@@ -151,19 +154,35 @@ superseding the session-level "calibration" field named in D9's prose).
       "referenceResolution": { "width": 1280, "height": 720 },
       "mazeTransform": { "translateX": 0, "translateY": 0, "rotationDeg": 0, "scale": 1 },
       "metadata": { "animal": "07", "day": "1", "group": "control" }
+    },
+    {
+      "id": "vid_02",
+      "filename": "cohort3_day1_animal08.mp4",
+      "fingerprint": { "byteLength": 84110336, "durationSeconds": 179.1, "frameCount": 5372, "sha256": "…" },
+      "referenceResolution": { "width": 1280, "height": 720 },
+      "mazeTransform": { "translateX": 0, "translateY": 0, "rotationDeg": 0, "scale": 1 },
+      "metadata": { "animal": "08", "day": "1", "group": "control" }
     }
   ],
   "mazeMap": { "…": "see §4" },
   "parameters": { "…": "see §6" },
   "analyses": {
     "vid_01": {
-      "auto": { "parametersHash": "p_9f2a", "frames": ["…"] },
+      "auto": { "parametersHash": "3f1c…", "frames": ["…"] },
       "corrections": { "entries": [] },
       "derived": { "cleanedTrack": ["…"], "events": ["…"], "metrics": {}, "quality": {} }
+    },
+    "vid_02": {
+      "auto": { "parametersHash": "3f1c…", "frames": ["…"] },
+      "corrections": { "entries": [] },
+      "derived": null
     }
   }
 }
 ```
+
+`vid_02` above has been tracked but not yet analysed: its `derived` is `null` (D52), and
+`parameters` at the top level is only non-null once some video *has* been analysed (D51).
 
 ## 4. Maze map file (D10, D13, O8)
 

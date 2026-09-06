@@ -127,6 +127,8 @@ Grouped by area. Each entry: the decision, then one line of rationale. Sweep-era
 
 **D51 · Layer keys.** Refines D9 and D47. The `auto` layer is keyed by the hash of the *tracking* parameters only (`parameters.tracking`), because nothing else changes a tracking run; the `derived` layer is keyed by the hash of the full parameter set. `SessionFile.parameters` is stamped with the defaults in force at the first analysis (derive) run, not at the first tracking run. Hashes are the SHA-256 of the canonical JSON (sorted keys, no whitespace). — Changing an event threshold must not invalidate an hour of tracking, and a tracking change must invalidate everything downstream.
 
+**D52 · The derived layer is null until the first analysis run.** Amends D9 and D47 in the same pattern: `VideoAnalysis.derived` is `DerivedLayer | null` — a video that has been tracked but not yet analysed carries `auto` (and possibly `corrections`) with `derived: null`; the layer is recomputed on load and never stored as authoritative. Placeholder or fabricated derived values are forbidden (D16). Schema version stays 1: no production path has yet written a `VideoAnalysis`. — Tracking can finish before the analysis engine exists in a session, and a null is honest where a placeholder would be a lie.
+
 ## Open decisions — provisional defaults
 
 Units: spatial thresholds are stored in centimetres and converted per video using the platform-diameter calibration; temporal thresholds are stored in seconds and applied using each frame's timestamp from the file's own timebase, never a nominal frame rate.

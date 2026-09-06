@@ -9,9 +9,10 @@
  * A session exists before a maze or parameters do (D47): it is created the
  * moment a video is loaded, so autosave and reload work from the first drop
  * (D27). `mazeMap` is null until the maze step is finished and `parameters`
- * is null until the first tracking run stamps the defaults in force at that
- * time. `analyses` has no entry for a video that has not been tracked —
- * never a placeholder `auto`/`derived` layer.
+ * is null until the first analysis run stamps the defaults in force at that
+ * time (D51). `analyses` has no entry for a video that has not been tracked,
+ * and a tracked video's `derived` is null until it is analysed (D52) — never
+ * a placeholder `auto`/`derived` layer.
  */
 import type { ParametersHash, Parameters } from './parameters.js';
 import type { MazeMapFile, SimilarityTransform } from './mazeMap.js';
@@ -126,7 +127,13 @@ export interface DerivedLayer {
 export interface VideoAnalysis {
   auto: AutoLayer;
   corrections: CorrectionsLayer;
-  derived: DerivedLayer;
+  /**
+   * Null until the first analysis run computes it (D52), in the same pattern
+   * as `mazeMap` and `parameters` above: a video can be tracked long before it
+   * is analysed. Recomputed on load and never stored as authoritative, so a
+   * null here is honest where a fabricated layer would be a lie (D16).
+   */
+  derived: DerivedLayer | null;
 }
 
 export interface SessionFile {
@@ -140,7 +147,7 @@ export interface SessionFile {
    * using two mazes carries two maps. Null until the maze step is finished (D47).
    */
   mazeMap: MazeMapFile | null;
-  /** Null until the first tracking run stamps the defaults in force at that time. D47. */
+  /** Null until the first analysis run stamps the defaults in force at that time. D47, D51. */
   parameters: Parameters | null;
   /** No entry for a video that has not been tracked. */
   analyses: Record<string, VideoAnalysis>;
