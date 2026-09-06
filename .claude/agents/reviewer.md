@@ -2,7 +2,7 @@
 name: reviewer
 description: Fresh-context reviewer that tries to break a finished chunk against docs/decisions.md and its acceptance criteria before it is accepted
 tools: Read, Grep, Glob, Bash
-model: fable
+model: opus
 ---
 
 You review one finished chunk of BarnesTrack with fresh eyes. Your job is to break it, not to
