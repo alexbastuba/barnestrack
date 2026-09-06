@@ -97,8 +97,20 @@ async function start(request: Extract<WorkerRequest, { type: 'start' }>): Promis
     return;
   }
   const { file, index } = request;
-  const consumer = createConsumer(request);
-  consumer.started?.();
+  let consumer: FrameConsumer;
+  try {
+    // Building the track consumer runs the whole background preparation, which
+    // can throw on a malformed background. Outside the try below it would
+    // reject unhandled, and the main thread — which only hears `error` — would
+    // wait for a pass that is never going to start.
+    consumer = createConsumer(request);
+    consumer.started?.();
+  } catch (e) {
+    const error = e instanceof Error ? e : new Error(String(e));
+    post({ type: 'error', name: error.name, message: error.message });
+    active = null;
+    return;
+  }
   const started = performance.now();
   let peakHeap = usedHeapBytes();
 

@@ -14,7 +14,6 @@
  * would re-render every step several times a second while the pass runs.
  */
 import type { AutoLayer } from '../contracts/session.js';
-import type { TrackingParameters } from '../contracts/parameters.js';
 import type { MazeMapFile } from '../contracts/mazeMap.js';
 import { holeCentres, pxPerCm } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
@@ -164,13 +163,22 @@ export class TrackingRunner {
     if (this.running) this.cancel(this.running);
   }
 
-  /** Stops everything and releases the worker. */
+  /**
+   * Stops everything and releases the worker, leaving the runner reusable.
+   *
+   * The run states must go too. A terminated worker sends no `done`,
+   * `cancelled` or `error`, so anything left in `states` would never be
+   * cleared — and video ids restart at `vid_01` in the next session, so the
+   * new session's first video would inherit a dead run: shown as tracking for
+   * ever, its Track button disabled and its Cancel button a no-op.
+   */
   destroy(): void {
     this.waiting.length = 0;
     this.cancelSampling = true;
     this.worker?.terminate();
     this.worker = null;
     this.running = null;
+    this.states.clear();
   }
 
   // ---- internals -------------------------------------------------------------
@@ -221,6 +229,11 @@ export class TrackingRunner {
     }
 
     const params = this.store.trackingParameters;
+    // Hashed here, with the parameters the pass is about to run with. Reading
+    // the store again when the pass finishes would stamp the layer with
+    // whatever the user edited meanwhile, and D51's guarantee is exactly the
+    // reverse: a matching hash must mean the same parameters produced it.
+    const parametersHash = hashTrackingParameters(params);
     const frameCount = attachment.index.frameCount;
 
     // The maze in this video's pixels: the shared map after this video's fit
@@ -245,13 +258,26 @@ export class TrackingRunner {
         shouldCancel: () => this.cancelSampling,
       },
     );
-    if (sampled.cancelled || sampled.samples.length === 0) {
+    if (sampled.cancelled) {
       this.finishRun(videoId, { phase: 'cancelled', done: 0, total: frameCount });
+      return;
+    }
+    // Not a cancellation: the user excluded every frame, and saying "cancelled"
+    // would blame them for something they did not do and explain nothing.
+    if (sampled.samples.length === 0) {
+      this.finishRun(videoId, {
+        phase: 'failed',
+        error:
+          'no frames are left to sample for the background: the background exclude ranges cover ' +
+          'the whole video. Narrow them in the tracking parameters and try again.',
+        done: 0,
+        total: frameCount,
+      });
       return;
     }
 
     this.update(videoId, { phase: 'preparing', done: 0, total: frameCount });
-    await this.runWorker(videoId, {
+    await this.runWorker(videoId, parametersHash, {
       type: 'start',
       consumer: 'track',
       file: attachment.file,
@@ -272,7 +298,11 @@ export class TrackingRunner {
     });
   }
 
-  private runWorker(videoId: VideoId, request: WorkerRequest): Promise<void> {
+  private runWorker(
+    videoId: VideoId,
+    parametersHash: string,
+    request: WorkerRequest,
+  ): Promise<void> {
     return new Promise((resolve) => {
       const worker = this.options.createWorker?.() ?? defaultWorker();
       this.worker = worker;
@@ -292,10 +322,7 @@ export class TrackingRunner {
         } else if (message.type === 'done') {
           const result = message.track;
           if (result) {
-            const auto: AutoLayer = {
-              parametersHash: hashTrackingParameters(this.store.trackingParameters),
-              frames: result.frames,
-            };
+            const auto: AutoLayer = { parametersHash, frames: result.frames };
             this.options.onComplete(videoId, auto, result);
             this.finishRun(videoId, { phase: 'done', done: result.frames.length, result });
           } else {
@@ -336,9 +363,4 @@ function workerErrorText(message: Extract<WorkerResponse, { type: 'error' }>): s
     );
   }
   return message.message || 'the tracking pass failed';
-}
-
-/** The parameters hash a finished layer would have, for "is this still current?". */
-export function currentTrackingHash(params: TrackingParameters): string {
-  return hashTrackingParameters(params);
 }
