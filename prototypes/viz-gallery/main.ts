@@ -99,6 +99,8 @@ const cards: Card[] = FIGURES.map((figure) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = `PNG ${scale}×`;
+    // Nine cards would otherwise put the same two names on eighteen buttons.
+    button.setAttribute('aria-label', `Download ${figure.title} as a PNG at ${scale}×`);
     button.addEventListener('click', () => {
       void exportOne(figure, scale);
     });

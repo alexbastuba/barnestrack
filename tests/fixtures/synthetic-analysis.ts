@@ -370,6 +370,27 @@ function positionAt(segments: readonly Segment[], t: number): { point: Point; se
 }
 
 /**
+ * Where to put the short loss of detection: snapped forward from the requested
+ * fraction of the clip to the middle of the next stretch of travel, so it lands
+ * between holes. O10 never fills a gap within one hole radius of a hole — a gap
+ * at a hole is evidence, not noise — so a fixture whose fillable gap sat inside
+ * an investigation would be demonstrating something the rule forbids.
+ */
+function shortGapStartFrame(
+  script: VideoScript,
+  segments: readonly Segment[],
+  values: readonly number[],
+): number | null {
+  if (script.fillableGapAt === null) return null;
+  const wanted = values[Math.round(script.fillableGapAt * script.frameCount)] ?? 0;
+  const travelling = segments.filter((segment) => !segment.dwelling && segment.end_s > wanted);
+  const chosen = travelling[0] ?? segments.find((segment) => !segment.dwelling);
+  if (!chosen) return null;
+  const frame = frameAtTime(values, (chosen.start_s + chosen.end_s) / 2);
+  return frame > 0 ? frame : null;
+}
+
+/**
  * Presentation timestamps with the anomalies the sample clips actually show
  * (D7, O11): a few repeated timestamps and a few dropped-frame gaps.
  */
@@ -453,27 +474,26 @@ function buildTrack(script: VideoScript, map: MazeMapFile): BuiltTrack {
       }
     : null;
   /*
-   * The fillable gap is grown from this video's own timestamps until one more
-   * frame would take the bounding gap past O10's ceiling — a fixed frame count
-   * would be under the limit at 30 fps and twice over it at 14.985.
+   * The short loss of detection always happens; whether the cleaning step is
+   * allowed to fill it is a separate question, answered from this video's own
+   * timestamps against O10's ceiling. A two-frame loss is 0.067 s at 30 fps and
+   * fillable; the same two frames at test51's 14.985 fps are 0.20 s and are
+   * not, so that video keeps a visible gap. Both cases are worth having: D31
+   * asks for cleaning to be shown rather than applied invisibly.
    */
-  const filledStart =
-    script.fillableGapAt === null ? null : Math.round(script.fillableGapAt * script.frameCount);
-  let filledRange: { startFrame: number; endFrame: number } | null = null;
-  if (filledStart !== null && filledStart > 0) {
-    const boundingGap = (endFrame: number): number =>
-      (timebase.values[endFrame] ?? Infinity) - (timebase.values[filledStart - 1] ?? 0);
-    let endFrame = filledStart + 1;
-    while (
-      endFrame + 1 < script.frameCount &&
-      boundingGap(endFrame + 1) <= FIXTURE_PARAMETERS.gapFilling.maxDuration_s
-    ) {
-      endFrame++;
-    }
-    if (boundingGap(endFrame) <= FIXTURE_PARAMETERS.gapFilling.maxDuration_s) {
-      filledRange = { startFrame: filledStart, endFrame };
-    }
-  }
+  const shortGapStart = shortGapStartFrame(script, segments, timebase.values);
+  const shortGapRange =
+    shortGapStart !== null && shortGapStart > 0
+      ? { startFrame: shortGapStart, endFrame: shortGapStart + 2 }
+      : null;
+  const boundingGapSeconds = (range: { startFrame: number; endFrame: number }): number =>
+    (timebase.values[range.endFrame] ?? Infinity) - (timebase.values[range.startFrame - 1] ?? 0);
+  const filledRange =
+    shortGapRange &&
+    shortGapRange.endFrame < script.frameCount &&
+    boundingGapSeconds(shortGapRange) <= FIXTURE_PARAMETERS.gapFilling.maxDuration_s
+      ? shortGapRange
+      : null;
 
   const auto: TrackFrame[] = [];
   let previous: Point | null = null;
@@ -504,10 +524,10 @@ function buildTrack(script: VideoScript, map: MazeMapFile): BuiltTrack {
       failureRange !== null &&
       frameIndex >= failureRange.startFrame &&
       frameIndex < failureRange.endFrame;
-    const inFillableGap =
-      filledRange !== null &&
-      frameIndex >= filledRange.startFrame &&
-      frameIndex < filledRange.endFrame;
+    const inShortGap =
+      shortGapRange !== null &&
+      frameIndex >= shortGapRange.startFrame &&
+      frameIndex < shortGapRange.endFrame;
 
     let detectionState: DetectionState = 'tracked';
     let reason = 'single mouse-sized component inside the platform mask';
@@ -517,7 +537,7 @@ function buildTrack(script: VideoScript, map: MazeMapFile): BuiltTrack {
     } else if (inFailure) {
       detectionState = 'not_detected';
       reason = 'no foreground component above the area prior';
-    } else if (inFillableGap) {
+    } else if (inShortGap) {
       detectionState = 'not_detected';
       reason = 'foreground component below the area prior for two frames';
     } else if (noise() < 0.012) {

@@ -18,6 +18,13 @@ import type { FigureData, FigureDescription, FigureSpec } from './types.js';
 
 const SIZE = { width: 470, height: 500 };
 const TITLE = 'Occupancy heatmap';
+/**
+ * Heatmap bin size, cm. It is printed on the figure and in `describe()`, so it
+ * belongs in `Parameters` and therefore in `parameters.json` and
+ * `parameters_hash` — otherwise a heatmap cannot be reproduced from an export
+ * alone. TODO(chunk 5): move it into the parameter set (needs a contract field,
+ * so it needs Alex's sign-off and a schema bump).
+ */
 export const DEFAULT_CELL_CM = 4;
 
 /**
@@ -133,7 +140,9 @@ export const heatmapFigure: FigureSpec = {
         drawPlatform(frame, view, { background: opts.background });
 
         const grid = occupancyGrid(source);
-        const hottest = Math.max(...grid.seconds, 0);
+        // reduce, not a spread: the cell count grows as 1/cellSize² and a fine
+        // grid would put tens of thousands of arguments on one call.
+        const hottest = grid.seconds.reduce((most, value) => Math.max(most, value), 0);
         const cellPx = grid.cellSize_cm * view.cmScale;
 
         ctx.save();

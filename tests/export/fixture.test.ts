@@ -3,6 +3,7 @@
  * the gallery page, so its own invariants are checked here.
  */
 import { describe, expect, it } from 'vitest';
+import type { VideoDescriptor } from '../../src/contracts/session.js';
 import { holeCentres } from '../../src/maze/ring.js';
 import { syntheticSession, videoMazeMap } from '../fixtures/synthetic-analysis.js';
 
@@ -62,10 +63,18 @@ describe('syntheticSession', () => {
 
   it('never fills a gap wider than the parameter that authorises it (O10)', () => {
     const session = syntheticSession();
+    const holeRadius_px = (video: VideoDescriptor): number =>
+      videoMazeMap(video).holes.holeRadius_px;
+    const nearestHoleDistance_px = (video: VideoDescriptor, at: { x: number; y: number }): number =>
+      Math.min(
+        ...holeCentres(videoMazeMap(video)).map((hole) => Math.hypot(hole.x - at.x, hole.y - at.y)),
+      );
     const ceiling = session.parameters?.gapFilling.maxDuration_s ?? 0;
     expect(ceiling).toBeGreaterThan(0);
     let filledRuns = 0;
-    for (const analysis of Object.values(session.analyses)) {
+    for (const video of session.videos) {
+      const analysis = session.analyses[video.id];
+      if (!analysis) continue;
       const track = analysis.derived.cleanedTrack;
       for (let i = 0; i < track.length; i++) {
         if (track[i]!.centroid.source !== 'filled') continue;
@@ -80,6 +89,14 @@ describe('syntheticSession', () => {
         expect(after).toBeDefined();
         if (!before || !after) continue;
         expect(after.t_s - before.t_s).toBeLessThanOrEqual(ceiling + 1e-9);
+        // O10 also forbids filling within one hole radius of a hole — a gap at
+        // a hole is evidence, not noise — so the reason's "away from any hole"
+        // has to be true of both bounding frames, not just plausible.
+        for (const bound of [before, after]) {
+          expect(nearestHoleDistance_px(video, bound.centroid)).toBeGreaterThan(
+            holeRadius_px(video),
+          );
+        }
         // The reason quotes the gap it actually measured, not a fixed number.
         expect(track[i]!.reason).toContain(
           `${Math.round((after.t_s - before.t_s) * 1000) / 1000} s`,
@@ -89,6 +106,28 @@ describe('syntheticSession', () => {
       }
     }
     expect(filledRuns).toBeGreaterThan(0);
+  });
+
+  it('shows O10 declining to fill as well as filling it (D31)', () => {
+    const session = syntheticSession();
+    const ceiling = session.parameters?.gapFilling.maxDuration_s ?? 0;
+    const shortUnfilled: number[] = [];
+    for (const analysis of Object.values(session.analyses)) {
+      const track = analysis.derived.cleanedTrack;
+      for (let i = 0; i < track.length; i++) {
+        if (track[i]!.detectionState !== 'not_detected') continue;
+        let end = i;
+        while (end + 1 < track.length && track[end + 1]!.detectionState === 'not_detected') end++;
+        const before = track[i - 1];
+        const after = track[end + 1];
+        // A short loss that was left alone: at 14.985 fps even a one-frame gap
+        // spans more than the 0.1 s ceiling, so the cohort carries both cases.
+        if (before && after && end - i < 4) shortUnfilled.push(after.t_s - before.t_s);
+        i = end;
+      }
+    }
+    expect(shortUnfilled.length).toBeGreaterThan(0);
+    expect(Math.max(...shortUnfilled)).toBeGreaterThan(ceiling);
   });
 
   it('keeps every tracked position inside the platform of its own video', () => {

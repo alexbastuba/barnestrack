@@ -81,6 +81,13 @@ function thresholdColumns(parameters: Parameters) {
   } as const;
 }
 
+/*
+ * Only `trialRows` needs `parameters`, because only it carries the threshold
+ * columns. `eventRows` and `qualityRows` read nothing from them and so have no
+ * reason to refuse. In practice the distinction never shows: D47 stamps
+ * `parameters` at the first analysis run, so a session with a null parameter
+ * set has no `analyses` either and all three return nothing.
+ */
 export function trialRows(
   session: SessionFile,
   toolVersion: string = session.toolVersion,

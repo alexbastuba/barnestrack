@@ -3,6 +3,7 @@ import { centroidPath, trialSource } from '../../src/viz/data.js';
 import { heatmapFigure, occupancyGrid } from '../../src/viz/heatmap.js';
 import { holeRasterFigure, rasterGeometry } from '../../src/viz/hole-raster.js';
 import { qualityStripFigure, stateRuns } from '../../src/viz/quality-strip.js';
+import { beginFigure, drawLegend, endFigure } from '../../src/viz/figure.js';
 import { paletteFor } from '../../src/viz/theme.js';
 import type { FigureData, FigureOpts } from '../../src/viz/types.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
@@ -57,6 +58,23 @@ describe('hole raster', () => {
     expect(ctx.joinedText).toContain('investigation');
     expect(ctx.joinedText).toContain('corrected by a reviewer');
     expect(ctx.joinedText).toContain('escape-box entry');
+  });
+
+  it('draws a target-hole investigation taller, not merely in another colour (D26)', () => {
+    // In the print theme `target` and `ink` are the same black, so if the two
+    // kinds of bar shared a height they would be one mark on paper.
+    for (const opts of [LIGHT, PRINT]) {
+      const ctx = fakeContext();
+      holeRasterFigure.draw(ctx, data, opts);
+      const heights = new Set(
+        ctx
+          .callsNamed('fillRect')
+          .map((call) => Number(call.args[3]))
+          // Row bands span the full plot width; event bars do not.
+          .filter((height) => height > 0 && height < 40),
+      );
+      expect(heights.size).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('hatches the corrected event and only that one', () => {
@@ -220,9 +238,17 @@ describe('quality strip', () => {
     expect(ctx.callsNamed('fill').some((call) => call.args[0] === palette.panel)).toBe(true);
     expect(ctx.callsNamed('fillRect').some((call) => call.args[4] === palette.ink)).toBe(true);
     // The tracked swatch is the panel colour on near-white paper, so it is only
-    // visible because it is outlined. Without the outline the legend's most
-    // common entry would be a word with nothing before it.
-    expect(ctx.callsNamed('strokeRect').length).toBeGreaterThanOrEqual(1);
+    // visible because it is outlined. Counted against the same figure drawn
+    // without the entry, so the strip's own outline and the two hatched
+    // swatches — which stroke rectangles too — cannot satisfy this on their own.
+    const withoutBorder = fakeContext();
+    const frame = beginFigure(withoutBorder, LIGHT, {
+      title: 't',
+      defaultSize: { width: 660, height: 260 },
+    });
+    drawLegend(frame, [{ label: 'tracked', colour: palette.panel, glyph: 'square' }]);
+    endFigure(frame);
+    expect(withoutBorder.callsNamed('strokeRect')).toHaveLength(0);
   });
 
   it('draws in both themes without throwing', () => {

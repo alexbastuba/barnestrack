@@ -143,7 +143,14 @@ export const holeRasterFigure: FigureSpec = {
         drawGlyph(ctx, 'diamond', x, y, Math.max(9, height), palette.target);
         continue;
       }
-      const rect: Rect = { x, y: y - height / 2, width, height };
+      /*
+       * A target-hole investigation is drawn taller than an ordinary one. In
+       * the print theme `target` and `ink` are both black, so height is the
+       * only thing telling the two apart on paper (D26) — and it is what the
+       * legend's square-against-bar promises.
+       */
+      const barHeight = event.isTarget ? Math.max(6, geometry.rowHeight * 0.86) : height;
+      const rect: Rect = { x, y: y - barHeight / 2, width, height: barHeight };
       if (event.source === 'corrected') {
         fillHatched(ctx, rect, palette.corrected, 3);
         ctx.save();
@@ -163,8 +170,9 @@ export const holeRasterFigure: FigureSpec = {
       frame,
       [
         { label: 'investigation', colour: palette.ink, glyph: 'bar' },
-        // A different shape, not just a different colour: in the print theme
-        // ink and target are both black, so two bars would be one swatch twice.
+        // A taller block, matching the taller bar the plot draws for it: in the
+        // print theme `target` and `ink` are the same black, so a second bar
+        // swatch would be the first one twice over.
         { label: 'investigation of the target hole', colour: palette.target, glyph: 'square' },
         { label: 'corrected by a reviewer', colour: palette.corrected, hatched: true },
         { label: 'escape-box entry', colour: palette.target, glyph: 'diamond' },

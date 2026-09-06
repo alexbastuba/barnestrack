@@ -113,7 +113,9 @@ export const quadrantOverlayFigure: FigureSpec = {
             hollow: true,
           },
           { label: 'path inside the quadrant', colour: palette.target, glyph: 'bar' },
-          { label: 'path outside it, dimmed', colour: palette.line, glyph: 'bar' },
+          // Hollow, because drawLegend cannot show the dimming the plot uses and
+          // the two colours are the same black in the print theme.
+          { label: 'path outside it, dimmed', colour: palette.line, glyph: 'bar', hollow: true },
           // The same solid square the hole ring marks the target with.
           { label: targetLabel(source), colour: palette.target, glyph: 'square' },
         ]);

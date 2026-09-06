@@ -89,7 +89,18 @@ describe('trajectory', () => {
     trajectoryFigure.draw(ctx, data, LIGHT);
     expect(ctx.joinedText).toContain('start');
     expect(ctx.joinedText).toContain('last seen');
-    expect(ctx.joinedText).toContain('gap-filled position');
+  });
+
+  it('keys the gap-filled marker only on a figure that has one', () => {
+    // test50 carries a filled gap; test53 does not, and a key to a mark the
+    // figure has not drawn sends the reader looking for something absent.
+    const withFilled = fakeContext();
+    trajectoryFigure.draw(withFilled, { session, videoId: 'video-test50' }, LIGHT);
+    expect(withFilled.joinedText).toContain('gap-filled position');
+
+    const withoutFilled = fakeContext();
+    trajectoryFigure.draw(withoutFilled, { session, videoId: 'video-test53' }, LIGHT);
+    expect(withoutFilled.joinedText).not.toContain('gap-filled position');
   });
 
   it('counts the gap-filled positions it drew hollow (O10)', () => {
@@ -122,6 +133,17 @@ describe('the colour-scaled paths', () => {
 });
 
 describe('quadrant overlay', () => {
+  it('separates the inside and outside path swatches by shape, not tone (D26)', () => {
+    // palette.target and palette.line are both black in the print theme, and
+    // drawLegend cannot show the dimming the plot uses, so the outside entry
+    // has to be hollow or the two swatches are one mark twice.
+    const ctx = fakeContext();
+    quadrantOverlayFigure.draw(ctx, data, PRINT);
+    expect(ctx.callsNamed('setLineDash').length).toBeGreaterThan(0);
+    expect(ctx.joinedText).toContain('path inside the quadrant');
+    expect(ctx.joinedText).toContain('path outside it, dimmed');
+  });
+
   it('states the O6 sector width in holes and degrees', () => {
     const rows = new Map(quadrantOverlayFigure.describe(data).rows.map((row) => [row[0], row[1]]));
     expect(rows.get('Quadrant width (holes either side)')).toBe(2.5);

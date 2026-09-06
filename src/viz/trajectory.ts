@@ -63,11 +63,23 @@ export const trajectoryFigure: FigureSpec = {
           drawGlyph(ctx, 'diamond', at.x, at.y, 11, palette.corrected);
         }
 
+        const filledCount = path.filter((point) => point.filled).length;
         drawLegend(frame, [
           { label: 'path (body centroid)', colour: palette.path, glyph: 'bar' },
           { label: 'start', colour: palette.ok, glyph: 'triangle' },
           { label: 'last seen', colour: palette.corrected, glyph: 'diamond' },
-          { label: 'gap-filled position', colour: palette.filled, glyph: 'ring', hollow: true },
+          // Only when there is one: a key to a mark the figure does not carry
+          // invites the reader to hunt for something that is not there.
+          ...(filledCount > 0
+            ? [
+                {
+                  label: `gap-filled position (${filledCount})`,
+                  colour: palette.filled,
+                  glyph: 'ring' as const,
+                  hollow: true,
+                },
+              ]
+            : []),
           { label: targetLabel(source), colour: palette.target, glyph: 'square' },
         ]);
       },

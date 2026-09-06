@@ -89,6 +89,13 @@ session it is found (D39).
   report rather than an event. `eventRows()` therefore drops those records; they survive in the
   session file, in `quality.csv` as gaps, and in the timeline. Anyone reconciling the two files must
   know that the event count in `events.csv` is not the length of `derived.events`.
+- **A cohort of more than six animals cannot be read from the learning curve's key in print.**
+  `src/viz/learning-curve.ts` gives each animal a marker shape from a list of six and a dash
+  pattern from a list of four, and in the print theme every series is black. The *lines* stay
+  distinguishable past six animals because shape and dash cycle out of step, but the legend swatch
+  carries only the shape, so animals 0 and 6 get the same key entry. At a 9 px swatch a dash
+  pattern is not legible, so the fix is a longer glyph list or a swatch drawn as a short line
+  segment rather than a marker (D26, D32).
 
 ## Excluded scope
 
