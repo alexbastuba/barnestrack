@@ -16,6 +16,15 @@ export interface Colormap {
 export const VIRIDIS: Colormap = { name: 'viridis', anchors: VIRIDIS_ANCHORS };
 export const CIVIDIS: Colormap = { name: 'cividis', anchors: CIVIDIS_ANCHORS };
 
+/**
+ * The same map read from the other end. An occupancy heatmap wants more time to
+ * mean more ink, so that a busy cell cannot be mistaken for the empty platform
+ * it sits on — both are light at the bright end of cividis.
+ */
+export function reverseColormap(map: Colormap): Colormap {
+  return { name: `${map.name} reversed`, anchors: [...map.anchors].reverse() };
+}
+
 /** The colour at `t` in 0–1, linearly interpolated between anchors. */
 export function sampleColormap(map: Colormap, t: number): Rgb {
   const anchors = map.anchors;

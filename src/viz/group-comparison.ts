@@ -107,7 +107,12 @@ export const groupComparisonFigure: FigureSpec = {
     }
     const { palette, plot } = frame;
     const all = comparison.groups.flatMap((group) => group.values);
-    const scale = niceScale(Math.max(1, ...all));
+    // The scale covers the top of the spread as well as the points, so a
+    // standard deviation is never quietly cut off at the top of the plot.
+    const reach = comparison.groups
+      .filter((group) => group.values.length > 0)
+      .map((group) => group.mean + group.standardDeviation);
+    const scale = niceScale(Math.max(1, ...all, ...reach));
     const yTicks = scale.ticks;
     const highest = scale.top;
     const slot = plot.width / Math.max(1, comparison.groups.length);
@@ -142,7 +147,7 @@ export const groupComparisonFigure: FigureSpec = {
         ctx.stroke();
         if (group.standardDeviation > 0) {
           ctx.lineWidth = 1.2 * palette.strokeScale;
-          const high = yOf(Math.min(highest, group.mean + group.standardDeviation));
+          const high = yOf(group.mean + group.standardDeviation);
           const low = yOf(Math.max(0, group.mean - group.standardDeviation));
           ctx.beginPath();
           ctx.moveTo(x, high);
@@ -172,7 +177,7 @@ export const groupComparisonFigure: FigureSpec = {
       frame,
       [
         { label: 'group mean', colour: palette.ink, glyph: 'bar' },
-        { label: '± 1 standard deviation', colour: palette.ink, glyph: 'cross' },
+        { label: '± 1 standard deviation', colour: palette.ink, glyph: 'errorbar' },
         { label: 'one trial', colour: palette.ink, glyph: 'ring' },
       ],
       plot.y + plot.height + 54,

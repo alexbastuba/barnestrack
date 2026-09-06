@@ -9,7 +9,7 @@
  */
 import type { DetectionState } from '../contracts/track.js';
 import { trialLabel, trialSource } from './data.js';
-import type { FigureFrame, Rect } from './figure.js';
+import type { FigureFrame, LegendEntry, Rect } from './figure.js';
 import {
   beginFigure,
   drawAxes,
@@ -20,6 +20,7 @@ import {
   formatNumber,
   niceTicks,
 } from './figure.js';
+import type { Palette } from './theme.js';
 import { ANNOTATION_SIZE, figureFont } from './theme.js';
 import { NO_DATA_SUMMARY, trialUnavailable } from './trial-figure.js';
 import type { FigureDescription, FigureSpec } from './types.js';
@@ -73,6 +74,14 @@ export function stateRuns(
   }
   return runs;
 }
+
+/** Each swatch matches what `paintState` puts on the strip for that state. */
+const LEGEND_SWATCHES: Record<DetectionState, (palette: Palette) => Omit<LegendEntry, 'label'>> = {
+  tracked: (palette) => ({ colour: palette.panel, glyph: 'square', border: true }),
+  low_confidence: (palette) => ({ colour: palette.filled, hatched: true }),
+  ambiguous: (palette) => ({ colour: palette.warn, hatched: true }),
+  not_detected: (palette) => ({ colour: palette.ink, glyph: 'square' }),
+};
 
 function paintState(frame: FigureFrame, state: DetectionState, rect: Rect): void {
   const { ctx, palette } = frame;
@@ -164,14 +173,9 @@ export const qualityStripFigure: FigureSpec = {
       frame,
       STATES.map((state) => ({
         label: `${STATE_WORDS[state]} · ${(quality.detectionStateFractions[state] * 100).toFixed(1)}%`,
-        colour:
-          state === 'not_detected'
-            ? palette.ink
-            : state === 'ambiguous'
-              ? palette.warn
-              : palette.filled,
-        glyph: state === 'tracked' ? 'square' : 'bar',
-        hatched: state === 'low_confidence' || state === 'ambiguous',
+        // The swatch is painted the way the strip is, or the legend would
+        // describe a figure other than the one above it.
+        ...LEGEND_SWATCHES[state](palette),
       })),
       plot.y + plot.height + 70,
     );

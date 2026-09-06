@@ -8,7 +8,7 @@
  * others (D7, O11). Cells with nothing in them are left as platform, so an
  * empty region reads as empty rather than as the bottom of the scale.
  */
-import { CIVIDIS, colormapCss } from './colormaps.js';
+import { CIVIDIS, colormapCss, reverseColormap } from './colormaps.js';
 import type { TrialSource } from './data.js';
 import { centroidPath, trialLabel, trialSource } from './data.js';
 import { drawColorBar, drawLegend, formatNumber } from './figure.js';
@@ -19,6 +19,14 @@ import type { FigureData, FigureDescription, FigureSpec } from './types.js';
 const SIZE = { width: 470, height: 500 };
 const TITLE = 'Occupancy heatmap';
 export const DEFAULT_CELL_CM = 4;
+
+/**
+ * Cividis read from light to dark, so an empty cell is the lightest thing on
+ * the platform and a busy one the darkest. Read the usual way round, the
+ * busiest cells would be almost as pale as the platform they sit on — the one
+ * place a perceptually uniform map still needs turning around.
+ */
+const OCCUPANCY_MAP = reverseColormap(CIVIDIS);
 
 export interface OccupancyGrid {
   cellSize_cm: number;
@@ -136,7 +144,7 @@ export const heatmapFigure: FigureSpec = {
           for (let column = 0; column < grid.columns; column++) {
             const value = grid.seconds[row * grid.columns + column]!;
             if (value <= 0) continue;
-            ctx.fillStyle = colormapCss(CIVIDIS, hottest > 0 ? value / hottest : 0);
+            ctx.fillStyle = colormapCss(OCCUPANCY_MAP, hottest > 0 ? value / hottest : 0);
             ctx.fillRect(
               view.centre.x + (column * grid.cellSize_cm - grid.radius_cm) * view.cmScale,
               view.centre.y + (row * grid.cellSize_cm - grid.radius_cm) * view.cmScale,
@@ -151,7 +159,7 @@ export const heatmapFigure: FigureSpec = {
 
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {
-          map: CIVIDIS,
+          map: OCCUPANCY_MAP,
           min: 0,
           max: Math.round(hottest * 10) / 10,
           label: `Time in a ${grid.cellSize_cm} cm cell (s)`,
@@ -181,7 +189,7 @@ function describeHeatmap(data: FigureData): FigureDescription {
   const occupied = grid.counts.filter((count) => count > 0).length;
   return {
     title: `${TITLE} — ${trialLabel(source.descriptor)}`,
-    summary: `Seconds spent in each ${grid.cellSize_cm} cm cell of the platform, on the cividis scale, with the hole ring over the top.`,
+    summary: `Seconds spent in each ${grid.cellSize_cm} cm cell of the platform, on the cividis scale read light to dark so a busy cell is the darkest thing on the platform, with the hole ring over the top.`,
     columns: ['Quantity', 'Value'],
     rows: [
       ['Cell size (cm)', grid.cellSize_cm],

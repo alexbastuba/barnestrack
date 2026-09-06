@@ -209,6 +209,18 @@ describe('quality strip', () => {
     expect(description.rows.at(-1)).toEqual(['quality tier', 'GOOD']);
   });
 
+  it('paints each legend swatch the way it paints the strip', () => {
+    const ctx = fakeContext();
+    qualityStripFigure.draw(ctx, data, LIGHT);
+    const palette = paletteFor('light');
+    // The tracked band is a fillRect in the panel colour; its swatch is a
+    // filled square in the same colour. A legend in some other colour would
+    // describe a different figure.
+    expect(ctx.callsNamed('fillRect').some((call) => call.args[4] === palette.panel)).toBe(true);
+    expect(ctx.callsNamed('fill').some((call) => call.args[0] === palette.panel)).toBe(true);
+    expect(ctx.callsNamed('fillRect').some((call) => call.args[4] === palette.ink)).toBe(true);
+  });
+
   it('draws in both themes without throwing', () => {
     for (const opts of [LIGHT, PRINT]) {
       const ctx = fakeContext();

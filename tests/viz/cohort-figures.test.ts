@@ -156,6 +156,20 @@ describe('group comparison figure', () => {
     expect(ctx.joinedText).toContain('group');
   });
 
+  it('scales the axis to cover the spread, not just the points', () => {
+    // Control's mean plus one SD reaches past its highest trial, so an axis
+    // scaled to the points alone would cut the whisker off at the top.
+    const comparison = groupComparison(session);
+    const control = comparison.groups.find((group) => group.group === 'control')!;
+    const reach = control.mean + control.standardDeviation;
+    expect(reach).toBeGreaterThan(Math.max(...control.values));
+
+    const ctx = fakeContext();
+    groupComparisonFigure.draw(ctx, data, LIGHT);
+    const top = Number(ctx.textContent.find((text) => Number(text) >= reach));
+    expect(top).toBeGreaterThanOrEqual(reach);
+  });
+
   it('draws in the print theme without throwing', () => {
     const ctx = fakeContext();
     groupComparisonFigure.draw(ctx, data, PRINT);

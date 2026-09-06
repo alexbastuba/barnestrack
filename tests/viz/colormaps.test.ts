@@ -4,6 +4,7 @@ import {
   colormapCss,
   luminanceMonotone,
   relativeLuminance,
+  reverseColormap,
   sampleColormap,
   VIRIDIS,
 } from '../../src/viz/colormaps.js';
@@ -24,6 +25,22 @@ describe('sampleColormap', () => {
 
   it('writes a CSS colour', () => {
     expect(colormapCss(VIRIDIS, 0)).toBe('rgb(68, 1, 84)');
+  });
+});
+
+describe('reverseColormap', () => {
+  it('swaps the ends and leaves the middle alone', () => {
+    const reversed = reverseColormap(CIVIDIS);
+    expect(sampleColormap(reversed, 0)).toEqual(sampleColormap(CIVIDIS, 1));
+    expect(sampleColormap(reversed, 1)).toEqual(sampleColormap(CIVIDIS, 0));
+    expect(sampleColormap(reversed, 0.5)).toEqual(sampleColormap(CIVIDIS, 0.5));
+  });
+
+  it('still spans the same luminance range, only the other way up', () => {
+    const reversed = reverseColormap(CIVIDIS);
+    const low = relativeLuminance(sampleColormap(reversed, 0));
+    const high = relativeLuminance(sampleColormap(reversed, 1));
+    expect(low - high).toBeGreaterThan(0.5);
   });
 });
 

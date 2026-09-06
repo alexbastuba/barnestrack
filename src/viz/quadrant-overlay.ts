@@ -103,13 +103,16 @@ export const quadrantOverlayFigure: FigureSpec = {
 
         drawLegend(frame, [
           {
+            // Dashed and hollow, the way the sector itself is outlined.
             label: `target quadrant · ±${sector.holeSpan} holes either side (O6)`,
             colour: palette.target,
             glyph: 'square',
+            hollow: true,
           },
           { label: 'path inside the quadrant', colour: palette.target, glyph: 'bar' },
           { label: 'path outside it, dimmed', colour: palette.line, glyph: 'bar' },
-          { label: targetLabel(source), colour: palette.target, glyph: 'diamond' },
+          // The same solid square the hole ring marks the target with.
+          { label: targetLabel(source), colour: palette.target, glyph: 'square' },
         ]);
       },
     );

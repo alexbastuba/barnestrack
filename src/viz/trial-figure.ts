@@ -75,10 +75,35 @@ export function drawColouredPath(
   const { ctx, palette } = frame;
   const span = domain.max - domain.min;
   const indexOf = new Map(path.map((point, index) => [point, index]));
+  const runs = pathRuns(path);
+  const width = 2.2 * palette.strokeScale;
+
+  /*
+   * A casing under the path. The bright end of viridis is almost white once
+   * the colour is thrown away, so the fastest — or latest — segments would
+   * disappear into the platform on a grayscale printer. A darker line beneath
+   * keeps them visible without touching the scale itself.
+   */
   ctx.save();
-  ctx.lineWidth = 2.2 * palette.strokeScale;
+  ctx.strokeStyle = palette.platformEdge;
+  ctx.lineWidth = width + 1.8;
   ctx.lineCap = 'round';
-  for (const run of pathRuns(path)) {
+  ctx.lineJoin = 'round';
+  for (const run of runs) {
+    ctx.beginPath();
+    run.forEach((point, index) => {
+      const at = view.toFigure(point);
+      if (index === 0) ctx.moveTo(at.x, at.y);
+      else ctx.lineTo(at.x, at.y);
+    });
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  for (const run of runs) {
     for (let i = 1; i < run.length; i++) {
       const from = view.toFigure(run[i - 1]!);
       const to = view.toFigure(run[i]!);

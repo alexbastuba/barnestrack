@@ -257,7 +257,8 @@ export function drawAxes(frame: FigureFrame, axes: AxesOptions): void {
   ctx.restore();
 }
 
-export type GlyphKind = 'disc' | 'ring' | 'square' | 'triangle' | 'diamond' | 'cross' | 'bar';
+export type GlyphKind =
+  'disc' | 'ring' | 'square' | 'triangle' | 'diamond' | 'cross' | 'bar' | 'errorbar';
 
 /**
  * A marker drawn as a shape, so two categories differ without relying on their
@@ -305,11 +306,19 @@ export function drawGlyph(
       ctx.moveTo(x + r, y - r);
       ctx.lineTo(x - r, y + r);
       break;
+    case 'errorbar':
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x, y + r);
+      ctx.moveTo(x - r / 2, y - r);
+      ctx.lineTo(x + r / 2, y - r);
+      ctx.moveTo(x - r / 2, y + r);
+      ctx.lineTo(x + r / 2, y + r);
+      break;
   }
-  if (kind === 'cross' || kind === 'ring' || hollow) {
+  if (kind === 'cross' || kind === 'errorbar' || kind === 'ring' || hollow) {
     ctx.strokeStyle = colour;
     ctx.lineWidth = 1.6;
-    if (hollow && kind !== 'cross') ctx.setLineDash([2, 2]);
+    if (hollow && kind !== 'cross' && kind !== 'errorbar') ctx.setLineDash([2, 2]);
     ctx.stroke();
   } else {
     ctx.fillStyle = colour;
@@ -346,6 +355,8 @@ export interface LegendEntry {
   glyph?: GlyphKind;
   hollow?: boolean;
   hatched?: boolean;
+  /** Outline the swatch, so a pale fill is still visible against the paper. */
+  border?: boolean;
 }
 
 /**
