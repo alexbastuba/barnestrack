@@ -222,6 +222,39 @@ live recomputation (D20). The full default values and the single configuration m
 them are added in chunk 5 — this section is a placeholder until then; the shape (which fields
 exist) is fixed by `src/contracts/parameters.ts` today.
 
+### Tracking parameters (`parameters.tracking`, D6)
+
+The thresholds of the tracking pass, added to `Parameters` without a schema bump (no schema-1
+session file had been written when they were added). Defaults and the one-line definitions the UI
+shows verbatim live in `src/analysis/tracker/params.ts`; every centimetre value is converted to
+pixels per video from the platform calibration (D14, D44) in `src/analysis/tracker/calibration.ts`
+and nowhere else. Like every other parameter they are hashed into `parametersHash` and travel with
+every export.
+
+| Field                     | Type                         | Unit   | Default | Definition                                                                                         |
+| ------------------------- | ---------------------------- | ------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `backgroundSampleCount`   | number                       | frames | 150     | Frames spaced uniformly across the video whose per-pixel median is the background.                 |
+| `backgroundExcludeRanges` | `{ startFrame, endFrame }[]` | frames | `[]`    | Inclusive frame ranges never used as background samples (stationary animal or object).             |
+| `platformMaskMargin_cm`   | number                       | cm     | 1.5     | Platform disc grown outward by this margin; foreground is searched only inside the grown disc.     |
+| `threshold.mode`          | `otsu \| manual`             | —      | `otsu`  | Otsu: chosen once per video from the sample frames' background-minus-frame histogram.              |
+| `threshold.manualValue`   | number                       | 0–255  | 40      | Smallest background-minus-frame difference counted as foreground when `mode` is `manual`.          |
+| `minBlobArea_cm2`         | number                       | cm²    | 4       | Components smaller than this are ignored.                                                          |
+| `maxBlobArea_cm2`         | number                       | cm²    | 80      | Components larger than this are never the animal: the frame is `ambiguous / oversized_blob`.       |
+| `expectedBlobArea_cm2`    | number \| null               | cm²    | `null`  | Expected body area after tail removal; `null` learns the median of the video's unambiguous frames. |
+| `oversizedBlobFactor`     | number                       | ×      | 3       | A component above this multiple of the expected area marks the frame `ambiguous / oversized_blob`. |
+| `smallBlobFactor`         | number                       | ×      | 0.5     | A selected blob below this fraction of the expected area is `low_confidence / small_blob`.         |
+| `tailOpeningRadius_cm`    | number                       | cm     | 0.8     | Disc radius of the morphological opening that strips the tail before the centroid is taken.        |
+| `noseCueWindowFrames`     | number                       | frames | 3       | Half-width of the centred window over which centroid velocity is measured as a head cue.           |
+| `noseMovingSpeed_cmPerS`  | number                       | cm/s   | 8       | Below this centroid speed the velocity cue is unavailable and the hole cue may apply.              |
+| `rimContactMargin_cm`     | number                       | cm     | 1.0     | A blob with any pixel within this distance of the platform edge, or beyond it, is `partial_at_rim`. |
+| `proximityRadius_cm`      | number                       | cm     | 6       | With several plausible blobs, tracked only if exactly one lies within this of the last centroid.   |
+| `fragmentMergeDistance_cm` | number                      | cm     | 8       | Plausible pieces whose centroids all lie within this of each other are one animal, `low_confidence / fragmented`, when the union satisfies the single-blob area bounds (one body length; D48). |
+
+The per-frame `reason` strings the tracker emits are fixed (`src/analysis/tracker/select.ts`):
+`single_blob`, `proximity_to_previous` (tracked); `no_foreground` (not_detected); `multiple_blobs`,
+`oversized_blob` (ambiguous); `partial_at_rim`, `small_blob`, `fragmented` (low_confidence; D48). The quality report
+clusters on them (D8, D30).
+
 ## 7. Export schema (D11)
 
 Three tidy CSVs, `snake_case` names with unit suffixes, no comment rows, plus `parameters.json`, the

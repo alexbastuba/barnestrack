@@ -8,3 +8,4 @@ notes/
 .DS_Store
 test-results/
 playwright-report/
+prototypes/tracker/out/
