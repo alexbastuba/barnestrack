@@ -6,7 +6,7 @@ calls that you can defend six months later — in a browser tab, with nothing to
 **Live:** <https://barnestrack.pages.dev>
 **Demo video:** <!-- DEMO_URL --> _placeholder — link added when the recording is made._
 **Nothing to hand?** Press **Load example cohort** on the Videos step to open a worked cohort with
-every result already computed. _(Placeholder: the button ships in a later release.)_
+every result already computed.
 
 ## What it does, and who it is for
 
@@ -30,8 +30,10 @@ The work is four steps, and the page says the same thing at the top of each one:
    the background, so you can keep working on the Videos and Maze steps while it does." A
    3-minute video takes a few seconds, and the page stays responsive while it happens.
 4. **Review & Export** — "Read the events, latencies, errors, path measures and search strategy for
-   each trial, check the quality report, and export tidy CSVs and an XLSX workbook." _(This step is
-   mounted as a placeholder in the current build; it lands in a later release.)_
+   each trial, check the quality report, and export tidy CSVs and an XLSX workbook." A timeline of
+   the trial with every correction on it, the parameters with a live recompute of what changing one
+   does, the evidence behind each event, the metrics, the quality report, the figures, and the
+   export bundle.
 
 Three things shape everything else:
 
@@ -47,8 +49,7 @@ Three things shape everything else:
 Every threshold that decides a number is a named parameter rather than a constant buried in code:
 adjustable in the interface wherever the step that uses it has shipped, and carried into every
 export either as its own column or through the parameter set the export's hash covers, alongside
-the tool version. Two spreadsheets that disagree can be reconciled from what travels with them —
-except for eight thresholds not yet in the contract, named under Known limitations.
+the tool version. Two spreadsheets that disagree can be reconciled from what travels with them.
 
 ## How to run it
 
@@ -282,13 +283,12 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   of the frames that have a blob — and on every frame that has none — while a cue that does exist
   usually stands alone. Events therefore record which point they were judged on, the quality
   report states the fraction judged on the nose, and the interface labels the nose experimental.
-- **Eight analysis thresholds are not yet in the parameters hash — and D55 says they must be.** The
-  trial-censoring switch, the five strategy-rule numbers and the two quality-tier thresholds still
-  live in a defaults object because the `Parameters` contract has no field for them, so two exports
-  can share a `parameters_hash` and still disagree on strategy or tier if those values were changed
-  between them. D55 already decided that every threshold changing a number is a hashed parameter;
-  this is the code not having caught up, pending the contract change and a schema review — not
-  accepted design.
+- **The example cohort's numbers are illustrative, not a real tracking run.** The bundle behind
+  **Load example cohort** carries the three sample videos' real fingerprints, durations and derived
+  stills, but its latencies, errors, paths and strategies are generated from a synthetic fixture, so
+  the demo renders every view without asking anyone to download a video. The panel says so on screen
+  next to the numbers. Attach a real file — drop it, or press the fetch button — and every number is
+  recomputed from the frames.
 
 ## Data handling and cost
 
@@ -296,15 +296,15 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
 disk by the browser and decoded in the tab; tracking, analysis, figures and exports all run
 locally; the session file and the CSVs are written straight to the downloads folder. There is no
 server to send anything to, no account, no telemetry, and no third party in the path — there is not
-even a font or a CDN script to fetch. The built bundle contains exactly one URL-shaped string,
-`http://www.w3.org/2000/svg`, the XML namespace passed to `createElementNS`, which is never
-fetched. The one
-exception is deliberate and user-initiated: a "fetch a sample clip" button that downloads one clip
-from the public sample-data repository so the demo has a real video to scrub. Nothing else ever
-makes a request, and that is checkable rather than promised — open the network tab and work through
-a whole cohort. This matters because behavioural recordings sit under an animal-use protocol and
-plenty of institutional data cannot leave the building; a tool that cannot phone home does not need
-to be trusted not to.
+even a font or a CDN script to fetch. No URL in the built bundle is ever fetched by the page
+itself. The URL-shaped strings in it are XML namespace identifiers — the SVG namespace passed to
+`createElementNS`, and exceljs's OOXML namespaces once the XLSX export is in the bundle — plus the
+sample-data repository URLs in `src/demo/`: the clip URL that the user-initiated fetch button
+downloads, which is the one deliberate exception, and the repository link the provenance line
+renders as an `<a href>` for the reader to follow. Nothing else ever makes a request, and that is
+checkable rather than promised — open the network tab and work through a whole cohort. This matters
+because behavioural recordings sit under an animal-use protocol and plenty of institutional data
+cannot leave the building; a tool that cannot phone home does not need to be trusted not to.
 
 **Keys and cost: there are none.** No API key to obtain, so there is nothing to degrade to when one
 is missing — the demo path and the full path are the same path. A run costs nothing because the
@@ -383,6 +383,11 @@ patterns re-implemented in TypeScript, each in a file whose header names the sou
 - From `slp-viewer`: the worker-side demux/decode core (`src/video/track-worker.ts`, `decoder.ts`,
   `mp4-index.ts`). Rewritten around backpressure, synthetic decoder timestamps and luma extraction,
   none of which the original needs.
+- From `event-annotator`: the row model and the paint-style editing operations
+  (`src/session/corrections.ts`, `src/ui/timeline-model.ts`, `src/ui/timeline.ts`,
+  `src/ui/review-step.ts`). Rewritten so an edit is an append-only correction record with a source
+  and a provenance trail rather than a mutation of the row, which is what makes automatic and
+  corrected values distinguishable in every view and every export.
 
 Ideas only, no code: quality tiers from `quality-review-tool`, and the re-encode guidance from
 `encoding-helper`.

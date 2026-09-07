@@ -185,22 +185,14 @@ session it is found (D39).
   other three are missing. Surfacing it belongs to whichever step mounts those figures: it should say
   "3 of 10 videos are not analysed yet" beside the figure and the export button. Found while
   repairing the `e7ad7fe` merge (chunk 7a).
-- **The cohort skill's column lists are a hand-kept copy of the export headers.**
-  `skills/barnestrack-cohort/SKILL.md` quotes the three CSV header lines verbatim so a reader can
-  diff them against a real export, but nothing binds the two: the header lines were generated
-  through `src/export/` and pasted, and a change to `src/export/columns.ts` will not fail any test
-  because of the stale copy. The counts as written are 35, 23 and 17 columns. A fix is a test in
-  `tests/export/` asserting that each `csvHeaderRow` appears in the skill file.
-- **`THIRD_PARTY_NOTICES.md` now under-claims relative to D38.** D38 lists the row model and
-  paint-style editing operations of `talmolab/vibes/event-annotator` among the borrowed patterns,
-  but no file carries an `event-annotator` attribution header — the event list that would use it
-  has not been built. The notices file therefore moves it to "ideas only, no code", so that every
-  borrowing it claims is confirmed by `grep -rn "Adapted from talmolab/vibes" src/`. Either D38
-  needs an amendment or the header needs to appear when the event list lands; until then the
-  decision record and the notices file disagree, in the safe direction.
-
-## Excluded scope
-
+- **The Maze and Track steps cannot read as done, only as ready.** The stepper has two states, not
+  three: `refresh()` in `src/ui/app.ts` writes `ready` into `.step-state` when `step.blocked()`
+  returns null and `nothing to show yet` when it does not. After "Load example cohort" the bundle
+  supplies the maze map, the parameters and an analysis per video, so Maze, Track and Review all
+  unblock and all read `ready` — correct, but weaker than the demo wants, because a step whose work
+  is finished is indistinguishable from one merely waiting. A third state needs a `done()` on the
+  `Step` interface and a rule per step, both in `src/ui/app.ts`, outside chunk 9c-a's boundary;
+  chunk 9c-b owns it (D33, D37).
 - **No undo/redo; repeated edits of one item coalesce.** Every correction is a separate entry
   with its own "Revert to automatic", but there is no undo stack: nudging a point six times leaves
   one entry at the final position (the original id, the latest timestamp), and reverting it
@@ -250,14 +242,6 @@ session it is found (D39).
   to 502,426 B. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
   a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
   body — works too.
-- **The demo's new controls are unstyled.** `src/styles/` is outside chunk 9b's boundary, so no
-  rules exist for them yet; chunk 9c styles them when it mounts the panel. The complete set
-  `mountExampleCohortPanel` emits is eight classes: `.example-cohort` (the panel root),
-  `.example-load` and `.example-fetch` (the two buttons), `.example-fetch-row` (the fetch button
-  with its hint), `.example-banner`, `.example-provenance`, `.example-progress` (download progress,
-  outside any live region) and `.example-status` (the outcome line). It also reuses four classes
-  that already have rules and need none: `.confirm`, `.confirm-text` and `.danger` from the shell's
-  reset confirmation, and `.hint`.
 - **Only `test53.mp4` can be fetched.** The button downloads the smallest clip (496,723 bytes);
   test50 and test51 have to be dropped by hand from a local copy of the sample-data repository.
   Fetching 3 MB of video on a click is not something to do without asking, and one attached clip is
