@@ -139,3 +139,48 @@ describe('qualityRows', () => {
     }
   });
 });
+
+describe('a tracked but unanalysed video (D52)', () => {
+  it('contributes no row at all, rather than a row of zeroes', () => {
+    // `VideoAnalysis.derived` is null until the first analysis run computes it.
+    // A row built from it would carry a fabricated trial: zero errors, a blank
+    // hash and a latency that was never measured (D16).
+    const partial = syntheticSession();
+    const id = partial.videos[1]!.id;
+    partial.analyses[id]!.derived = null;
+
+    const trials = trialRows(partial);
+    const events = eventRows(partial);
+    const quality = qualityRows(partial);
+
+    expect(trials).toHaveLength(session.videos.length - 1);
+    expect(quality).toHaveLength(session.videos.length - 1);
+    expect(trials.map((row) => row.videoId)).not.toContain(id);
+    expect(quality.map((row) => row.videoId)).not.toContain(id);
+    expect(events.map((row) => row.videoId)).not.toContain(id);
+
+    // Every other video is untouched.
+    expect(trialRows(partial).map((r) => r.videoId)).toEqual(
+      trialRows(session)
+        .map((r) => r.videoId)
+        .filter((v) => v !== id),
+    );
+  });
+
+  it('still stamps the parameters hash from the videos that do have one', () => {
+    const partial = syntheticSession();
+    partial.analyses[partial.videos[0]!.id]!.derived = null;
+    for (const row of trialRows(partial)) {
+      expect(row.parametersHash).toBeTruthy();
+      expect(row.schemaVersion).toBe(EXPORT_SCHEMA_VERSION);
+    }
+  });
+});
+
+describe('the fixture\u2019s own guarantee', () => {
+  it('analyses every video, which is what the `derived!` assertions above rest on', () => {
+    for (const analysis of Object.values(syntheticSession().analyses)) {
+      expect(analysis.derived, 'every video in the fixture is analysed').not.toBeNull();
+    }
+  });
+});

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BarnesTrack review components</title>
+    <style>
+      /*
+       * Page chrome only. The components bring their own styles — the app
+       * stylesheet and `review-components.css` are imported by `main.ts` — so
+       * what is on this page is what the Review step will look like.
+       */
+      body {
+        margin: 0;
+        padding: 1.25rem;
+        max-width: 82rem;
+      }
+
+      .lede {
+        max-width: 60rem;
+        color: var(--ink-soft);
+        margin: 0 0 1rem;
+      }
+
+      .harness-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+        align-items: end;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.75rem 1rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .harness-control {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: minmax(24rem, 1fr) minmax(28rem, 1.2fr);
+        gap: 1.25rem;
+        align-items: start;
+      }
+
+      @media (max-width: 70rem) {
+        .columns {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      #log {
+        margin: 0;
+        padding: 0.625rem;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        font-size: 0.8125rem;
+        max-height: 18rem;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+
+      #harness-status {
+        min-height: 1.4rem;
+        font-size: 0.875rem;
+        color: var(--ink-soft);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>BarnesTrack review components</h1>
+    <p class="lede">
+      The four Review-step panels built in chunk 7a — parameters, events, metrics and quality —
+      mounted on the synthetic session from <code>tests/fixtures/synthetic-analysis.ts</code>, the
+      same data the unit tests use. Changing a threshold re-runs the real <code>derive()</code>, so
+      the diff badge, the event list, the metrics and the quality report all update from one
+      recomputation, exactly as D20 describes. Every callback the components emit is logged below,
+      which is how chunk 7b can see what it has to wire up.
+    </p>
+    <p class="lede">
+      A dev-only evidence page, like <code>prototypes/viz-gallery/</code>: served by
+      <code>npm&nbsp;run&nbsp;dev</code> and not part of the shipped build, because
+      <code>vite build</code> takes only the root <code>index.html</code> as its entry.
+    </p>
+
+    <div class="harness-controls">
+      <div class="harness-control">
+        <label for="video">Trial</label>
+        <select id="video"></select>
+      </div>
+      <div class="harness-control">
+        <label for="reset">Parameters</label>
+        <button id="reset" type="button">Reset to the session defaults</button>
+      </div>
+      <div class="harness-control">
+        <label for="clear">Callback log</label>
+        <button id="clear" type="button">Clear</button>
+      </div>
+      <p id="harness-status" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="columns">
+      <div>
+        <div id="parameters"></div>
+        <h2>Callback log</h2>
+        <pre id="log" role="log" aria-label="Component callbacks, newest last"></pre>
+      </div>
+      <div>
+        <div id="metrics"></div>
+        <div id="quality"></div>
+        <div id="events"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

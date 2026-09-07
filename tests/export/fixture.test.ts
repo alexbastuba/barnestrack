@@ -148,3 +148,11 @@ describe('syntheticSession', () => {
     }
   });
 });
+
+describe('the fixture\u2019s own guarantee', () => {
+  it('analyses every video, which is what the `derived!` assertions above rest on', () => {
+    for (const analysis of Object.values(syntheticSession().analyses)) {
+      expect(analysis.derived, 'every video in the fixture is analysed').not.toBeNull();
+    }
+  });
+});
