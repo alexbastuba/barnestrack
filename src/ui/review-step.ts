@@ -1353,6 +1353,14 @@ export function createReviewStep(context: AppContext): Step {
     }
     exporter = createReviewExport(exportHost, store, context.toolVersion, {
       onAnnounce: context.announce,
+      runQuietly: <T,>(work: () => T): T => {
+        sweeping = true;
+        try {
+          return work();
+        } finally {
+          sweeping = false;
+        }
+      },
     });
   }
 

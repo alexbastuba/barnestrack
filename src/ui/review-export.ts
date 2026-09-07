@@ -54,6 +54,12 @@ export function exportDescription(session: SessionFile, toolVersion: string): st
 
 export interface ReviewExportCallbacks {
   onAnnounce(message: string): void;
+  /**
+   * Runs the cohort re-derive with the step's rendering held off. Without it
+   * `setDerivedLayer`'s notification per video costs a full re-render — and a
+   * figure redraw — for each one, in the middle of building a file.
+   */
+  runQuietly?<T>(work: () => T): T;
 }
 
 export interface ReviewExport {
@@ -87,7 +93,8 @@ export function createReviewExport(
     exportButton.disabled = true;
     callbacks.onAnnounce('Re-deriving every video, then building the export…');
     try {
-      const readiness = prepareExport(store);
+      const quietly = callbacks.runQuietly ?? ((work) => work());
+      const readiness = quietly(() => prepareExport(store));
       if (readiness.blocked !== null) {
         callbacks.onAnnounce(`Export refused: ${readiness.blocked}`);
         update();

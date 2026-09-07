@@ -7,6 +7,28 @@ session it is found (D39).
 
 ## Defects
 
+- **The cohort figures always plot primary latency.** `PlottableMetric` offers seven measures and
+  `src/viz/cohort.ts` names them all in `METRIC_LABELS`, but the Review step's figures section
+  exposes no control for it, so the learning curve and the group comparison are fixed to
+  `DEFAULT_METRIC`. The figure gallery prototype has the select; the step does not. A fix is one
+  more control in `#review-figures` feeding `FigureData.metric` — a figure option under D53, not a
+  parameter, so no contract change is involved.
+- **The trajectory figures never sit on a video frame.** `FigureOpts.background` is wired through
+  to the platform clip (chunk 8) and the example bundle ships one derived still per video (D33),
+  but nothing in the Review step supplies either, so every spatial figure draws on a plain disc
+  even when the video is attached and the frame is already decoded in the frame view. The figures
+  are correct and legible; they are just less recognisable than D32 intends.
+- **The export's stale-analysis refusal cannot be reached from the UI.** `prepareExport` re-derives
+  the whole cohort and then refuses if any video's stamped hash still disagrees with the parameters
+  in force (trust audit A2). Since the store now drops every derived cache whenever the parameters,
+  the maze map or a transform change, that branch should be unreachable, and it is covered only by
+  a unit test of `staleAnalyses` on a hand-built session — not end to end. It is kept deliberately,
+  as an internal-consistency stop rather than a user state; if it ever fires, that is a defect
+  report, not a setting to change.
+- **The events panel's height is a fixed 34 rem.** Chunk 7b moved the cap off the component and on
+  to `#review-events` so the step's layout owns it, which is the right owner, but the value is
+  still a constant rather than something measured from the space beside the timeline. At a very
+  short viewport the list scrolls sooner than it needs to.
 - **The maze click count is not in the session file.** The "Maze step: N clicks on the image" badge
   is the on-screen evidence for the D29 click budget, but `SessionFile` has no field for it (D47
   did not add one), so it lives only in the browser's autosave record. It therefore survives a
