@@ -1,18 +1,21 @@
 /**
- * The per-video quality report (D30): whether to trust a video before
- * building a figure on it. State fractions, gaps clustered by run length
- * with a location class, the longest gap, the nose-confidence histogram,
- * the timebase anomalies, the calibration, the parameters hash and a
- * GOOD / REVIEW / POOR tier (from the frames the tracker positioned — tracked or
- * low confidence — never from filled frames).
+ * The per-video quality report (D30, D54): whether to trust a video before
+ * building a figure on it. State fractions, the positioned fraction the tier
+ * is judged on, gaps clustered by run length with a location class, the
+ * longest gap, the nose-confidence histogram, the share of events judged on
+ * the nose, the timebase anomalies, the calibration, the parameters hash and
+ * a GOOD / REVIEW / POOR tier (from the frames the tracker positioned —
+ * tracked or low confidence — never from filled frames).
  *
  * Scope: the trial window when a trial start exists, the whole video
  * otherwise — an empty platform before the animal is placed is a property of
- * the recording, not of the tracking, and must not count against the video.
- * The timebase anomalies are properties of the file and are always counted
- * over the whole video, from the frame timestamps with the session's O11
- * factors (the MP4 index counts exact ties with its own factor).
+ * the recording, not of the tracking, and must not count against the video;
+ * the whole-clip positioned fraction is reported beside it as a secondary
+ * number. The timebase anomalies are properties of the file and are always
+ * counted over the whole video, from the frame timestamps with the session's
+ * O11 factors (the MP4 index counts exact ties with its own factor).
  */
+import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
 import type {
   GapLocationClass,
@@ -42,6 +45,8 @@ export interface QualityInput {
   cleaned: TrackArrays;
   /** The cleaned frames, for frame identity (D7). */
   frames: readonly TrackFrame[];
+  /** The final event list, for the share of events judged on the nose (O16, D54). */
+  events: readonly EventRecord[];
   g: MazeGeometry;
   p: Parameters;
   parametersHash: string;
@@ -165,28 +170,49 @@ export function qualityTier(
   return 'REVIEW';
 }
 
+/** Frames the tracker positioned (tracked or low confidence) in [from, to], as a fraction; NaN of an empty span. */
+function positionedFractionOver(cleaned: TrackArrays, from: number, to: number): number {
+  const count = to - from + 1;
+  if (count <= 0) return Number.NaN;
+  let positioned = 0;
+  for (let i = from; i <= to; i++) {
+    const state = cleaned.state[i]!;
+    if (state === STATE_CODE.tracked || state === STATE_CODE.low_confidence) positioned++;
+  }
+  return positioned / count;
+}
+
+/** Share of investigations and escape entries judged on the nose (O16); NaN with no such event. */
+export function noseJudgedEventFraction(events: readonly EventRecord[]): number {
+  let judged = 0;
+  let onNose = 0;
+  for (const ev of events) {
+    if (ev.kind === 'tracking_failure') continue;
+    judged++;
+    if (ev.pointUsed === 'nose') onNose++;
+  }
+  return judged > 0 ? onNose / judged : Number.NaN;
+}
+
 export function qualityReport(input: QualityInput): QualityReport {
-  const { videoId, corrected, cleaned, frames, g, p, parametersHash, bounds } = input;
+  const { videoId, corrected, cleaned, frames, events, g, p, parametersHash, bounds } = input;
   const n = cleaned.length;
   const hasTrial = bounds.startFrame !== null && bounds.endFrame !== null;
   const from = hasTrial ? bounds.startFrame! : 0;
   const to = hasTrial ? bounds.endFrame! : n - 1;
   const count = Math.max(0, to - from + 1);
 
-  // the tier counts frames the tracker positioned (tracked or low confidence); a filled frame is an
-  // interpolation and must not raise the trust in a video (D16, D31)
   const stateCounts = [0, 0, 0, 0];
-  let positioned = 0;
-  for (let i = from; i <= to; i++) {
-    const state = cleaned.state[i]!;
-    stateCounts[state]!++;
-    if (state === STATE_CODE.tracked || state === STATE_CODE.low_confidence) positioned++;
-  }
+  for (let i = from; i <= to; i++) stateCounts[cleaned.state[i]!]!++;
   const fraction = (c: number): number => (count > 0 ? c / count : Number.NaN);
   const detectionStateFractions = {} as Record<DetectionState, number>;
   for (let code = 0; code < STATE_BY_CODE.length; code++) {
     detectionStateFractions[STATE_BY_CODE[code]!] = fraction(stateCounts[code]!);
   }
+  // the tier counts frames the tracker positioned (tracked or low confidence); a filled frame is an
+  // interpolation and must not raise the trust in a video (D16, D31)
+  const positionedFraction = positionedFractionOver(cleaned, from, to);
+  const wholeClipPositionedFraction = positionedFractionOver(cleaned, 0, n - 1);
 
   const gaps = count > 0 ? findGaps(corrected, frames, g, from, to) : [];
   let longestGapSeconds = 0;
@@ -195,16 +221,19 @@ export function qualityReport(input: QualityInput): QualityReport {
   return {
     videoId,
     detectionStateFractions,
+    positionedFraction,
+    wholeClipPositionedFraction,
     gaps,
     longestGapSeconds,
     noseConfidenceHistogram:
       count > 0
         ? noseConfidenceHistogram(cleaned, from, to)
         : noseConfidenceHistogram(cleaned, 0, -1),
+    noseJudgedEventFraction: noseJudgedEventFraction(events),
     timebaseAnomalies: timebaseAnomalies(cleaned, p, input.indexTimebase),
     platformDiameter_cm: g.platformDiameter_cm,
     pxPerCm: g.pxPerCm,
     parametersHash,
-    tier: qualityTier(fraction(positioned), p.quality),
+    tier: qualityTier(positionedFraction, p.quality),
   };
 }

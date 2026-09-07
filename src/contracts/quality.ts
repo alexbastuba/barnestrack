@@ -32,10 +32,25 @@ export type QualityTier = 'GOOD' | 'REVIEW' | 'POOR';
 
 export interface QualityReport {
   videoId: string;
+  /** Over the trial window when a trial start exists, else the whole clip (D54). */
   detectionStateFractions: Record<DetectionState, number>;
+  /**
+   * The headline: the fraction of trial-window frames the tracker positioned
+   * (`tracked` or `low_confidence`; filled frames never count), which is what
+   * the tier is judged on (D30, D54).
+   */
+  positionedFraction: number;
+  /** The same fraction over the whole clip, shown as a secondary number (D54). */
+  wholeClipPositionedFraction: number;
   gaps: readonly GapRecord[];
   longestGapSeconds: number;
   noseConfidenceHistogram: readonly HistogramBin[];
+  /**
+   * Fraction of the investigations and escape entries judged on the nose
+   * rather than the centroid (O16, D54). `NaN` — `null` in JSON, never 0 —
+   * when the trial has no such event.
+   */
+  noseJudgedEventFraction: number;
   timebaseAnomalies: TimebaseAnomalies;
   platformDiameter_cm: number;
   /**

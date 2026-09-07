@@ -5,12 +5,14 @@ import { DEFAULT_PARAMETERS, hashParameters } from '../../src/analysis/parameter
 import {
   findGaps,
   noseConfidenceHistogram,
+  noseJudgedEventFraction,
   qualityReport,
   qualityTier,
   timebaseAnomalies,
 } from '../../src/analysis/quality.js';
 import { buildTrackArrays } from '../../src/analysis/track-arrays.js';
 import { proposeTrialStart, trialBounds, type TrialBounds } from '../../src/analysis/trial.js';
+import type { EventRecord } from '../../src/contracts/events.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
 import { TEST_PLATFORM, testGeometry } from './maze-fixture.js';
 import { holePoint, scriptTrack, type Segment } from './synthetic-track.js';
@@ -25,6 +27,7 @@ function report(
     p?: Parameters;
     withTrial?: boolean;
     anomalies?: { duplicatesAt?: number[]; dropsAt?: number[] };
+    events?: readonly EventRecord[];
   } = {},
 ) {
   const p = opts.p ?? DEFAULT_PARAMETERS;
@@ -48,12 +51,32 @@ function report(
     corrected,
     cleaned,
     frames: cleanedFrames,
+    events: opts.events ?? [],
     g,
     p,
     parametersHash: hashParameters(p),
     bounds,
   });
   return { q, corrected, cleaned, frames, segmentStarts: scripted.segmentStarts };
+}
+
+function eventOf(kind: EventRecord['kind'], pointUsed: EventRecord['pointUsed']): EventRecord {
+  return {
+    id: `${kind}-${pointUsed}`,
+    kind,
+    holeIndex: 3,
+    isTarget: false,
+    startFrame: 0,
+    endFrame: 1,
+    startTime_s: 0,
+    endTime_s: 1 / 30,
+    durationSeconds: 1 / 30,
+    pointUsed,
+    minNoseDistance_cm: null,
+    minCentroidDistance_cm: 1,
+    evidence: '',
+    source: 'auto',
+  };
 }
 
 describe('qualityReport (D30)', () => {
@@ -244,6 +267,40 @@ describe('qualityReport (D30)', () => {
     expect(on.q.tier).toBe('REVIEW');
     expect(off.q.tier).toBe(on.q.tier);
     expect(on.q.gaps).toHaveLength(2); // the gaps are still reported
+  });
+
+  it('reports the positioned fraction over the trial window as the headline and the whole clip beside it (D54)', () => {
+    // 1 s empty, then 1 s tracked and 1 s low confidence: the trial window is fully positioned,
+    // the whole clip only two thirds
+    const { q } = report([
+      { kind: 'empty', seconds: 1 },
+      { kind: 'dwell', seconds: 1 },
+      { kind: 'dwell', seconds: 1, state: 'low_confidence', reason: 'small_blob' },
+    ]);
+    expect(q.positionedFraction).toBeCloseTo(1, 12);
+    expect(q.wholeClipPositionedFraction).toBeCloseTo(60 / 90, 12);
+    expect(q.tier).toBe('GOOD');
+    // without a trial start both are the whole clip
+    const whole = report([{ kind: 'empty', seconds: 1 }, { kind: 'dwell', seconds: 1 }], {
+      withTrial: false,
+    });
+    expect(whole.q.positionedFraction).toBeCloseTo(0.5, 12);
+    expect(whole.q.wholeClipPositionedFraction).toBeCloseTo(0.5, 12);
+  });
+
+  it('states the share of events judged on the nose, and NaN (null in JSON) with no event (O16, D54)', () => {
+    const events = [
+      eventOf('investigation', 'nose'),
+      eventOf('investigation', 'centroid'),
+      eventOf('escape_entry', 'nose'),
+      eventOf('tracking_failure', 'centroid'), // never judged: not counted
+    ];
+    expect(noseJudgedEventFraction(events)).toBeCloseTo(2 / 3, 12);
+    const { q } = report([{ kind: 'dwell', seconds: 1 }], { events });
+    expect(q.noseJudgedEventFraction).toBeCloseTo(2 / 3, 12);
+    const none = report([{ kind: 'dwell', seconds: 1 }]);
+    expect(Number.isNaN(none.q.noseJudgedEventFraction)).toBe(true);
+    expect(JSON.parse(JSON.stringify(none.q)).noseJudgedEventFraction).toBeNull();
   });
 
   it('carries the calibration and the parameters hash', () => {

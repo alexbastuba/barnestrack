@@ -847,7 +847,12 @@ function buildMetrics(
   };
 }
 
-function buildQuality(script: VideoScript, map: MazeMapFile, track: BuiltTrack): QualityReport {
+function buildQuality(
+  script: VideoScript,
+  map: MazeMapFile,
+  track: BuiltTrack,
+  events: readonly EventRecord[],
+): QualityReport {
   const frames = track.cleaned;
   const counts: Record<DetectionState, number> = {
     tracked: 0,
@@ -888,6 +893,13 @@ function buildQuality(script: VideoScript, map: MazeMapFile, track: BuiltTrack):
 
   const trackedFraction = counts.tracked / frames.length;
   const tier = trackedFraction >= 0.9 ? 'GOOD' : trackedFraction >= 0.75 ? 'REVIEW' : 'POOR';
+  // the fixture has no empty start, so the trial-window and whole-clip fractions coincide
+  const positionedFraction = round((counts.tracked + counts.low_confidence) / frames.length, 4);
+  const judged = events.filter((event) => event.kind !== 'tracking_failure');
+  const noseJudgedEventFraction =
+    judged.length > 0
+      ? round(judged.filter((event) => event.pointUsed === 'nose').length / judged.length, 4)
+      : Number.NaN;
 
   return {
     videoId: script.id,
@@ -897,12 +909,15 @@ function buildQuality(script: VideoScript, map: MazeMapFile, track: BuiltTrack):
       ambiguous: round(counts.ambiguous / frames.length, 4),
       low_confidence: round(counts.low_confidence / frames.length, 4),
     },
+    positionedFraction,
+    wholeClipPositionedFraction: positionedFraction,
     gaps,
     longestGapSeconds: round(
       gaps.reduce((max, gap) => Math.max(max, gap.durationSeconds), 0),
       3,
     ),
     noseConfidenceHistogram: histogram,
+    noseJudgedEventFraction,
     timebaseAnomalies: {
       duplicateTimestampCount: track.timebase.duplicateTimestampCount,
       droppedFrameGapCount: track.timebase.droppedFrameGapCount,
@@ -941,7 +956,7 @@ export function syntheticSession(): SessionFile {
         cleanedTrack: track.cleaned,
         events,
         metrics: buildMetrics(script, map, track, events, entries.length),
-        quality: buildQuality(script, map, track),
+        quality: buildQuality(script, map, track, events),
       },
     };
   });

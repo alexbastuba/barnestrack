@@ -97,6 +97,11 @@ export interface QualityRow extends ExportProvenance {
   notDetectedFraction: number;
   ambiguousFraction: number;
   lowConfidenceFraction: number;
+  /** D54: the headline the tier is judged on (trial window), its whole-clip twin, and the O16 share. */
+  positionedFraction: number;
+  wholeClipPositionedFraction: number;
+  /** NaN (an empty cell) when the trial has no investigation or entry. */
+  noseJudgedEventFraction: number;
   gapCount: number;
   longestGap_s: number;
   duplicateTimestampCount: number;

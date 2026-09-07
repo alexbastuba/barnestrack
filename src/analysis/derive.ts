@@ -210,6 +210,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     corrected: correctedArrays,
     cleaned: a,
     frames: cleaned.track,
+    events: correctedEvents.events,
     g,
     p: parameters,
     parametersHash,

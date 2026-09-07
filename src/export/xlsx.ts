@@ -44,7 +44,13 @@ function addTable<Row>(
 ): void {
   sheet.addRow(columns.map((column) => column.header));
   for (const row of rows) {
-    sheet.addRow(columns.map((column) => row[column.key] ?? null));
+    // a number that was not recorded (NaN) is an empty cell, exactly as in the CSV
+    sheet.addRow(
+      columns.map((column) => {
+        const value = row[column.key];
+        return typeof value === 'number' && !Number.isFinite(value) ? null : (value ?? null);
+      }),
+    );
   }
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: 'frozen', ySplit: 1 }];

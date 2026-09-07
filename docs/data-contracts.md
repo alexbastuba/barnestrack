@@ -363,9 +363,12 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   confidence), so the two numbers differ by the low-confidence share and neither counts filled
   frames. Both, and the quality report's state fractions and gaps, are judged over the trial window (trial start to trial end) when a trial start exists, and over
   the whole video otherwise, so that an empty platform before the animal is placed does not count
-  against the video; the timebase anomalies are properties of the file and are always whole-video,
-  recounted from the frame timestamps with the session's O11 factors (the MP4 index counts exact
-  ties with its own factor).
+  against the video (D54). `QualityReport.positionedFraction` is that headline number,
+  `wholeClipPositionedFraction` the same fraction over the whole clip as a secondary number, and
+  `noseJudgedEventFraction` the share of investigations and entries whose `pointUsed` is the nose
+  (`NaN`, `null` in JSON, when there is no such event — never 0). The timebase anomalies are
+  properties of the file and are always whole-video, recounted from the frame timestamps with the
+  session's O11 factors (the MP4 index counts exact ties with its own factor).
 
 **The hash (D51).** `parametersHash` is the lowercase hex SHA-256 of the *canonical JSON* of the
 value. Canonical means: object keys sorted ascending by code unit at every level; no whitespace
@@ -467,7 +470,10 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | Column | Unit | Source |
 | --- | --- | --- |
 | `session_id`, `video_id` | — | identifiers |
-| `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction` | 0–1 | D30 |
+| `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction` | 0–1 | D30, D54 (trial window) |
+| `positioned_fraction` | 0–1 | D54: the headline the tier is judged on — frames positioned (tracked or low confidence) over the trial window |
+| `whole_clip_positioned_fraction` | 0–1 | D54: the same over the whole clip, as a secondary number |
+| `nose_judged_event_fraction` | 0–1 (empty when the trial has no investigation or entry) | O16, D54 |
 | `gap_count`, `longest_gap_s` | count, s | D30 |
 | `duplicate_timestamp_count`, `dropped_frame_gap_count`, `drift_s` | count, count, s | D7, O11 |
 | `platform_diameter_cm` | cm | D14 |

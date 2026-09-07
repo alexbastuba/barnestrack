@@ -192,6 +192,12 @@ export const qualityStripFigure: FigureSpec = {
       columns: ['Detection state', 'Fraction of frames'],
       rows: [
         ...STATES.map((state) => [STATE_WORDS[state], quality.detectionStateFractions[state]]),
+        ['positioned, trial window (the tier is judged on this)', quality.positionedFraction],
+        ['positioned, whole clip', quality.wholeClipPositionedFraction],
+        [
+          'events judged on the nose',
+          Number.isFinite(quality.noseJudgedEventFraction) ? quality.noseJudgedEventFraction : null,
+        ],
         ['gaps', quality.gaps.length],
         ['longest gap (s)', quality.longestGapSeconds],
         ['quality tier', quality.tier],
