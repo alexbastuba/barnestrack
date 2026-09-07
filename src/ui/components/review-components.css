@@ -270,7 +270,7 @@
   content: '★ ';
 }
 
-.badge-unlikely::before {
+.badge-flag::before {
   content: '⚠ ';
 }
 

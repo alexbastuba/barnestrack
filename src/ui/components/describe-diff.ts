@@ -10,9 +10,14 @@
  * Two rules keep it honest. First, events are compared by id, not by count, so
  * two investigations appearing while two others disappear reads as `+2, −2`
  * rather than "no change" — the user changed the events even though the total
- * stands still. Second, the headline judgements (strategy, status, tier) are
- * always named, `unchanged` included: a badge that goes quiet about the
+ * stands still, and an event whose id survives but whose frames moved is
+ * counted as re-timed. Second, the headline judgements (strategy, status, tier)
+ * are always named, `unchanged` included: a badge that goes quiet about the
  * strategy is indistinguishable from one that has not noticed it moved.
+ *
+ * The rule behind both: if a number these four panels print has moved, the
+ * badge says so. Evidence *sentences* are excluded — they restate values that
+ * are themselves reported.
  *
  * Pure over two `DerivedAnalysis` values: no DOM, no session, no clock.
  */
@@ -48,8 +53,7 @@ export interface EventDelta {
 
 /**
  * Events gained and lost per kind, compared by id. An event whose id survives
- * but whose hole or frames moved is not counted here — that is a correction,
- * not a consequence of a threshold, and the event list shows it directly.
+ * but whose frames moved is counted by `retimedEvents` instead, not here.
  */
 export function eventDeltas(
   before: readonly EventRecord[],
@@ -68,6 +72,26 @@ export function eventDeltas(
     if (!afterIds.has(id)) deltas.get(kind)!.removed += 1;
   }
   return KINDS.map((kind) => deltas.get(kind)!);
+}
+
+/**
+ * Events present in both analyses whose frame span moved. A threshold like
+ * `holeInvestigation.mergeGap_s` re-times a bout without changing its id, so
+ * the event-count deltas see nothing while the card's end time and duration
+ * both change.
+ */
+export function retimedEvents(
+  before: readonly EventRecord[],
+  after: readonly EventRecord[],
+): number {
+  const byId = new Map(before.map((event) => [event.id, event]));
+  let count = 0;
+  for (const event of after) {
+    const was = byId.get(event.id);
+    if (!was) continue;
+    if (was.startFrame !== event.startFrame || was.endFrame !== event.endFrame) count += 1;
+  }
+  return count;
 }
 
 function describeEvents(deltas: readonly EventDelta[]): string | null {
@@ -93,16 +117,22 @@ function latency(value: number | null): string {
 }
 
 /**
- * How close two recomputed floats have to be to count as the same number.
- * Below the precision the card prints them at, so the badge can never say a
- * value moved when the two displayed values are identical, nor stay silent
- * when they differ on screen.
+ * Whether two recomputed floats differ *as the card prints them*.
+ *
+ * A numeric tolerance cannot express that: any fixed epsilon has a rounding
+ * boundary where the printed values differ and the comparison says they do not
+ * (100.004 → 100.006 prints 100.00 → 100.01 across a 5e-3 tolerance). So the
+ * formatted strings are compared, which is exactly the promise — the badge is
+ * silent only when the two numbers look identical on screen.
+ *
+ * Two unrecordable values are the same value, not a change: `NaN !== NaN`
+ * would otherwise report a change between two byte-identical analyses and make
+ * `No change.` unreachable for a trial with no tracked time (D55).
  */
-const MEASURE_TOLERANCE = 5e-3;
-
-function changed(before: number, after: number): boolean {
-  if (!isRecorded(before) || !isRecorded(after)) return before !== after;
-  return Math.abs(before - after) > MEASURE_TOLERANCE;
+function changed(before: number, after: number, format: (value: number) => string): boolean {
+  if (!isRecorded(before) && !isRecorded(after)) return false;
+  if (!isRecorded(before) || !isRecorded(after)) return true;
+  return format(before) !== format(after);
 }
 
 /** The continuous per-trial measures, with the unit each is written in. */
@@ -165,9 +195,49 @@ export function describeDiff(
   for (const measure of MEASURES) {
     const before = a[measure.key];
     const after = b[measure.key];
-    if (!changed(before, after)) continue;
+    if (!changed(before, after, measure.format)) continue;
     clauses.push(`${measure.name} ${formatChange(measure.format(before), measure.format(after))}`);
   }
+
+  // O16: the cutoff decides whether each event is judged on the nose or the
+  // centroid, and the quality panel prints that share. Nothing above notices it.
+  const noseJudged = (analysis: DerivedAnalysis): number =>
+    analysis.events.filter((event) => event.pointUsed === 'nose').length;
+  if (noseJudged(previous) !== noseJudged(next)) {
+    clauses.push(
+      `events judged on the nose ${formatChange(
+        String(noseJudged(previous)),
+        String(noseJudged(next)),
+      )}`,
+    );
+  }
+
+  // O11: the two timebase factors move only these, and the quality panel prints
+  // both of them.
+  const beforeTimebase = previous.quality.timebaseAnomalies;
+  const afterTimebase = next.quality.timebaseAnomalies;
+  if (beforeTimebase.duplicateTimestampCount !== afterTimebase.duplicateTimestampCount) {
+    clauses.push(
+      `duplicate timestamps ${formatChange(
+        String(beforeTimebase.duplicateTimestampCount),
+        String(afterTimebase.duplicateTimestampCount),
+      )}`,
+    );
+  }
+  if (beforeTimebase.droppedFrameGapCount !== afterTimebase.droppedFrameGapCount) {
+    clauses.push(
+      `dropped-frame gaps ${formatChange(
+        String(beforeTimebase.droppedFrameGapCount),
+        String(afterTimebase.droppedFrameGapCount),
+      )}`,
+    );
+  }
+
+  // An event that survives but whose frames moved — `mergeGap_s` splits or
+  // merges bouts without changing an id, and the card prints the new end time
+  // and duration.
+  const retimed = retimedEvents(previous.events, next.events);
+  if (retimed > 0) clauses.push(`${pluralise(retimed, 'event')} re-timed`);
 
   if (previous.cleaning.filledFrames !== next.cleaning.filledFrames) {
     clauses.push(

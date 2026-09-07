@@ -218,8 +218,10 @@ export function createParametersPanel(
     for (const row of rows) markRow(row, byPath.get(row.path) ?? []);
 
     if (problems.length > 0) {
-      summary.textContent = `${problems.length} parameter${problems.length === 1 ? '' : 's'} out of range; nothing has been recomputed. ${problems.join('; ')}`;
+      // Unhidden first: a live region written to while `display: none` is not
+      // announced by every screen reader.
       summary.hidden = false;
+      summary.textContent = `${problems.length} parameter${problems.length === 1 ? '' : 's'} out of range; nothing has been recomputed. ${problems.join('; ')}`;
       if (timer !== null) {
         clearTimeout(timer);
         timer = null;
@@ -515,6 +517,13 @@ export function createParametersPanel(
       // for exactly the row being edited, and the props win everywhere else.
       const focused = rows.find((row) => row.hasFocus());
       const keep = focused ? structuredClone(parameterAt(working, focused.path)) : undefined;
+      // A queued edit belongs to the parameters it was typed against. Once new
+      // ones arrive it must not fire — it would emit a value the user set for a
+      // different trial, and announce it as if they had just typed it here.
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
       working = clone(nextProps.parameters);
       if (focused && keep !== undefined) setAt(working, focused.path, keep);
       render();

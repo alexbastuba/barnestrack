@@ -17,6 +17,7 @@ import {
   createMetricsCard,
   endingEscape,
   metricRows,
+  withinTrial,
 } from '../../../src/ui/components/metrics-card.js';
 import { fixture } from './fixture.js';
 
@@ -104,6 +105,12 @@ describe('the rows a trial has', () => {
 
     // The trial-start row used to show the trial-*cutoff* definition: a wrong
     // definition is worse than a missing one.
+    // Primary latency ends at the first target event of *either* kind, per
+    // docs/data-contracts.md; the old text said the investigation only.
+    const primary = definitionOf('Primary latency');
+    expect(primary).toContain('either kind');
+    expect(primary).toContain('never exceeds total latency');
+
     const start = definitionOf('Trial start');
     expect(start).not.toContain(PARAMETER_DEFINITIONS.trialCutoff_s);
     expect(start).toContain('oversized-foreground');
@@ -344,6 +351,41 @@ describe('metricRows', () => {
   it('finds the ending escape for a trial that escaped, and none for one that did not', () => {
     expect(endingEscape(escaped.analysis, escaped.parameters)).not.toBeNull();
     expect(endingEscape(noEscape.analysis, noEscape.parameters)).toBeNull();
+  });
+
+  it('takes the first target event from inside the trial window, as computeMetrics does', () => {
+    // A correction may add an event outside the window, which the contract
+    // keeps as an annotation. Searching every event would seek to the
+    // annotation while printing a latency computed from something else.
+    const all = escaped.analysis.events;
+    const inside = withinTrial(escaped.analysis, all);
+    expect(inside.length).toBeGreaterThan(0);
+
+    const startFrame =
+      escaped.analysis.cleanedTrack[escaped.analysis.trial.startFrame!]!.frameIndex;
+    for (const event of inside) expect(event.startFrame).toBeGreaterThanOrEqual(startFrame);
+
+    // With a trial start moved later by a correction, an event before it is an
+    // annotation and must drop out — the case that made the card seek to an
+    // event the metric was not computed from.
+    const late = fixture('video-test53', {
+      corrections: [
+        {
+          id: 'cor-start',
+          timestamp: '2026-09-07T10:00:00.000Z',
+          source: 'user',
+          kind: 'trial_start',
+          frameIndex: escaped.analysis.cleanedTrack[400]!.frameIndex,
+        },
+      ],
+    });
+    const lateStart = late.analysis.cleanedTrack[late.analysis.trial.startFrame!]!.frameIndex;
+    expect(lateStart).toBeGreaterThan(0);
+
+    const annotation = { ...all[0]!, id: 'annotation', startFrame: 0, isTarget: true };
+    const kept = withinTrial(late.analysis, [...late.analysis.events, annotation]);
+    expect(kept.map((e) => e.id)).not.toContain('annotation');
+    for (const event of kept) expect(event.startFrame).toBeGreaterThanOrEqual(lateStart);
   });
 
   it('ignores an entry outside the trial window, as derive() does', () => {

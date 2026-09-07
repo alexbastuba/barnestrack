@@ -63,6 +63,28 @@ const END_REASON_WORDS: Record<string, string> = {
 };
 
 /**
+ * The events that begin inside the trial window.
+ *
+ * `computeMetrics` only ever considers these, while a correction may add an
+ * event outside the window, which the contract keeps as an annotation. A card
+ * that searched every event would seek to an annotation while printing a number
+ * computed from something else.
+ */
+export function withinTrial(
+  analysis: DerivedAnalysis,
+  events: readonly EventRecord[],
+): EventRecord[] {
+  const track = analysis.cleanedTrack;
+  const startFrame = positionToFrame(track, analysis.trial.startFrame);
+  const endFrame = positionToFrame(track, analysis.trial.endFrame);
+  return events.filter((event) => {
+    if (startFrame !== null && event.startFrame < startFrame) return false;
+    if (endFrame !== null && event.startFrame > endFrame) return false;
+    return true;
+  });
+}
+
+/**
  * The escape entry that ended the trial, or null when none did (O4).
  *
  * This has to agree with `derive()`, which does not simply take the earliest
@@ -78,14 +100,10 @@ export function endingEscape(
 ): EventRecord | null {
   const track = analysis.cleanedTrack;
   const lastFrameIndex = track[track.length - 1]?.frameIndex ?? -1;
-  const startFrame = positionToFrame(track, analysis.trial.startFrame);
-  const endFrame = positionToFrame(track, analysis.trial.endFrame);
 
   let best: EventRecord | null = null;
-  for (const event of analysis.events) {
+  for (const event of withinTrial(analysis, analysis.events)) {
     if (!isPersistentEscape(event, lastFrameIndex, parameters)) continue;
-    if (startFrame !== null && event.startFrame < startFrame) continue;
-    if (endFrame !== null && event.startFrame > endFrame) continue;
     if (best === null || event.startFrame < best.startFrame) best = event;
   }
   return best;
@@ -110,7 +128,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
 
   const startFrame = positionToFrame(cleanedTrack, trial.startFrame);
   const endFrame = positionToFrame(cleanedTrack, trial.endFrame);
-  const target = firstTargetEvent(analysis.events);
+  const target = firstTargetEvent(withinTrial(analysis, analysis.events));
   const escape = endingEscape(analysis, parameters);
 
   const statusReason =
@@ -138,7 +156,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: formatSeconds(metrics.primaryLatency_s),
       frame: target?.startFrame ?? null,
       definition:
-        'Trial start to the first investigation of the target hole. Blank when the animal never reaches the target (O3).',
+        'Trial start to the first target event of either kind — the first investigation of the target hole (O3), or the escape entry when the animal went in without a detected investigation, so primary latency never exceeds total latency. Blank when the target is never reached.',
     },
     {
       name: 'Total latency',
@@ -310,8 +328,8 @@ export function createMetricsCard(
     if (text === '') {
       // D23 stores the reason with the correction; an override with no reason
       // would be a silent disagreement with the rule engine.
-      problem.textContent = 'Say why you are overriding the classification before applying it.';
       problem.hidden = false;
+      problem.textContent = 'Say why you are overriding the classification before applying it.';
       reason.focus();
       return;
     }

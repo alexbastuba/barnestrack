@@ -13,7 +13,13 @@ import {
   describeDiff,
   describeEventCounts,
   eventDeltas,
+  retimedEvents,
 } from '../../../src/ui/components/describe-diff.js';
+import type { Parameters } from '../../../src/contracts/parameters.js';
+import {
+  ANALYSIS_PARAMETER_BOUNDS,
+  type SliderParameterPath,
+} from '../../../src/ui/components/analysis-parameter-bounds.js';
 import { derivedPair, fixture } from './fixture.js';
 
 /** A minimal analysis-shaped value: only the fields the badge reads. */
@@ -22,6 +28,8 @@ function analysisWith(overrides: {
   metrics?: Partial<DerivedAnalysis['metrics']>;
   filledFrames?: number;
   tier?: DerivedAnalysis['quality']['tier'];
+  duplicateTimestampCount?: number;
+  droppedFrameGapCount?: number;
 }): DerivedAnalysis {
   const events = (overrides.events ?? []).map(
     (event, i) =>
@@ -35,7 +43,7 @@ function analysisWith(overrides: {
         startTime_s: 0,
         endTime_s: 1,
         durationSeconds: 1,
-        pointUsed: 'centroid',
+        pointUsed: event.pointUsed ?? 'centroid',
         minNoseDistance_cm: 0,
         minCentroidDistance_cm: 0,
         evidence: '',
@@ -55,7 +63,16 @@ function analysisWith(overrides: {
       ...overrides.metrics,
     },
     cleaning: { filledFrames: overrides.filledFrames ?? 0 },
-    quality: { tier: overrides.tier ?? 'GOOD' },
+    quality: {
+      tier: overrides.tier ?? 'GOOD',
+      // Required by the contract, so the stub carries it rather than letting
+      // `describeDiff` guard against a shape that cannot occur.
+      timebaseAnomalies: {
+        duplicateTimestampCount: overrides.duplicateTimestampCount ?? 0,
+        droppedFrameGapCount: overrides.droppedFrameGapCount ?? 0,
+        driftSeconds: 0,
+      },
+    },
   } as unknown as DerivedAnalysis;
 }
 
@@ -157,6 +174,60 @@ describe('describeDiff', () => {
     expect(sentence).toContain('filled frames 12 → 3');
   });
 
+  it('reports the timebase counts, which only the O11 factors move', () => {
+    const sentence = describeDiff(
+      analysisWith({ duplicateTimestampCount: 21, droppedFrameGapCount: 11 }),
+      analysisWith({ duplicateTimestampCount: 0, droppedFrameGapCount: 0 }),
+    );
+    expect(sentence).toContain('duplicate timestamps 21 → 0');
+    expect(sentence).toContain('dropped-frame gaps 11 → 0');
+  });
+
+  it('reports events judged on the nose, which only the O16 cutoff moves', () => {
+    const nose = { id: 'a', pointUsed: 'nose' as const };
+    const centroid = { id: 'a', pointUsed: 'centroid' as const };
+    const sentence = describeDiff(
+      analysisWith({ events: [nose] }),
+      analysisWith({ events: [centroid] }),
+    );
+    expect(sentence).toContain('events judged on the nose 1 → 0');
+  });
+
+  it('counts an event whose frames moved but whose id survived', () => {
+    const before = analysisWith({ events: [{ id: 'a' }] });
+    const after = analysisWith({ events: [{ id: 'a' }] });
+    (after.events[0] as { endFrame: number }).endFrame = 99;
+    expect(retimedEvents(before.events, after.events)).toBe(1);
+    expect(describeDiff(before, after)).toContain('1 event re-timed');
+  });
+
+  it('does not call two unrecordable values a change', () => {
+    // NaN !== NaN would report a change between two identical analyses and make
+    // "No change." unreachable for a trial with no tracked time.
+    const a = analysisWith({ metrics: { meanSpeed_cmPerS: Number.NaN } });
+    const b = analysisWith({ metrics: { meanSpeed_cmPerS: Number.NaN } });
+    expect(describeDiff(a, b)).toBe(NO_CHANGE);
+  });
+
+  it('reports a difference that shows on screen even inside a small epsilon', () => {
+    // 100.004 → 100.006 prints 100.00 → 100.01: a 5e-3 tolerance would call
+    // these the same while the card visibly moved.
+    const sentence = describeDiff(
+      analysisWith({ metrics: { pathLength_cm: 100.004 } }),
+      analysisWith({ metrics: { pathLength_cm: 100.006 } }),
+    );
+    expect(sentence).toContain('path length 100.00 cm → 100.01 cm');
+  });
+
+  it('stays silent when two numbers print identically', () => {
+    expect(
+      describeDiff(
+        analysisWith({ metrics: { pathLength_cm: 100.0001 } }),
+        analysisWith({ metrics: { pathLength_cm: 100.0002 } }),
+      ),
+    ).toBe(NO_CHANGE);
+  });
+
   it('reports a quality tier change', () => {
     const sentence = describeDiff(analysisWith({ tier: 'GOOD' }), analysisWith({ tier: 'POOR' }));
     expect(sentence).toContain('quality tier GOOD → POOR');
@@ -208,6 +279,92 @@ describe('describeDiff over a real re-derivation', () => {
   it('says nothing changed when the same parameters are derived twice', () => {
     const { before, after } = derivedPair('video-test51', (p) => p);
     expect(describeDiff(before, after)).toBe(NO_CHANGE);
+  });
+});
+
+describe('the badge is never silent about a number the panels print', () => {
+  /**
+   * Everything the four components actually display, as one comparable value.
+   * Evidence *sentences* are excluded on purpose: they restate values that are
+   * themselves reported, so a change confined to prose is not a silent badge.
+   */
+  function shown(analysis: DerivedAnalysis): string {
+    return JSON.stringify({
+      metrics: analysis.metrics,
+      tier: analysis.quality.tier,
+      gaps: analysis.quality.gaps.length,
+      longestGap: analysis.quality.longestGapSeconds,
+      timebase: analysis.quality.timebaseAnomalies,
+      states: analysis.quality.detectionStateFractions,
+      filled: analysis.cleaning.filledFrames,
+      trial: [analysis.trial.startTime_s, analysis.trial.endTime_s, analysis.trial.endReason],
+      events: analysis.events.map((event) => [
+        event.id,
+        event.kind,
+        event.holeIndex,
+        event.isTarget,
+        event.startFrame,
+        event.endFrame,
+        event.durationSeconds,
+        event.pointUsed,
+        event.minNoseDistance_cm,
+        event.minCentroidDistance_cm,
+        event.source,
+      ]),
+      flags: analysis.reviewFlags.map((flag) => [flag.code, flag.eventId]),
+      strategy: [analysis.strategy.strategy, analysis.strategy.runnerUp],
+    });
+  }
+
+  function setAt(parameters: Parameters, path: string, value: unknown): void {
+    const keys = path.split('.');
+    let target = parameters as unknown as Record<string, unknown>;
+    for (const key of keys.slice(0, -1)) target = target[key] as Record<string, unknown>;
+    target[keys[keys.length - 1]!] = value;
+  }
+
+  it('speaks for every editable parameter that moves a displayed number', () => {
+    const paths = Object.keys(ANALYSIS_PARAMETER_BOUNDS) as SliderParameterPath[];
+    expect(paths).toHaveLength(15);
+
+    const silent: string[] = [];
+    const noisy: string[] = [];
+    let checked = 0;
+
+    for (const path of paths) {
+      const bound = ANALYSIS_PARAMETER_BOUNDS[path];
+      for (const value of [bound.min, (bound.min + bound.max) / 2, bound.max]) {
+        let pair;
+        try {
+          pair = derivedPair('video-test53', (p) => {
+            const next = structuredClone(p);
+            setAt(next, path, value);
+            return next;
+          });
+        } catch {
+          continue; // the panel refuses these before they ever reach derive()
+        }
+        checked += 1;
+        const moved = shown(pair.before) !== shown(pair.after);
+        const spoke = describeDiff(pair.before, pair.after) !== NO_CHANGE;
+        if (moved && !spoke) silent.push(`${path} = ${value}`);
+        if (!moved && spoke) noisy.push(`${path} = ${value}`);
+      }
+    }
+
+    expect(checked).toBeGreaterThan(30);
+    expect(silent, 'the badge said "No change." while a displayed number moved').toEqual([]);
+    expect(noisy, 'the badge reported a change nothing displayed').toEqual([]);
+  });
+
+  it('covers the switch as well as the sliders', () => {
+    const { before, after } = derivedPair('video-test53', (p) => ({
+      ...p,
+      gapFilling: { ...p.gapFilling, enabled: false },
+    }));
+    if (shown(before) !== shown(after)) {
+      expect(describeDiff(before, after)).not.toBe(NO_CHANGE);
+    }
   });
 });
 

@@ -173,7 +173,7 @@ export function createEventCard(
       children.push(
         el('span', { class: 'event-flag' }, [
           el('span', {
-            class: 'badge badge-warn badge-unlikely',
+            class: 'badge badge-warn badge-flag',
             text: FLAG_LABELS[flag.code],
           }),
           ` — review. ${flag.message}`,
