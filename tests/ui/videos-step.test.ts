@@ -101,6 +101,27 @@ describe('the Videos step mounts the example cohort panel', () => {
     expect(body.querySelector<HTMLElement>('.example-fetch-row')?.hidden).toBe(false);
   });
 
+  it('leaves the panel in place while one of its controls is disabled', () => {
+    // The real sequence of the panel's own load: it disables its button, then
+    // awaits a 500 kB fetch. A browser blurs a button it has just disabled, so
+    // by the time the session is replaced the active element is <body> and the
+    // focus guard below does not fire. Remounting here would send the panel's
+    // own "Example cohort loaded: …" to a detached node and leave the status
+    // line on the page empty.
+    const { step, body, store } = makeStep();
+    const panelBefore = body.querySelector('.example-cohort');
+    const load = [...body.querySelectorAll('button')].find(
+      (button) => button.textContent === LOAD_BUTTON_LABEL,
+    );
+    if (load) load.disabled = true;
+    expect(panelBefore?.contains(document.activeElement)).toBe(false);
+
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+
+    expect(body.querySelector('.example-cohort')).toBe(panelBefore);
+  });
+
   it('leaves the panel in place while it holds focus', () => {
     // The panel's own load replaces the session from inside `onLoad`, with
     // focus on its button. Replacing it there would drop focus to <body>

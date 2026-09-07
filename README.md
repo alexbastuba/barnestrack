@@ -29,11 +29,11 @@ The work is four steps, and the page says the same thing at the top of each one:
 3. **Track** — "Run the automatic tracking pass over each video and watch it work. Tracking runs in
    the background, so you can keep working on the Videos and Maze steps while it does." A
    3-minute video takes a few seconds, and the page stays responsive while it happens.
-4. **Review & Export** — "Read the events, latencies, errors, path measures and search strategy for
-   each trial, check the quality report, and export tidy CSVs and an XLSX workbook." A timeline of
-   the trial with every correction on it, the parameters with a live recompute of what changing one
-   does, the evidence behind each event, the metrics, the quality report, the figures, and the
-   export bundle.
+4. **Review & Export** — "Check every event against the frames it came from, correct what the
+   tracker got wrong, and read the metrics. Every correction is stored beside the automatic values
+   and everything is recomputed from both." A timeline of the trial with every correction on it, the
+   thresholds with a live recompute of what changing one does, the evidence behind each event, the
+   metrics and the quality report. The figures and the export bundle land in a later release.
 
 Three things shape everything else:
 

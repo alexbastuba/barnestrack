@@ -266,6 +266,15 @@ port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean prof
   attached. These results are illustrative, not a real tracking run of these clips.", the session
   name reads `Example cohort`, three `.video-card`s are badged "video not attached", and all four
   step tabs read `ready`. The panel sets no `tabindex`; its buttons are ordinary `<button>`s.
+
+  **Where focus ends up was not checked in the first pass, and it is wrong**: `document.activeElement`
+  is `BODY` after the load, from Enter and from a mouse click alike, because the panel disables its
+  own button before awaiting and the browser blurs it. Recorded in `docs/known-limitations.md` with
+  the one-line fix; it lives in `src/demo/example-cohort-ui.ts`. Re-check this line when that lands.
+- **The panel is not torn out from under its own action.** After the load, the `.example-cohort`
+  node is the same node, and its `.example-status` carries the outcome sentence rather than an empty
+  string — the check that the epoch remount in `src/ui/videos-step.ts` skipped the panel's own flow.
+  Measured from both a mouse click and Enter.
 - **Review with no video attached.** One click on the Review & Export tab: the panel renders three
   canvases and six sections — Thresholds, Metrics, Quality, Events, Frames around the playhead,
   Corrections — with no "Nothing to show yet".
@@ -291,3 +300,12 @@ port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean prof
 the absence of a button matching `/Export bundle/i` — chunk 7b's Review export. Chunk 9c-b un-skips
 it once 7b is merged. The spec's `mountPanel()` helper now reuses the panel the Videos step mounts
 rather than appending a second one, which would have matched every `.example-*` locator twice.
+
+**Two things the spec's own guards leave for chunk 9c-b.** Its `KNOWN_VIOLATIONS` key for the
+recorded maze-step defect is the bare `.table-scroll`, and chunk 6 gave that class to the review
+step and the quality panel too, so `axe-core` now names the node
+`.maze-step > .mirror > .table-scroll` and the scan fails on a defect it is meant to allow — a
+one-string fix, reproduced at `6885937` before chunk 9c-a's first commit and recorded in
+`docs/known-limitations.md`. And the axe loop still covers Videos, Maze and Track only, with a
+comment saying the Review step is a placeholder until chunk 6; chunk 6 has landed, so the step with
+the most markup in the application is the one step never scanned.

@@ -386,14 +386,24 @@ export function createVideosStep(context: AppContext): Step {
    * `render()` above already knows when to do it.
    *
    * The one case it must not do it in is the panel's own load, which replaces
-   * the session while the user's focus is on the panel's button and while the
-   * panel is still inside `onLoad`. Tearing it out there would drop focus to
-   * <body> mid-flow and leave the panel's own `finally` writing to a detached
-   * node. The panel updates itself on that path, so while it holds focus it is
-   * left alone (D37).
+   * the session from inside `onLoad` and then writes the outcome to its status
+   * line in the `finally`. Tearing it out there sends that sentence to a
+   * detached node, so the panel on the page ends up with an empty status line
+   * while the shell's live region announces the outcome — the on-screen half of
+   * D37 silently missing.
+   *
+   * Focus alone does not identify that case. `onLoad` disables the button
+   * before it awaits, and a browser blurs a button it has just disabled, so by
+   * the time the 500 kB bundle has been fetched and parsed the active element
+   * is <body> even when the user started from that button. What does identify
+   * it is the disabled button itself: the panel disables its control for
+   * exactly the duration of an action and re-enables it in the same `finally`
+   * that refreshes the panel. So a disabled control means the panel is mid-flow
+   * and will update itself.
    */
   function remountExamplePanel(): void {
     if (examplePanel.contains(document.activeElement)) return;
+    if (examplePanel.querySelector('button:disabled') !== null) return;
     const replacement = newExamplePanel();
     examplePanel.replaceWith(replacement);
     examplePanel = replacement;

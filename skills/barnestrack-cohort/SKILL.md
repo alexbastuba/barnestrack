@@ -249,7 +249,7 @@ positions. Add `longest_gap_s` when a single long gap dominates.
 **"Why do these two cohorts disagree?"** In this order, stopping at the first difference that
 explains it: (1) `parameters_hash`; (2) the eleven threshold columns; (3) `parameters.json` for the
 hashed parameters that are not columns; (4) `tool_version`; (5) `quality.csv` tiers and
-`tracked_fraction`; (6) the `status` mix; (7) `correction_count` and `strategy_source`. Report the
+`positioned_fraction`; (6) the `status` mix; (7) `correction_count` and `strategy_source`. Report the
 first difference found and its expected direction of effect, rather than listing all seven.
 
 ## Worked example
