@@ -93,3 +93,296 @@ site is built and served by Cloudflare Pages from the dashboard — build comman
 output `dist`, no environment variables — so a fresh clone gives you the application but not the
 hosting. The settings are written down in D43 of [`docs/decisions.md`](docs/decisions.md) so they
 can be reproduced from the record rather than from memory.
+
+## Design decisions
+
+The full record, with the reasoning for each, is in [`docs/decisions.md`](docs/decisions.md); the
+file formats and internal representations are in
+[`docs/data-contracts.md`](docs/data-contracts.md). The themes:
+
+**A page, not a service (D2, D3, D41).** BarnesTrack is a static client-side build with no server,
+no accounts, no API keys and no runtime network requests at all — no CDN script, no web font, no
+analytics, an inline SVG logo. That makes "what leaves the user's machine?" answerable as _nothing_
+and checkable in the browser's own network tab, and it means the tool still works on a lab laptop
+with no internet. There is no UI framework: the correction surface is a canvas, where a framework
+adds little, and TypeScript turns the data contracts into types the compiler checks. `mp4box.js`
+and `exceljs` are the only runtime dependencies, both pinned exactly.
+
+**Classical computer vision, chosen rather than settled for (D6).** A per-pixel temporal-median
+background, an Otsu threshold with a live preview, connected components with an area prior and
+proximity to the previous position, a morphological opening to strip the tail, and the nose taken
+from the body ellipse's major axis with the head end chosen by tail direction, motion and hole
+proximity. Every step is explainable on screen and runs at over a thousand frames per second on a
+CPU. Segmentation models and pose estimators are legitimate tools, but browser-side inference at
+0.2–3 s per frame cannot process three videos while someone watches, a mask still leaves the nose
+to be inferred from shape, and the named-point contract admits an imported model track later
+anyway. D6 also writes down the fallback ladder if the approach fails on a video — tighter mask,
+per-video threshold, adaptive threshold, an in-browser WASM segmenter — and rules out a server at
+every rung.
+
+**Contracts before features (D7–D12).** A frame is its position in the MP4 sample table, and its
+time comes from that table rather than from `frame ÷ fps`. Every position is a named point with
+confidence, a valid flag and a source. A session is one JSON document with three layers per video:
+`auto`, which a tracking run writes once and nothing ever mutates; `corrections`, a sparse list of
+human edits; and `derived`, recomputed from `auto ⊕ corrections` on load. The maze map is
+parametric, shared across the cohort, and placed per video. Exports are three tidy CSVs plus
+`parameters.json`, the session file and an XLSX, every row stamped with the tool version, the
+schema version and a parameters hash. Two places where the sample data forced a refinement are
+worth naming: same-timestamp frames are ordered by the bitstream's picture order count, because
+the decoder emits them that way and a simpler rule makes the tracking pass non-monotone (D45); and
+an animal split into pieces by a hole's shadow is merged into one candidate, marked
+`low_confidence / fragmented` rather than reported as ambiguous, because splits happen exactly
+where investigations are detected (D48).
+
+**Honest failure, and thresholds you can see (D16–D20).** The automatic layer never interpolates:
+every frame without a position carries a state and a reason string, and the quality report clusters
+on those reasons. Cleaning may fill a gap, but only in the derived layer, only within a documented
+limit, and the filled points are drawn hollow and counted. Investigations, escape-box entries and
+tracking failures are told apart by evidence the user can inspect — where the animal was last seen,
+how long detection was lost, whether it came back and where, and the blob-area trend before the
+loss — and each event seeks to its own first frame on click. Both the nose and the centroid are
+always tracked; events use the nose when its heading confidence clears a visible cutoff and the
+centroid otherwise, recording which per event, because a confident wrong nose is worse than an
+honest centroid. Changing a parameter re-renders the events and the metrics immediately, with a
+badge showing what changed.
+
+**A strategy call you can read aloud (D23).** Search strategy comes from a transparent rule engine
+over named features — errors, angular distance of investigated holes from the target, longest run
+of adjacent holes, centre crossings, path efficiency, tortuosity. The interface shows the feature
+values, the rule that fired, any rule that fired but was outranked, and the runner-up, and it
+accepts an override with a free-text reason stored as a correction. Dimensionality-reduction views
+were deliberately excluded: a student defending a classification needs a sentence, not a position
+in a scatter plot.
+
+**Correcting without losing anything (D24–D27).** A stacked timeline over one shared time axis —
+detection state, confidence, events labelled with hole numbers, corrections, trial markers — above
+a frame-accurate scrubber, fully keyboard-navigable. Corrections are point nudges, range tools
+("not visible here", "in the escape box from here"), event edits, trial-start adjustment and
+strategy overrides, each stored sparsely and individually revertible. Automatic and corrected
+values differ by shape _and_ text as well as colour, so they survive a grayscale printer and a
+screen reader. Everything autosaves to IndexedDB on every change, and the session file is the
+portable record.
+
+**What is hashed, and what is only a cache (D51, D55).** The `auto` layer is keyed by a hash of the
+tracking parameters alone, so changing an event threshold does not throw away an hour of tracking,
+while a tracking change invalidates everything downstream. The full parameter set is hashed into
+every export. The derived layer is a cache: it is recomputed on load and never trusted as
+authoritative, because what is not hashed cannot be reproduced and what is recomputed cannot go
+stale.
+
+## Ambiguities, and how they were resolved
+
+The brief leaves the behavioural definitions open, which is correct — they are lab conventions, not
+facts. Each one is resolved with an explicit default that is **in force, visible in the interface,
+adjustable, and written into every export as a column**, so a later change of mind is a
+recomputation rather than a reanalysis. Defaults marked _provisional_ are recorded in
+[`docs/decisions.md`](docs/decisions.md) as closing against Gawel et al. 2019 and Illouz et al.
+2020; that literature check is not yet done, and the entries say so rather than implying the
+numbers are settled.
+
+Each default below is provisional in the sense D-numbered decisions use: recorded in
+[`docs/decisions.md`](docs/decisions.md) as closing against the literature, and in force meanwhile.
+
+- **What counts as investigating a hole? (O1)** The event point is within 1.5 × the hole radius of
+  a hole centre for at least 0.2 s; bouts at the same hole less than 0.5 s apart merge into one, so
+  a genuine return is a second event. Both the minimum nose distance and the minimum centroid
+  distance are stored on every event, so a proximity-weighted rule can replace this one later
+  without a schema change.
+- **What is an error? (O2)** Every investigation of a non-target hole, repeat visits included.
+  Primary errors are those before the first target investigation; total errors cover the trial; an
+  investigation of the target is never an error.
+- **When does primary latency end? (O3)** At the first target investigation under O1. The
+  alternative reading of "first reaches the target hole" — a centroid approach within a set
+  distance — is recorded as the option not taken.
+- **What is an escape-box entry? (O4)** A run at the target hole in which the animal is either
+  undetected or seen only as a small or fragmented low-confidence blob within 1.0 × the hole
+  radius, lasting at least 1.0 s with no full-size detection elsewhere. The trial ends at the first
+  such entry that persists for 3 s or to the end of the video. A loss with the same signature at a
+  non-target hole is an investigation flagged "physically unlikely — review"; a loss away from any
+  hole is a tracking failure and never an event. This default was already revised once after
+  measuring the sample clips, and it is still the weakest point in the analysis — see Known
+  limitations.
+- **Where does the trial start, and when is it cut off? (O5)** Trial start is proposed as the first
+  confident, mouse-sized detection inside the platform after the last oversized-foreground frame,
+  shown as a timeline marker and adjustable. Latencies are measured from there, never from frame 0.
+  The cutoff is 180 s; a trial that never reaches the escape box leaves total latency blank, sets
+  `escaped` false and is marked `review` rather than being given the cutoff as a number.
+- **What is the target quadrant? (O6)** A 90° sector centred on the target hole — the target plus
+  or minus 2.5 holes on a 20-hole ring. Four fixed quadrants with the target's quadrant selected is
+  recorded as the alternative.
+- **How is search strategy classified? (O7)** Spatial, serial or random, from a rule set over six
+  named features — non-target errors, the maximum angular distance of investigated holes from the
+  target, the longest run of adjacent-hole investigations, centre-zone crossings, path efficiency
+  and cumulative heading change. Features are computed over the search phase, from trial start to
+  the first target event, because strategy describes how the target was found. The placeholder
+  rules' known weaknesses are in Known limitations.
+
+Five further ambiguities were resolved structurally rather than numerically:
+
+- **Calibration belongs to the maze, not the session (D44).** Platform diameter in centimetres is a
+  property of the physical apparatus, so it lives once in the maze map. Each video's pixels per
+  centimetre is derived from that map after the video's own transform and reported in
+  `quality.csv`; it is never typed in twice. A cohort recorded on two mazes carries two maps.
+- **A session exists before a maze, parameters or results do (D47, D52).** The maze map is `null`
+  until the maze step is finished, the parameter set is `null` until the first analysis run, and
+  the derived layer is `null` until there is something to derive. They are nulls, not placeholders,
+  because a fabricated value is a lie and autosave has to work from the first file dropped.
+- **Ties in presentation time are broken by picture order count (D45).** All three sample videos
+  contain duplicate timestamps, and the decoder emits those pairs in the bitstream's order, not the
+  sample table's. "Frame N" therefore means the same picture in the tracking pass, in the scrubber
+  and in `ffprobe`'s output.
+- **A split animal is merged, and says so (D48).** Pieces within one body length are treated as one
+  candidate whose union must still satisfy the single-blob area bounds; the frame is
+  `low_confidence` with the reason `fragmented`. Reporting those frames as ambiguous would lose the
+  events the tool exists to find; merging them silently would hide the uncertainty.
+- **Hole identity lives in the shared map; placement lives per video (D49).** Hole numbering, the
+  target and any per-hole nudges are properties of the maze. Where that maze sits in a given frame
+  is that video's transform. A genuinely different rig is a second map, not an override.
+
+## What was not built, and why
+
+- **SLEAP `.slp` import** onto `source: imported` — designed for (D8 exists partly to admit it) but
+  behind core acceptance in the stretch order (D42).
+- **Automatic maze detection** proposing the map — the manual path already costs five clicks and
+  none on a reused rig, so the payoff is small (D42).
+- **Undo/redo** — every correction is individually revertible and the automatic layer is never
+  mutated, which covers the failure undo exists to prevent, at far less complexity.
+- **Re-attaching the video automatically after a reload** — the File System Access API could keep a
+  handle, and IndexedDB could hold the file, but that puts copies of a lab's video data in a browser
+  profile without anyone asking for it. Dropping the same file back in is one gesture, and the
+  fingerprint recognises it even if it was renamed.
+- **Inter-rater comparison** — corrections carry `source: user` and a timestamp but no reviewer
+  identity (O14); adding one is cheap when a lab actually wants two reviewers on the same video.
+- **Perspective correction** — the platform is fitted as a circle in image pixels. A camera that is
+  not directly overhead images it as an ellipse, so distances near the far rim are slightly
+  under-measured. Fixing it properly needs a homography and a ground-plane assumption, a larger
+  change to the maze map than these recordings justify. The effect is measured and recorded rather
+  than ignored.
+- **A DOM test environment** — the pure layers are unit-tested in Node, and the canvas-bound
+  interface is covered by TypeScript, by Playwright specs and by a recorded manual pass. Adding
+  jsdom to test the parts that are mostly `document` calls was judged not worth the dependency.
+
+## Known limitations
+
+The full list, split into defects, deliberately excluded scope, and findings about the sample data,
+is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that matter most:
+
+- **No escape-box entry is detectable in any of the three sample clips, so every sample trial is
+  `review`.** O4 reads an entry as a loss of detection at the target hole, but in these recordings
+  the animal's rear stays visible while its head is in a hole, so a position is still produced and
+  the run reads as a long investigation. The rule was already revised once after measurement and
+  the radius was deliberately not widened to force a result. This is the single largest gap between
+  what the tool computes and what a full Barnes maze analysis needs, and it is a threshold question
+  the user can see and change, not hidden behaviour.
+- **The nose is experimental.** On these re-encoded clips the tail is often below the foreground
+  threshold and a hunched animal has no defined major axis, so a nose heading is unavailable on
+  roughly a quarter of frames and usually rests on a single cue where it exists. Events therefore
+  record which point they were judged on, the quality report states the fraction judged on the
+  nose, and the interface labels the nose experimental.
+- **Eight analysis thresholds are not yet in the parameters hash — and D55 says they must be.** The
+  trial-censoring switch, the five strategy-rule numbers and the two quality-tier thresholds still
+  live in a defaults object because the `Parameters` contract has no field for them, so two exports
+  can share a `parameters_hash` and still disagree on strategy or tier if those values were changed
+  between them. D55 already decided that every threshold changing a number is a hashed parameter;
+  this is the code not having caught up, pending the contract change and a schema review — not
+  accepted design.
+
+## Data handling and cost
+
+**What leaves the user's machine: nothing.** BarnesTrack is a static page. Videos are read from
+disk by the browser and decoded in the tab; tracking, analysis, figures and exports all run
+locally; the session file and the CSVs are written straight to the downloads folder. There is no
+server to send anything to, no account, no telemetry, and no third party in the path — the build
+contains no external URL at all, so there is not even a font or a CDN script to fetch. The one
+exception is deliberate and user-initiated: a "fetch a sample clip" button that downloads one clip
+from the public sample-data repository so the demo has a real video to scrub. Nothing else ever
+makes a request, and that is checkable rather than promised — open the network tab and work through
+a whole cohort. This matters because behavioural recordings sit under an animal-use protocol and
+plenty of institutional data cannot leave the building; a tool that cannot phone home does not need
+to be trusted not to.
+
+**Keys and cost: there are none.** No API key to obtain, so there is nothing to degrade to when one
+is missing — the demo path and the full path are the same path. A run costs nothing because the
+computation happens on hardware the lab already owns, and it does not get more expensive with more
+videos: sixty videos cost sixty times zero. At scale the only line item is static hosting of a
+build of a few hundred kilobytes, which is free on every host that would serve it. The design
+choice that buys this is the same one that answers the data question — no server — and the cost of
+that choice is paid in browser support (WebCodecs is required) rather than in money.
+
+## Ask Claude about a cohort
+
+Once a cohort is exported, the questions that follow are usually comparisons: how did the lesion
+group's latencies change across days, which videos need a second look, why do these two
+spreadsheets disagree. [`skills/barnestrack-cohort/`](skills/barnestrack-cohort/) is a Claude skill
+that answers them. Add it to Claude Code or claude.ai, point it at an export folder, and ask.
+
+It reads the exported files and nothing else — no server, no connection to the application, no
+access to the videos or the session's internals. It knows the column list and the units, and it is
+built around the rules that make a cohort answer honest: it will not fold trials marked `review`
+into a headline number without saying so, it treats a blank cell as "not recorded" rather than
+zero, and it refuses to compare two cohorts without first checking that their `parameters_hash`
+values match.
+
+## Accessibility
+
+Accessibility is treated as a requirement per feature rather than a pass at the end (D37). What is
+implemented, and how to check it:
+
+- **Everything works from the keyboard.** A complete maze can be built without touching the image:
+  the stepper moves with arrow keys, the video frame is in the tab order, numeric fields create and
+  move the platform and the ring, arrow keys nudge a selected hole by 1 px (10 px with Shift),
+  `+`/`−`/`0` zoom, `Alt` plus arrows pan, and the scrubber steps a frame at a time. The full key
+  table is in [`tests/browser/README.md`](tests/browser/README.md). To check: unplug the mouse.
+- **Nothing means anything by colour alone.** Automatic points are filled markers, corrected ones
+  are diamonds with an edit badge, filled ones are hollow and dashed; corrected events are hatched
+  and tagged "user"; detection states and quality tiers are words first. To check: print a figure
+  in grayscale, or set the display to grayscale and work through a video.
+- **Every canvas has a DOM equivalent.** The maze overlay, the timeline and the figures are
+  mirrored by tables and lists carrying the same values, so nothing is reachable only by looking at
+  a picture. Canvases are labelled, and the label says the table below repeats what is drawn.
+- **Status is announced, but not narrated.** One polite live region carries state transitions —
+  tracking started, finished with its summary sentence, cancelled, failed — while continuous
+  progress is `aria-live="off"`, so a screen reader is told what happened without a running
+  commentary.
+- **Usable at 200 % zoom.** Checked at a 483 × 423 CSS viewport, which is what a 1280-wide window
+  looks like at 200 %: no horizontal scrolling and every control still reachable. Text contrast was
+  measured against the stylesheet's palette — the lowest text pair is 6.56:1 and the two non-text
+  borders are 3.04:1 and 3.37:1, against the 4.5:1 and 3:1 thresholds.
+
+There is no automated accessibility test in the suite. These are checked per feature as it lands,
+in the Playwright specs where a real browser is needed, and in the manual pass recorded in
+[`tests/browser/README.md`](tests/browser/README.md).
+
+## Attribution
+
+Full notices, with licence texts, are in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). In short:
+
+**From [`talmolab/vibes`](https://github.com/talmolab/vibes)** (BSD-3-Clause, commit `d9410fa`),
+patterns re-implemented in TypeScript, each in a file whose header names the source tool — run
+`grep -rn "Adapted from talmolab/vibes" src/` to see every one. Nothing is copied wholesale.
+
+- From `video-player`: the sample-table frame-identity model, keyframe-window decoding and `avcC`
+  decoder configuration (`src/video/mp4-index.ts`, `sample-reader.ts`, `frame-source.ts`).
+  Rewritten for mp4box 2.x, and extended with the picture-order-count tie-break (D45) that these
+  recordings turned out to need.
+- From `labelroi`: the two-layer canvas with its screen-to-video transform and device-pixel-ratio
+  backing store (`src/ui/canvas-view.ts`, `src/maze/view-transform.ts`). Rewritten as pure
+  functions so the transform can be unit-tested without a DOM.
+- From `slp-viewer`: the worker-side demux/decode core (`src/video/track-worker.ts`, `decoder.ts`,
+  `mp4-index.ts`). Rewritten around backpressure, synthetic decoder timestamps and luma extraction,
+  none of which the original needs.
+
+Ideas only, no code: quality tiers from `quality-review-tool`, and the re-encode guidance from
+`encoding-helper`.
+
+**Runtime dependencies:** [`mp4box.js`](https://github.com/gpac/mp4box.js) (BSD-3-Clause) for MP4
+demuxing, and [`exceljs`](https://github.com/exceljs/exceljs) (MIT) for the XLSX workbook.
+
+**Colour maps:** the `viridis` and `cividis` anchor points in `src/viz/colormap-tables.ts` are
+sampled from matplotlib's tables (version 3.9.1) and interpolated here. No matplotlib code is
+shipped.
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
