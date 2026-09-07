@@ -68,7 +68,7 @@ describe('an event card', () => {
   it('shows the evidence sentence the detector wrote, verbatim', () => {
     const event = base.analysis.events.find((e) => e.evidence.length > 0)!;
     const { button } = mountCard(event);
-    expect(button.querySelector('.event-evidence')!.textContent).toBe(event.evidence);
+    expect(button.querySelector('.event-evidence')!.textContent!.trim()).toBe(event.evidence);
   });
 
   it('names the hole, the times, the frames, the duration and both distances', () => {
@@ -150,6 +150,17 @@ describe('an automatic event', () => {
     const { button } = mountCard(event);
     expect(button.classList.contains('is-corrected')).toBe(false);
     expect(button.querySelector('.badge')!.textContent).toBe('auto');
+  });
+
+  it('separates its parts, so the accessible name is not one run-on word', () => {
+    const event = base.analysis.events[0]!;
+    const { button } = mountCard(event);
+    const name = button.textContent ?? '';
+    expect(name).toContain(`Investigation hole ${event.holeIndex}`);
+    expect(name).toContain('From: ');
+    expect(name).toMatch(/cm\s/);
+    expect(name).not.toMatch(/\)[A-Z]/); // no "(frame 562)Duration"
+    expect(name).not.toMatch(/(auto|user)[A-Z]/); // no "autoFrom"
   });
 });
 

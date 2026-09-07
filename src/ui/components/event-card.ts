@@ -125,23 +125,29 @@ export function createEventCard(
     const corrected = event.source === 'corrected';
     card.className = `event-card${corrected ? ' is-corrected' : ''}`;
 
+    // The trailing spaces are not decoration: this text is the button's
+    // accessible name, and without them a screen reader reads
+    // "Investigationhole 0auto" as one word.
     const head = el('span', { class: 'event-card-head' }, [
-      el('span', { class: 'event-kind', text: KIND_WORDS[event.kind] }),
-      el('span', { class: 'event-hole', text: formatHole(event.holeIndex) }),
+      el('span', { class: 'event-kind', text: `${KIND_WORDS[event.kind]} ` }),
+      el('span', { class: 'event-hole', text: `${formatHole(event.holeIndex)} ` }),
       event.isTarget && el('span', { class: 'badge badge-ok badge-target', text: 'target' }),
       // The source is a word, not only a hatch: colour and pattern never carry
       // it alone (D26).
       corrected
         ? el('span', { class: 'badge badge-warn badge-user', text: 'user' })
         : el('span', { class: 'badge', text: 'auto' }),
+      ' ',
     ]);
 
     // Spans, not a <dl>: a button may contain phrasing content only, and its
     // own text is its accessible name — so everything below is read aloud.
     const fact = (term: string, value: string): HTMLElement =>
       el('span', { class: 'event-fact' }, [
-        el('span', { class: 'event-fact-term', text: `${term} ` }),
-        el('span', { class: 'event-fact-value', text: value }),
+        // The colon lives in the text, not in a ::before: CSS content is not
+        // part of `textContent`, and this text *is* the button's accessible name.
+        el('span', { class: 'event-fact-term', text: `${term}: ` }),
+        el('span', { class: 'event-fact-value', text: `${value} ` }),
       ]);
 
     const facts = el('span', { class: 'event-facts' }, [
@@ -156,7 +162,7 @@ export function createEventCard(
     const children: (Node | false)[] = [head, facts];
 
     if (event.evidence) {
-      children.push(el('span', { class: 'event-evidence', text: event.evidence }));
+      children.push(el('span', { class: 'event-evidence', text: `${event.evidence} ` }));
     }
 
     for (const clause of shadowClauses(event)) {

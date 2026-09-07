@@ -138,6 +138,36 @@ Distinguishable with no colour at all:
   drawn by `src/viz/quality-strip.ts`.
 - **target flag** — `★ target` badge, word plus glyph.
 
+## Re-check after the reviewer's findings (`e6cad2a` and after)
+
+Everything below was re-run on the live page once the four blocking findings were fixed.
+
+- **The badge no longer goes silent on a continuous measure.** Setting **Hole span** to 9.5 — which
+  moves nothing but the quadrant time — gave
+  `target quadrant time 78.21 s → 178.37 s; strategy unchanged; status unchanged; quality tier
+unchanged.` Before the fix the same change read `No change.`
+- **Displayed and emitted values agree.** Editing a focused field, letting a re-derive land, and
+  editing again left the field showing what was typed (4.5) and the panel emitting that same value.
+- **"Trial start" carries O5's own rule**, not the trial-cutoff definition it used to show.
+- **Revert is present but hidden** while the classification is automatic (`hidden`,
+  `display: none`), so it is out of the tab order while the reason textarea beside it survives.
+- **The event card has no `aria-label`** and holds no `<p>`/`<div>`/`<dl>`, so a `<button>`'s
+  content model is respected and the button's own text is its accessible name. That name now reads:
+
+  `Investigation hole 0 auto From: 0:10 (frame 312) To: 0:18 (frame 562) Duration: 8.34 s Judged on:
+nose Min nose distance: 0.52 cm Min centroid distance: 2.91 cm hole 0 (non-target). Event point
+within …`
+
+  — the evidence sentence, both distances and any review flag included, which is what D19 and D26
+  require it to say. The separators are real text, not CSS, because CSS `content` is not part of
+  `textContent` and so never reaches the accessible name.
+
+- **The nose-confidence distribution (D30)** is rendered as a third table in the quality panel, with
+  the bin, its frame count and its share — a table rather than bars, so it survives grayscale.
+- **Grayscale, re-shot on the rewritten card markup.** The corrected card keeps its 45° hatch, its
+  heavier border and the `✎ user` badge, and is unmistakable between the two plain `auto` cards
+  above and below it.
+
 ## Not checked here
 
 - Real browser page zoom at 200 % (emulated by container width, as above).

@@ -229,13 +229,8 @@
   margin-top: 0.25rem;
 }
 
-.event-fact-term::after {
-  content: ':';
-}
-
 .event-fact-value {
   font-weight: 600;
-  margin-left: 0.1875rem;
 }
 
 .event-evidence {
