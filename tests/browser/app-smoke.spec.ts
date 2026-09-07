@@ -32,6 +32,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+// The label the panel actually renders, so renaming the button breaks the
+// locator rather than quietly widening the skip below.
+import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -50,11 +53,12 @@ const FAILING_IMPACTS = new Set(['serious', 'critical']);
 
 /**
  * Violations this scan found in code chunk 9b does not own, recorded in
- * `docs/known-limitations.md` rather than silently tolerated. Keyed by step and
- * rule, so a *new* serious violation — or the same rule appearing on another
- * step — still fails. Delete an entry when its defect is fixed.
+ * `docs/known-limitations.md` rather than silently tolerated. Keyed by step,
+ * rule *and the exact nodes it matched*, so a new serious violation, the same
+ * rule on another step, or a second offending node under the same rule all
+ * still fail. Delete an entry when its defect is fixed.
  */
-const KNOWN_VIOLATIONS = new Set(['Maze:scrollable-region-focusable']);
+const KNOWN_VIOLATIONS = new Set(['Maze:scrollable-region-focusable:.table-scroll']);
 
 const servers: ChildProcess[] = [];
 
@@ -187,7 +191,7 @@ function reportViolations(step: string, violations: AxeViolation[]): AxeViolatio
 
   const failing = violations.filter((violation) => FAILING_IMPACTS.has(violation.impact ?? ''));
   return failing.filter((violation) => {
-    const known = KNOWN_VIOLATIONS.has(`${step}:${violation.id}`);
+    const known = KNOWN_VIOLATIONS.has(`${step}:${violation.id}:${violation.targets.join(',')}`);
     if (known) {
       console.log(
         `axe [${step}] ${violation.id} is a recorded defect (docs/known-limitations.md), not a regression`,
@@ -295,6 +299,42 @@ test.describe('the example cohort, driven through the loader module', () => {
     );
   });
 
+  /**
+   * Mounts the panel chunk 9c will mount, into the Videos step, so the axe scan
+   * sees the controls this chunk actually added. Without this the scan covers
+   * only pre-existing markup and the chunk's own accessibility goes unchecked.
+   */
+  async function mountPanel(page: Page): Promise<void> {
+    await page.evaluate(async () => {
+      const specifier = '/src/demo/example-cohort-ui.ts';
+      const module = (await import(specifier)) as {
+        mountExampleCohortPanel: (context: unknown) => HTMLElement;
+      };
+      const store = (globalThis as unknown as Record<string, unknown>)['__barnestrackStore'];
+      const panel = module.mountExampleCohortPanel({
+        store,
+        announce: () => {},
+      });
+      const host = document.querySelector('#panel-videos .pickers') ?? document.body;
+      host.append(panel);
+    });
+    await expect(page.locator('.example-cohort')).toBeVisible();
+  }
+
+  test('the panel this chunk adds is itself accessible', async ({ page }) => {
+    await loadExampleViaModule(page);
+    await mountPanel(page);
+
+    // Its own controls, with the banner and fetch row showing.
+    await expect(page.locator('.example-banner')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Fetch test53\.mp4/ })).toBeVisible();
+
+    const failures = reportViolations('Videos+panel', await scanForViolations(page));
+    expect(failures, `serious/critical violations: ${JSON.stringify(failures, null, 2)}`).toEqual(
+      [],
+    );
+  });
+
   test('has no serious or critical accessibility violations on the steps that render', async ({
     page,
   }) => {
@@ -325,7 +365,7 @@ test.describe('the whole demo flow through the shipped UI', () => {
     await clearStoredSession(page);
     await page.reload();
 
-    const loadButton = page.getByRole('button', { name: 'Load example cohort' });
+    const loadButton = page.getByRole('button', { name: LOAD_BUTTON_LABEL });
     if ((await loadButton.count()) === 0) {
       test.skip(
         true,

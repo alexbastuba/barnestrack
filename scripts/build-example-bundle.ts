@@ -14,8 +14,10 @@
  * computed from the sample videos when `BARNESTRACK_SAMPLE_DIR` points at them,
  * and otherwise taken from the values recorded below.
  *
- * Output is gzipped: the document is 5.72 MB compact, and the pre-commit guard
- * refuses any staged blob over 2 MB. See docs/known-limitations.md.
+ * Output is gzipped: serialized the way the app writes a session file it is
+ * 11,608,353 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
+ * pre-commit guard refuses any staged blob over 2 MB. Gzipped it is ~491 kB.
+ * See docs/known-limitations.md.
  */
 import { gzipSync } from 'node:zlib';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';

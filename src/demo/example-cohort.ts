@@ -25,7 +25,7 @@ import { parseSessionDocument } from '../session/session-file.js';
 export const EXAMPLE_SESSION_NAME = 'Example cohort';
 
 /**
- * Gzipped: the document is 11.3 MB of JSON, and the repository's pre-commit
+ * Gzipped: the document is 11.1 MiB of JSON and the repository's pre-commit
  * guard refuses any staged blob over 2 MB. See `scripts/build-example-bundle.ts`.
  */
 export const EXAMPLE_BUNDLE_PATH = 'examples/example-cohort.barnestrack.json.gz';

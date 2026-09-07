@@ -203,9 +203,19 @@ session it is found (D39).
   validates shape only and never reads a number, so the swap needs no code change. The
   *fingerprints* are real and measured, because the fetch button verifies a download against them
   (D33).
-- **The bundle is `.json.gz`, not the `.json` the chunk prompt named.** 11.3 MB of pretty-printed
-  JSON for three videos, and `.claude/hooks/pre-commit-guard.sh` refuses any staged blob over 2 MB;
-  gzip brings it to 491 kB. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
+- **The example cohort's per-frame `reason` strings are prose, not the documented enumeration.**
+  `docs/data-contracts.md` §2 says `reason` is one of eight fixed strings (`single_blob`,
+  `proximity_to_previous`, `no_foreground`, `multiple_blobs`, `oversized_blob`, `partial_at_rim`,
+  `small_blob`, `fragmented`), which is what lets the quality report cluster failures (D8). The
+  synthetic fixture writes sentences instead — "single mouse-sized component inside the platform
+  mask", "blob smaller than half the expected body area (small_blob)" — and this chunk publishes
+  that fixture as an artifact under `public/`. No mapping is invented here, because guessing which
+  enum member a sentence meant would be a fabrication of exactly the kind D16 forbids; the real
+  tracker emits the enum, so Monday's take resolves it. Until then, anything that groups the
+  example cohort by `reason` sees eight distinct sentences rather than the eight names.
+- **The bundle is `.json.gz`, not plain `.json`.** 11.1 MiB of pretty-printed JSON for three
+  videos, and `.claude/hooks/pre-commit-guard.sh` refuses any staged blob over 2 MB; gzip brings it
+  to 491 kB. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
   a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
   body — works too.
 - **The demo's new controls are unstyled.** `mountExampleCohortPanel` emits `.example-cohort`,

@@ -60,6 +60,14 @@ export type VerifyResult =
   | { kind: 'verified'; fingerprint: VideoFingerprint }
   | { kind: 'mismatch'; message: string };
 
+/** A body longer than the descriptor says it should be; the read is abandoned. */
+class OversizedDownloadError extends Error {
+  constructor(maxBytes: number) {
+    super(`the response is longer than the expected ${maxBytes} bytes`);
+    this.name = 'OversizedDownloadError';
+  }
+}
+
 /**
  * Streams the body so the button can show progress on a slow lab connection.
  * `content-length` is absent often enough that a null total is a normal state,
@@ -67,6 +75,7 @@ export type VerifyResult =
  */
 async function readWithProgress(
   response: Response,
+  maxBytes: number,
   onProgress?: (progress: FetchProgress) => void,
 ): Promise<Uint8Array> {
   const header = response.headers.get('content-length');
@@ -85,8 +94,15 @@ async function readWithProgress(
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value);
     receivedBytes += value.byteLength;
+    // The expected size is known from the descriptor, and the hash check only
+    // happens once the whole body is in memory. Stop a mis-served or hostile
+    // response at the known length instead of buffering it all first.
+    if (receivedBytes > maxBytes) {
+      await reader.cancel();
+      throw new OversizedDownloadError(maxBytes);
+    }
+    chunks.push(value);
     onProgress?.({ receivedBytes, totalBytes });
   }
 
@@ -154,8 +170,20 @@ export async function fetchSampleClip(
 
   let bytes: Uint8Array;
   try {
-    bytes = await readWithProgress(response, options.onProgress);
-  } catch {
+    bytes = await readWithProgress(
+      response,
+      descriptor.fingerprint.byteLength,
+      options.onProgress,
+    );
+  } catch (error) {
+    if (error instanceof OversizedDownloadError) {
+      return {
+        kind: 'failed',
+        message:
+          `The download was larger than the ${descriptor.filename} this example cohort ` +
+          'expects, so it was stopped and discarded.',
+      };
+    }
     return { kind: 'failed', message: `The download did not finish. ${OFFLINE_MESSAGE}` };
   }
 

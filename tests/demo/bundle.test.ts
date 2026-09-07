@@ -34,6 +34,18 @@ const STILLS = ['test50.jpg', 'test51.jpg', 'test53.jpg'];
 const COMMIT_BLOB_LIMIT_BYTES = 2 * 1024 * 1024;
 const STILL_LIMIT_BYTES = 60 * 1024;
 
+/** The eight fixed strings of docs/data-contracts.md §2 / §6. */
+const CONTRACT_REASONS = new Set([
+  'single_blob',
+  'proximity_to_previous',
+  'no_foreground',
+  'multiple_blobs',
+  'oversized_blob',
+  'partial_at_rim',
+  'small_blob',
+  'fragmented',
+]);
+
 function committedSessionText(): string {
   return gunzipSync(readFileSync(BUNDLE_PATH)).toString('utf-8');
 }
@@ -110,6 +122,29 @@ describe('the committed example bundle', () => {
     const stamped = [...new Set(trialRows(parsed.session).map((row) => row.parametersHash))];
 
     expect(stamped).toEqual([hashParameters(parameters)]);
+  });
+
+  it('has a recorded reason on every frame, and says which are off-contract', () => {
+    const parsed = parseSessionDocument(committedSessionText());
+    if (!parsed.ok) throw new Error(parsed.message);
+
+    const seen = new Set<string>();
+    for (const analysis of Object.values(parsed.session.analyses)) {
+      for (const frame of analysis.auto.frames) {
+        expect(frame.reason, 'every frame carries a reason (D16)').not.toBe('');
+        seen.add(frame.reason);
+      }
+    }
+
+    // docs/data-contracts.md §2 fixes the vocabulary. The synthetic fixture
+    // writes prose instead — recorded in docs/known-limitations.md and resolved
+    // when the real tracker's output replaces it. This asserts the divergence
+    // that exists rather than the one that should, so the day it disappears
+    // this test fails and the limitation gets deleted with it.
+    const offContract = [...seen].filter((reason) => !CONTRACT_REASONS.has(reason));
+    expect(offContract.length, `off-contract reasons: ${offContract.join(' | ')}`).toBeGreaterThan(
+      0,
+    );
   });
 
   it('matches what the builder produces now, so the artifact is not stale', async () => {

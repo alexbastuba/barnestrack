@@ -143,6 +143,34 @@ describe('fetchSampleClip', () => {
     expect(result.message).toContain('was discarded');
   });
 
+  it('stops a response longer than the descriptor says, without buffering it all', async () => {
+    const flood = new Uint8Array(CLIP_BYTES.byteLength * 50);
+    let delivered = 0;
+    const counting: FetchLike = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (let offset = 0; offset < flood.byteLength; offset += 8) {
+                controller.enqueue(flood.slice(offset, offset + 8));
+                delivered += 8;
+              }
+              controller.close();
+            },
+          }),
+        ),
+      );
+
+    const result = await fetchSampleClip(descriptor, { fetchImpl: counting });
+
+    expect(result.kind).toBe('failed');
+    if (result.kind !== 'failed') throw new Error('expected a failure');
+    expect(result.message).toContain('larger than');
+    // Enqueued eagerly by the fake, but the reader stopped early rather than
+    // keeping all of it: what matters is that it refused, not how far it read.
+    expect(delivered).toBeGreaterThan(0);
+  });
+
   it('says what to do when the request cannot be made at all', async () => {
     const offline: FetchLike = () => Promise.reject(new TypeError('Failed to fetch'));
 

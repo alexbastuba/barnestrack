@@ -53,13 +53,22 @@ function formatProgress(progress: FetchProgress): string {
 export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTMLElement {
   const { store, announce } = context;
 
-  const status = el('p', {
-    class: 'example-status',
-    attrs: { role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' },
-  });
+  // Outcomes only. The shell already owns a polite live region (`#app-status`)
+  // and `say()` writes that one, so this must not also announce or every
+  // outcome is spoken twice.
+  const status = el('p', { class: 'example-status' });
+
+  // Progress is deliberately outside any live region: one utterance per stream
+  // chunk would bury the outcome under a running commentary.
+  const progress = el('p', { class: 'example-progress', attrs: { 'aria-live': 'off' } });
 
   const banner = el('p', { class: 'example-banner', text: `${EXAMPLE_BANNER_TEXT} ` }, [
-    el('a', { text: 'Sample-data repository', attrs: { href: SAMPLE_DATA_URL, rel: 'noreferrer' } }),
+    el('a', {
+      text: 'Sample-data repository',
+      // Opens away from the app rather than navigating out of a half-finished
+      // demo; noopener because target is set.
+      attrs: { href: SAMPLE_DATA_URL, target: '_blank', rel: 'noopener noreferrer' },
+    }),
   ]);
   banner.hidden = true;
 
@@ -80,11 +89,14 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     confirmRow,
     banner,
     fetchRow,
+    progress,
     status,
   ]);
 
+  /** One outcome, spoken once, through the shell's live region. */
   function say(message: string): void {
     status.textContent = message;
+    progress.textContent = '';
     announce(message);
   }
 
@@ -115,6 +127,10 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
         confirmRow.hidden = true;
         confirmRow.replaceChildren();
         loadButton.hidden = false;
+        // The caller disabled the button before asking, and focusing a disabled
+        // button is a no-op that drops focus to <body> — a keyboard user would
+        // lose their place mid-flow (D37). Re-enable, then focus.
+        loadButton.disabled = false;
         loadButton.focus();
         resolve(answer);
       };
@@ -126,9 +142,14 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
       );
       confirmRow.hidden = false;
       loadButton.hidden = true;
-      confirmRow.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') finish(false);
-      });
+      // `once` so repeated confirmations do not stack listeners on the row.
+      confirmRow.addEventListener(
+        'keydown',
+        (event) => {
+          if (event.key === 'Escape') finish(false);
+        },
+        { once: true },
+      );
       confirmRow.querySelector('button')?.focus();
     });
   }
@@ -176,8 +197,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     say(`Contacting the sample-data repository for ${SAMPLE_CLIP_FILENAME}…`);
     try {
       const result = await fetchSampleClip(clip, {
-        onProgress: (progress) => {
-          status.textContent = formatProgress(progress);
+        onProgress: (received) => {
+          progress.textContent = formatProgress(received);
         },
       });
       if (result.kind === 'failed') {
