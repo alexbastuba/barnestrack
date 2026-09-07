@@ -154,6 +154,10 @@ export class SessionStore {
     this.workingParameters = null;
     this.mazeClicks = {};
     this.sessionEpoch += 1;
+    // A loaded file's derived layers are a cache written by whatever produced
+    // the file, under parameters this session has not checked (D9, D55). They
+    // are recomputed from `auto ⊕ corrections` here rather than trusted.
+    this.invalidateDerived();
     this.changed();
   }
 
@@ -291,6 +295,37 @@ export class SessionStore {
     this.changed();
   }
 
+  /**
+   * Drops every derived cache, because something every video's derive reads —
+   * the parameters, the maze map, a transform — has changed (D52, D55).
+   *
+   * The trust audit (A2) found the hole this closes: only the video on screen
+   * in the Review step was ever re-derived, so a threshold change left the
+   * other videos' caches in the session file, and an export built from them
+   * carried rows whose numbers came from one parameter set and whose
+   * `parameters_hash` column named another. A cache that cannot be stale is
+   * cheaper than a cache that has to be checked everywhere it is read.
+   *
+   * The derived layer only. The automatic layer and the corrections are never
+   * touched: D51 keys `auto` by the *tracking* hash precisely so that changing
+   * an event threshold does not invalidate an hour of tracking, and a real
+   * mismatch there is reported by the `stale_auto_layer` review flag, not
+   * repaired by deleting the run.
+   */
+  private invalidateDerived(): void {
+    let touched = false;
+    const next: Record<VideoId, VideoAnalysis> = {};
+    for (const [videoId, analysis] of Object.entries(this.session.analyses)) {
+      if (analysis.derived === null) {
+        next[videoId] = analysis;
+        continue;
+      }
+      touched = true;
+      next[videoId] = { ...analysis, derived: null };
+    }
+    if (touched) this.session.analyses = next;
+  }
+
   // ---- parameters (D51, D55) -------------------------------------------------
 
   /**
@@ -311,6 +346,7 @@ export class SessionStore {
     assertValidParameters(next);
     if (this.session.parameters !== null) this.session.parameters = next;
     else this.workingParameters = next;
+    this.invalidateDerived();
     this.changed();
   }
 
@@ -349,11 +385,13 @@ export class SessionStore {
     const calibrated = map !== null && map.calibration.platformDiameter_cm > 0;
     this.session.mazeMap = calibrated ? map : null;
     this.draftMazeMap = calibrated ? null : map;
+    this.invalidateDerived();
     this.changed();
   }
 
   setMazeTransform(videoId: VideoId, transform: SimilarityTransform): void {
     this.updateVideo(videoId, (video) => ({ ...video, mazeTransform: { ...transform } }));
+    this.invalidateDerived();
   }
 
   countMazeClick(videoId: VideoId, clicks = 1): void {
