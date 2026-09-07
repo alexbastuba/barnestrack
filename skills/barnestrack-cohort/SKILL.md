@@ -15,8 +15,9 @@ have to be re-exported.
 
 ## What an export contains
 
-A BarnesTrack export is a folder or ZIP named `barnestrack_export_<cohort>_<YYYYMMDD>.zip`
-containing six files:
+A BarnesTrack export is a folder or ZIP named `barnestrack_export_<cohort>_<YYYYMMDD>.zip`, where
+`<cohort>` is the session name lowercased with runs of non-alphanumerics replaced by hyphens — so
+"Barnes cohort A" gives `barnes-cohort-a`. It contains six files:
 
 | File                        | One row per                   | Notes                                                                                                       |
 | --------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -141,6 +142,10 @@ threshold columns in `trials.csv`**: the kinematics block (`speedWindowFrames`,
 `gapFilling.enabled`, and the whole `tracking` subtree are hashed but are not columns. When two
 cohorts have different hashes and identical threshold columns, the difference is in here.
 
+It is not, however, the whole of what decided the numbers. The trial-censoring switch, the five
+strategy-rule thresholds and the two quality-tier thresholds are not fields of `Parameters` in this
+version, so they appear here no more than they appear in the columns or the hash. See Rule 4.
+
 An export made before any analysis ran contains the literal `{}`.
 
 ## Rules
@@ -148,14 +153,24 @@ An export made before any analysis ran contains the literal `{}`.
 These are not style preferences. Each exists because ignoring it produces a confidently wrong
 number.
 
-1. **Never fold `review` or `unresolved` trials into a headline number silently.** `status = ok`
-   means the animal escaped and nothing needed a human look. `review` means the trial ran past the
-   cutoff, tracking failed, or a value could not be resolved automatically. `unresolved` means it
-   still could not be resolved after review. Always report how many trials of each status went into
-   a number and which you excluded. On some cohorts every trial is `review` — that is a known
-   property of the escape-entry rule, not a broken export, and the right response is to say so and
-   proceed with the measures that are unaffected (errors, path length, quadrant time, strategy),
-   not to quietly average latencies that are blank.
+1. **Never fold `review` trials into a headline number silently, and drop `unresolved` ones
+   entirely.** `status = ok` means the animal escaped and nothing needed a human look. `review`
+   means the trial ran past the cutoff, tracking failed, or a value could not be resolved
+   automatically — the numbers are real, they just need saying out loud. On some cohorts every
+   trial is `review`; that is a known property of the escape-entry rule, not a broken export, and
+   the right response is to say so and use the measures it does not affect (errors, path length,
+   quadrant time, strategy) rather than quietly averaging latencies that are blank.
+
+   `unresolved` is different and more dangerous: it means **no trial window was found at all** —
+   no trial start could be detected. Nothing about it involves review, and a correction cannot
+   produce it. Its `trial_start_s`, latencies and `tracked_fraction` are blank, but
+   `primary_errors` and `total_errors` still read a literal **`0`**, and `path_length_cm`,
+   `path_length_smoothed_cm`, `mean_speed_cm_per_s`, `target_quadrant_time_s` and `strategy` are
+   computed over the **whole video** instead of over a trial. A mean of `total_errors` will
+   silently absorb that zero and a strategy cross-tabulation will silently count a classification
+   of a trial that does not exist. Exclude `unresolved` rows from every aggregate and say that you
+   did.
+
 2. **Blank is not zero.** `total_latency_s`, `primary_latency_s` and `min_nose_distance_cm` are the
    usual blanks. Count them, report them, and never let them enter a mean as zero. If the analyst
    wants censored latencies substituted with `trial_cutoff_s`, do it only when asked and say in the
@@ -164,11 +179,20 @@ number.
    column and `correction_count` all carry this. A group difference driven by corrected trials is a
    different claim from one driven by automatic output; both are legitimate, and the reader has to
    be told which.
-4. **Two cohorts are comparable only if their `parameters_hash` values match.** State in _every_
-   comparison whether they do. If they differ: diff the eleven threshold columns in `trials.csv`
-   first, then `parameters.json` for the parameters that are not columns, then `tool_version`.
-   Report the differing parameters before reporting the difference in results — a change in
+4. **Two cohorts are comparable only if their `parameters_hash` values match — and matching is
+   necessary, not sufficient.** State in _every_ comparison whether the hashes match. If they
+   differ: diff the eleven threshold columns in `trials.csv` first, then `parameters.json` for the
+   parameters that are hashed but are not columns, then `tool_version`. Report the differing
+   parameters before reporting the difference in results — a change in
    `hole_investigation_radius_factor` moves every error count in the cohort.
+
+   Matching hashes are not a guarantee. In this version the trial-censoring switch, the five
+   strategy-rule numbers and the two quality-tier thresholds sit outside `Parameters` altogether:
+   they are in the hash, in the columns and in `parameters.json` — none of them. Two exports can
+   therefore carry the same `parameters_hash` and still disagree on `strategy`, `tier` and a
+   censored `total_latency_s`. `tool_version` is the only handle on them, so when hashes match but
+   strategy or tier disagree, compare tool versions and say that these thresholds are not covered.
+
 5. **`events.csv` is investigations and escape entries only.** Do not infer tracking failures from
    its absences; they are in `quality.csv` as gaps.
 6. **Check `quality.csv` before believing `trials.csv`.** A `POOR` tier or a long `longest_gap_s`
@@ -209,7 +233,9 @@ first difference found and its expected direction of effect, rather than listing
 
 Generated from this repository's synthetic fixture — `tests/fixtures/synthetic-analysis.ts`
 through `src/export/` — so the shapes below are real output, not illustration. Regenerate with
-`tsx` if the schema changes. **These are invented trajectories, not results from any recording.**
+`tsx` if the schema changes. **These are invented trajectories, not results from any recording** —
+the `video_id`s echo the sample clips' filenames, but the tracks, events and metrics below are
+synthetic, and two of these trials "escape" where no real clip does.
 
 `trials.csv`, header and all three rows, with long columns elided as `…`:
 
