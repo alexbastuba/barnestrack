@@ -442,7 +442,8 @@ test.describe('the whole demo flow through the shipped UI', () => {
     // The export bundle carries the six files of D11.
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('button', { name: /Download export bundle/i }).click(),
+      // Chunk 7b's button, which did not exist when this spec was written.
+      page.getByRole('button', { name: /Export bundle \(\.zip\)/i }).click(),
     ]);
     const zipPath = await download.path();
     const { readFileSync } = await import('node:fs');

@@ -107,7 +107,11 @@ function defaultColormapOf(figure: FigureSpec): ColormapName {
   return figure.id === 'heatmap' ? 'cividis' : 'viridis';
 }
 
-/** `4`, not `4.0`; `4.5` stays `4.5`. A filename should not carry a stray zero. */
+/**
+ * `4`, not `4.0`. `cellSizeCm` rounds to the option's step, so today every value
+ * reaching this is an integer; the `.` substitution keeps a fractional step from
+ * putting a second dot in the filename if one is ever offered.
+ */
 function trimNumber(value: number): string {
   return String(Number(value.toFixed(2))).replace('.', '-');
 }

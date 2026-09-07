@@ -21,6 +21,7 @@ import {
   previewRatio,
 } from '../../src/ui/review-figures.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
+import { fakeContext } from '../viz/fake-context.js';
 
 function withOneUnanalysed(session: SessionFile): SessionFile {
   const last = session.videos[session.videos.length - 1]!;
@@ -201,7 +202,6 @@ describe('the mounted figures section', () => {
     expect(bin.value).toBe('1');
     expect(caption()).toContain('1 cm cell');
     expect(announce).toHaveBeenCalledWith(expect.stringContaining('outside the 1–12 cm range'));
-    // The cards after the heatmap are still current, not stale from before.
     const captions = [...container.querySelectorAll('.figure-caption')].filter(
       (node) => (node.textContent ?? '').trim().length > 0,
     );
@@ -258,6 +258,64 @@ describe('the mounted figures section', () => {
     const before = label();
     figures.update({ session, videoId: session.videos[1]!.id });
     expect(label()).not.toBe(before);
+  });
+
+  it('reports a figure that throws on its own card, and still draws the rest', () => {
+    // happy-dom returns null from `getContext`, so nothing in this suite entered
+    // the draw path at all until this stub — the catch was dead code under test.
+    const session = syntheticSession();
+    const context = fakeContext();
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue(context as unknown as CanvasRenderingContext2D);
+    const broken = TRIAL_FIGURES[1]!;
+    const draw = vi.spyOn(broken, 'draw').mockImplementation(() => {
+      throw new Error('deliberate failure');
+    });
+    try {
+      createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {
+        onAnnounce: announce,
+        onGoToTrack: goToTrack,
+      });
+
+      const cards = [...container.querySelectorAll('.figure-card')];
+      const failed = cards[1]!;
+      expect(failed.querySelector('h5')!.textContent).toBe(broken.title);
+      expect(failed.querySelector<HTMLElement>('.figure-note')!.hidden).toBe(false);
+      expect(failed.querySelector('.figure-note')!.textContent).toContain('deliberate failure');
+      expect(failed.querySelector('button')!.disabled).toBe(true);
+      expect(announce).toHaveBeenCalledWith(expect.stringContaining('deliberate failure'));
+
+      // The cards after it drew normally: one bad figure is not eight.
+      const after = cards[2]!;
+      expect(after.querySelector<HTMLElement>('.figure-note')!.hidden).toBe(true);
+      expect(after.querySelector('button')!.disabled).toBe(false);
+      expect(after.querySelector('.figure-caption')!.textContent).toBeTruthy();
+    } finally {
+      draw.mockRestore();
+      getContext.mockRestore();
+    }
+  });
+
+  it('names the videos it could not analyse instead of calling them untracked', () => {
+    const session = syntheticSession();
+    const figures = createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {
+      onAnnounce: announce,
+      onGoToTrack: goToTrack,
+    });
+    const block = container.querySelector<HTMLElement>('.figure-missing-block')!;
+    const button = block.querySelector<HTMLButtonElement>('button')!;
+
+    figures.update({
+      session,
+      videoId: session.videos[0]!.id,
+      problems: ['test51.mp4 — the maze has no usable hole radius'],
+    });
+
+    expect(block.hidden).toBe(false);
+    expect(block.textContent).toContain('the maze has no usable hole radius');
+    // The Track step cannot fix a derive that throws, so it is not offered.
+    expect(button.hidden).toBe(true);
   });
 
   it('takes its listeners with it when destroyed', () => {

@@ -83,6 +83,13 @@ export interface ReviewFiguresProps {
   session: SessionFile;
   /** The video on screen; null when none can be shown. */
   videoId: string | null;
+  /**
+   * Videos that are tracked but whose analysis could not be computed at all, and
+   * why. Different from "not analysed yet": the Track step cannot help, so the
+   * reason is shown and the button to it is not (D16 — say what went wrong
+   * rather than a true-but-misleading count).
+   */
+  problems?: readonly string[];
 }
 
 export interface ReviewFiguresCallbacks {
@@ -365,10 +372,20 @@ export function createReviewFigures(
   }
 
   function renderMissing(): void {
+    const problems = current.problems ?? [];
     const line = notAnalysedInFigures(current.session);
-    missing.hidden = line === null;
-    missingLine.textContent = line ?? '';
+    missing.hidden = line === null && problems.length === 0;
     const { notAnalysed, total } = notAnalysedCount(current.session);
+
+    if (problems.length > 0) {
+      // The Track step cannot fix a derive that throws, so it is not offered.
+      missingLine.textContent = `${problems.length} of ${total} video${total === 1 ? '' : 's'} could not be analysed, so ${problems.length === 1 ? 'it is' : 'they are'} not in these figures: ${problems.join('; ')}.`;
+      trackButton.hidden = true;
+      return;
+    }
+
+    missingLine.textContent = line ?? '';
+    trackButton.hidden = line === null;
     trackButton.setAttribute(
       'aria-label',
       `Go to the Track step to analyse the ${notAnalysed} of ${total} videos that are not in these figures`,

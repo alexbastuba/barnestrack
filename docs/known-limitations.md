@@ -23,6 +23,14 @@ session it is found (D39).
   but a 59 cm "entry" is a number a user can export without noticing. Whether a user assertion
   should be believed unconditionally, warned about, or refused beyond some distance from a hole is
   an operational definition, so it is recorded rather than changed here.
+- **Every maze nudge re-derives the whole cohort, from a step the user is not looking at.** The app
+  shell refreshes every step on every store notification, and the Review step re-derives whatever
+  the store invalidated so its figures and its export line are not left claiming that analysed
+  videos are unanalysed. So one arrow key on the Maze step costs a derive per video. Measured on the
+  example cohort (5,539 / 741 / 905 frames): 10.5 ms per nudge steady-state, 7.3 ms of it the long
+  video. Comfortable at three videos; a sixty-video cohort would put roughly 0.4 s of main-thread
+  work behind each keypress. The fix is to re-derive lazily when the Review step is shown rather
+  than on every notification, or to move the sweep off the main thread.
 - **The cohort figures always plot primary latency.** `PlottableMetric` offers seven measures and
   `src/viz/cohort.ts` names them all in `METRIC_LABELS`, but the Review step's figures section
   exposes no control for it, so the learning curve and the group comparison are fixed to

@@ -138,8 +138,8 @@ describe('figure options in the PNG name (D53)', () => {
 
   it('refuses a bin size that would allocate millions of cells', () => {
     const heatmap = FIGURES.find((f) => f.id === 'heatmap')!;
-    // The grid is the square of the span, so 0.001 cm on a 46 cm platform asked
-    // for 3.4 million cells and threw `Invalid array length` from inside `draw`.
+    // The grid is the square of the span, so 0.001 cm on a platform 92 cm across
+    // asked for 8.46e9 cells and threw `Invalid array length` from inside `draw`.
     expect(cellSizeCm({ heatmapCellSize_cm: 0.001 })).toBe(CELL_CM_RANGE.min);
     expect(cellSizeCm({ heatmapCellSize_cm: 1e6 })).toBe(CELL_CM_RANGE.max);
     expect(() => heatmap.describe(data, { heatmapCellSize_cm: 0.001 })).not.toThrow();

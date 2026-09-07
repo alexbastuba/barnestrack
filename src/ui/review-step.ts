@@ -178,6 +178,10 @@ export function createReviewStep(context: AppContext): Step {
   let adopted: { videoId: VideoId; run: AnalysisRun } | null = null;
   /** True while a cohort sweep is writing derived caches; one render follows, not one per video. */
   let sweeping = false;
+  /** Videos whose derive threw, and why, so the sweep stops retrying them silently. */
+  const failedAnalyses = new Map<VideoId, string>();
+  /** The maze map and parameters those failures were recorded against. */
+  let failedInputs: { mazeMap: unknown; parameters: unknown } | null = null;
 
   const body = el('div', { class: 'review-step' });
 
@@ -995,16 +999,44 @@ export function createReviewStep(context: AppContext): Step {
    */
   function sweepMissingAnalyses(): void {
     if (sweeping) return;
+    // A derive that throws would otherwise be retried on every notification for
+    // ever, silently, while the figures said only "not analysed yet" and offered
+    // the Track step — which cannot help, because the video *is* tracked. The
+    // failures are remembered until an input changes, and the reason is shown.
+    const inputs = { mazeMap: store.current.mazeMap, parameters: store.current.parameters };
+    if (failedInputs?.mazeMap !== inputs.mazeMap || failedInputs?.parameters !== inputs.parameters) {
+      failedAnalyses.clear();
+      failedInputs = inputs;
+    }
     const stale = store.videos.some(
-      (video) => analysisBlockedReason(store, video.id) === null && !store.analysisFor(video.id)?.derived,
+      (video) =>
+        analysisBlockedReason(store, video.id) === null &&
+        !store.analysisFor(video.id)?.derived &&
+        !failedAnalyses.has(video.id),
     );
     if (!stale) return;
     sweeping = true;
+    let run;
     try {
-      analyseMissing(store);
+      run = analyseMissing(store);
     } finally {
       sweeping = false;
     }
+    for (const [videoId, reason] of run.skipped) {
+      // Only a throw, not "not tracked yet" — that one the Track step does fix.
+      if (analysisBlockedReason(store, videoId) !== null) continue;
+      if (failedAnalyses.has(videoId)) continue;
+      failedAnalyses.set(videoId, reason);
+      const name = store.videoById(videoId)?.filename ?? videoId;
+      context.announce(`${name} could not be analysed: ${reason}`);
+    }
+  }
+
+  /** The reason each failed video failed, in the words the figures show. */
+  function analysisProblems(): string[] {
+    return [...failedAnalyses].map(
+      ([videoId, reason]) => `${store.videoById(videoId)?.filename ?? videoId} — ${reason}`,
+    );
   }
 
   function render(): void {
@@ -1367,6 +1399,7 @@ export function createReviewStep(context: AppContext): Step {
     const figuresProps: ReviewFiguresProps = {
       session: store.current,
       videoId: currentVideo()?.id ?? null,
+      problems: analysisProblems(),
     };
     if (figures) {
       figures.update(figuresProps);

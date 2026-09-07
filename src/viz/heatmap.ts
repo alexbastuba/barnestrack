@@ -32,7 +32,7 @@ const TITLE = 'Occupancy heatmap';
  */
 export const DEFAULT_CELL_CM = 4;
 
-/** The bin sizes the UI offers; any positive number works. */
+/** The bin sizes on offer. `cellSizeCm` clamps to this range and rounds to the step. */
 export const CELL_CM_RANGE = { min: 1, max: 12, step: 1 };
 
 /**
@@ -51,10 +51,10 @@ function occupancyMap(name: ColormapName | undefined): Colormap {
  *
  * Clamped here rather than at the control, so every consumer agrees on one
  * value — the drawing, the `describe()` table and the PNG filename. The grid
- * allocates cells as the square of the span, so an unclamped 0.001 cm asks for
- * 3.4 million cells on a 46 cm platform and throws `Invalid array length` from
- * inside `draw()`; and an unrounded 4.001 and 4.002 would produce two different
- * figures under one filename.
+ * allocates cells as the square of the span, so on a platform 92 cm across an
+ * unclamped 0.001 cm asks for a span of 92,000 and 8.46e9 cells, which throws
+ * `Invalid array length` from inside `draw()`; and an unrounded 4.001 and 4.002
+ * would produce two different figures under one filename.
  */
 export function cellSizeCm(options: FigureOptions | undefined): number {
   const chosen = options?.heatmapCellSize_cm;
