@@ -2,8 +2,8 @@ import './styles/app.css';
 import { SessionStore } from './session/session-store.js';
 import { IndexedDbSessionStorage, MemorySessionStorage } from './session/storage.js';
 import { mountApp } from './ui/app.js';
-import { placeholderStep } from './ui/placeholder-step.js';
 import { createMazeStep } from './ui/maze-step.js';
+import { createReviewStep } from './ui/review-step.js';
 import { createTrackStep } from './ui/track-step.js';
 import { createVideosStep } from './ui/videos-step.js';
 import type { AppContext, Step } from './ui/step.js';
@@ -19,18 +19,7 @@ function makeSteps(context: AppContext): Step[] {
     createVideosStep(context),
     createMazeStep(context),
     createTrackStep(context),
-    placeholderStep({
-      id: 'review',
-      label: 'Review & Export',
-      what:
-        'Read the events, latencies, errors, path measures and search strategy for each trial, ' +
-        'check the quality report, and export tidy CSVs and an XLSX workbook.',
-      definitions: [
-        'Every threshold that defines an event travels with the numbers, as a column in the export (D11).',
-        'Each export is stamped with the tool version, the schema version and the parameters hash (D12).',
-      ],
-      waitingFor: () => 'metrics and exports are built in a later chunk',
-    }),
+    createReviewStep(context),
   ];
 }
 

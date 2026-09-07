@@ -1,0 +1,1308 @@
+/**
+ * Step 4 — Review. The frame view with the automatic and corrected points,
+ * the timeline (D24), every correction (D25) as a pure operation over the
+ * corrections layer with a live recompute of the whole analysis (D20, D22),
+ * the DOM mirrors of what the canvases draw (D37), and a minimal metrics
+ * card whose values seek to the frame that defines them (D19 · F3).
+ *
+ * Nothing here patches an output: a correction writes one entry into the
+ * corrections layer, the store notifies, and the derived analysis is
+ * recomputed from `auto ⊕ corrections` and re-rendered — the same functions
+ * that produce the exports (D55). Automatic and corrected values are told
+ * apart by shape and word, never colour alone (D26).
+ *
+ * Mount points for the panels chunk 7b brings: `#review-parameters`,
+ * `#review-events`, `#review-metrics`, `#review-quality`. What lives in them
+ * now is the minimum this step needs and is replaced wholesale then.
+ */
+import type { DerivedAnalysis } from '../analysis/derive.js';
+import { nearestHoleIndex } from '../analysis/geometry.js';
+import {
+  PARAMETER_DECISIONS,
+  PARAMETER_DEFINITIONS,
+  PARAMETER_UNITS,
+  parameterAt,
+  validateParameters,
+  type ParameterPath,
+} from '../analysis/parameters.js';
+import type { EventRecord } from '../contracts/events.js';
+import type { Parameters } from '../contracts/parameters.js';
+import type { CorrectionsLayer, SearchStrategy, VideoDescriptor } from '../contracts/session.js';
+import type { NamedPointId, TrackFrame } from '../contracts/track.js';
+import { holeCentres, ringRadius } from '../maze/ring.js';
+import { transformMap } from '../maze/similarity.js';
+import type { Point } from '../maze/types.js';
+import { videoToViewport, type ViewTransform } from '../maze/view-transform.js';
+import { analyseVideo, analysisBlockedReason } from '../session/analyse.js';
+import {
+  addEvent,
+  deleteEvent,
+  describeCorrection,
+  editEvent,
+  markRange,
+  orphanedCorrections,
+  pointCorrectionAt,
+  revertCorrection,
+  revertEvent,
+  revertStrategyOverride,
+  revertTrialStart,
+  setPoint,
+  setStrategyOverride,
+  setTrialStart,
+  strategyOverride,
+  trialStartCorrection,
+  type CorrectionMeta,
+} from '../session/corrections.js';
+import type { VideoId } from '../session/stored.js';
+import { CanvasView } from './canvas-view.js';
+import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
+import {
+  ACCENT,
+  INK_SOFT,
+  drawCentroidMarker,
+  drawCrosshair,
+  drawHole,
+  drawLabel,
+  drawNoseMarker,
+} from './overlay-draw.js';
+import {
+  METRIC_ROWS,
+  formatFrameTime,
+  formatPercentage,
+  formatSeconds,
+  metricDefinition,
+  metricValueText,
+  seekFrameFor,
+} from './review-format.js';
+import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
+import { Scrubber } from './scrubber.js';
+import { frameAtTime } from './timeline-geometry.js';
+import { eventAtFrame, flaggedRuns, nextSpan, timelineModel, type TimelineModel } from './timeline-model.js';
+import { Timeline, type EventEdge } from './timeline.js';
+import type { AppContext, Step } from './step.js';
+
+type PointTool = 'off' | NamedPointId;
+type Painting = { kind: 'not_visible' | 'add_event'; startFrame: number } | null;
+
+const NUDGE_PX = 1;
+const NUDGE_PX_LARGE = 10;
+/** Frames either side of the playhead in the frames table. */
+const FRAME_TABLE_RADIUS = 7;
+/** The thresholds the provisional parameter fields expose until chunk 7b's panel replaces them. */
+const PROVISIONAL_PARAMETERS: readonly ParameterPath[] = [
+  'holeInvestigation.radiusFactor',
+  'holeInvestigation.minDuration_s',
+  'holeInvestigation.mergeGap_s',
+  'escapeEntry.radiusFactor',
+  'escapeEntry.minDuration_s',
+  'noseConfidenceCutoff',
+];
+const STRATEGIES: readonly SearchStrategy[] = ['spatial', 'serial', 'random'];
+
+function newMeta(): CorrectionMeta {
+  const uuid =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  return { id: uuid, timestamp: new Date().toISOString() };
+}
+
+const STATE_WORDS: Record<TrackFrame['detectionState'], string> = {
+  tracked: 'tracked',
+  not_detected: 'not detected',
+  ambiguous: 'ambiguous',
+  low_confidence: 'low confidence',
+};
+
+const KIND_WORDS: Record<EventRecord['kind'], string> = {
+  investigation: 'investigation',
+  escape_entry: 'escape entry',
+  tracking_failure: 'tracking failure',
+};
+
+export function createReviewStep(context: AppContext): Step {
+  const { store } = context;
+
+  // ---- state ------------------------------------------------------------------
+
+  let selectedVideoId: VideoId | null = null;
+  let analysis: DerivedAnalysis | null = null;
+  let model: TimelineModel | null = null;
+  let cacheKey: {
+    videoId: VideoId;
+    auto: unknown;
+    corrections: unknown;
+    parameters: unknown;
+    mazeMap: unknown;
+    transform: unknown;
+  } | null = null;
+  let lastTiming: { deriveMs: number; totalMs: number } | null = null;
+  let playhead = 0;
+  let tool: PointTool = 'off';
+  let selectedEventId: string | null = null;
+  let selectedEdge: EventEdge | null = null;
+  let painting: Painting = null;
+  let hoverPoint: Point | null = null;
+  let hoverText: string | null = null;
+  let seekToken = 0;
+  let deriving = false;
+  let playing: { raf: number; wallStart: number; timeStart: number } | null = null;
+  let lastEpoch = store.epoch;
+  let lastVideoId: VideoId | null = null;
+  let lastAttached = false;
+
+  const body = el('div', { class: 'review-step' });
+
+  // ---- derived state -----------------------------------------------------------
+
+  function currentVideo(): VideoDescriptor | null {
+    const videos = store.videos;
+    const chosen = videos.find((v) => v.id === selectedVideoId);
+    if (chosen) return chosen;
+    return videos.find((v) => store.analysisFor(v.id) !== undefined) ?? videos[0] ?? null;
+  }
+
+  function currentLayer(): CorrectionsLayer | null {
+    const video = currentVideo();
+    return video ? (store.analysisFor(video.id)?.corrections ?? null) : null;
+  }
+
+  function frameCount(): number {
+    return analysis?.cleanedTrack.length ?? 0;
+  }
+
+  function videoMap() {
+    const video = currentVideo();
+    const map = store.current.mazeMap;
+    if (!video || !map) return null;
+    return transformMap(map, video.mazeTransform, video.referenceResolution);
+  }
+
+  /** Re-derives when the automatic layer, the corrections, the parameters or the maze changed identity. */
+  function ensureAnalysis(): void {
+    const video = currentVideo();
+    const entry = video ? store.analysisFor(video.id) : undefined;
+    const mazeMap = store.current.mazeMap;
+    if (!video || !entry || !mazeMap) {
+      analysis = null;
+      model = null;
+      cacheKey = null;
+      return;
+    }
+    const parameters = store.parameters;
+    if (
+      cacheKey &&
+      cacheKey.videoId === video.id &&
+      cacheKey.auto === entry.auto &&
+      cacheKey.corrections === entry.corrections &&
+      cacheKey.parameters === parameters &&
+      cacheKey.mazeMap === mazeMap &&
+      cacheKey.transform === video.mazeTransform
+    ) {
+      return;
+    }
+    deriving = true;
+    try {
+      const started = performance.now();
+      const run = analyseVideo(store, video.id);
+      if (!run) {
+        analysis = null;
+        model = null;
+        cacheKey = null;
+        return;
+      }
+      analysis = run.analysis;
+      model = timelineModel(analysis, entry.corrections);
+      lastTiming = { deriveMs: run.deriveMs, totalMs: performance.now() - started };
+      cacheKey = {
+        videoId: video.id,
+        auto: entry.auto,
+        corrections: entry.corrections,
+        parameters: store.parameters,
+        mazeMap,
+        transform: video.mazeTransform,
+      };
+      if (playhead >= frameCount()) playhead = Math.max(0, frameCount() - 1);
+    } catch (error) {
+      analysis = null;
+      model = null;
+      cacheKey = null;
+      context.announce(`The analysis could not be computed: ${(error as Error).message}`);
+    } finally {
+      deriving = false;
+    }
+  }
+
+  // ---- corrections: the one write path -----------------------------------------------
+
+  function commit(next: CorrectionsLayer, message: string): void {
+    const video = currentVideo();
+    if (!video) return;
+    const started = performance.now();
+    store.setCorrections(video.id, next); // notifies → refresh → re-derive → re-render
+    const total = performance.now() - started;
+    const timing = lastTiming ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${total.toFixed(0)} ms with the redraw).` : '';
+    context.announce(`${message}.${timing}`);
+  }
+
+  function layerOrNull(): CorrectionsLayer | null {
+    const layer = currentLayer();
+    if (!layer || !analysis) {
+      context.announce('Nothing to correct: this video has no analysis yet.');
+      return null;
+    }
+    return layer;
+  }
+
+  function placePoint(point: NamedPointId, x: number, y: number): void {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(
+      setPoint(layer, playhead, point, { x, y, confidence: 1, valid: true }, newMeta()),
+      `${point === 'nose' ? 'Nose' : 'Centroid'} placed by hand on frame ${playhead}`,
+    );
+  }
+
+  function nudgePoint(dx: number, dy: number): void {
+    if (tool === 'off' || !analysis) return;
+    const frame = analysis.cleanedTrack[playhead];
+    if (!frame) return;
+    const current = tool === 'nose' ? frame.nose : frame.centroid;
+    const existing = currentLayer() ? pointCorrectionAt(currentLayer()!, playhead, tool) : null;
+    const base = existing?.value.valid ? existing.value : current.valid ? current : null;
+    if (!base) {
+      context.announce(`The ${tool} is not positioned on frame ${playhead}: click the frame to place it first.`);
+      return;
+    }
+    placePoint(tool, base.x + dx, base.y + dy);
+  }
+
+  function markInvalid(): void {
+    if (tool === 'off') return;
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(
+      setPoint(layer, playhead, tool, { x: 0, y: 0, confidence: 0, valid: false }, newMeta()),
+      `${tool === 'nose' ? 'Nose' : 'Centroid'} marked invalid on frame ${playhead}`,
+    );
+  }
+
+  function paintNotVisible(): void {
+    const layer = layerOrNull();
+    if (!layer) return;
+    if (painting?.kind === 'not_visible') {
+      const from = painting.startFrame;
+      painting = null;
+      commit(markRange(layer, 'not_visible', from, playhead, newMeta()), `Animal marked not visible, frames ${Math.min(from, playhead)}–${Math.max(from, playhead)}`);
+    } else {
+      painting = { kind: 'not_visible', startFrame: playhead };
+      context.announce(`Not visible from frame ${playhead}: move to the last frame of the stretch and press V again, or Escape to cancel.`);
+      renderStatus();
+    }
+  }
+
+  function markEscapeBox(): void {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(
+      markRange(layer, 'in_escape_box', playhead, frameCount() - 1, newMeta()),
+      `Animal marked in the escape box from frame ${playhead} to the end of the video`,
+    );
+  }
+
+  function addEventHere(): void {
+    const layer = layerOrNull();
+    if (!layer || !analysis) return;
+    if (painting?.kind === 'add_event') {
+      const from = painting.startFrame;
+      painting = null;
+      const end = playhead;
+      const hole = holeForFrame(end);
+      const next = addEvent(layer, hole, from, end, newMeta());
+      selectedEventId = `user-${next.entries[next.entries.length - 1]!.id}`;
+      selectedEdge = null;
+      commit(next, `Investigation added at hole ${hole}, frames ${Math.min(from, end)}–${Math.max(from, end)}; change the hole with H if it is wrong`);
+    } else {
+      painting = { kind: 'add_event', startFrame: playhead };
+      context.announce(`New investigation from frame ${playhead}: move to its last frame and press A again, or Escape to cancel.`);
+      renderStatus();
+    }
+  }
+
+  /** The hole nearest the event point at a frame, or the hole select's value, or the target. */
+  function holeForFrame(frame: number): number {
+    if (analysis) {
+      const f = analysis.cleanedTrack[frame];
+      const p = f?.nose.valid ? f.nose : f?.centroid.valid ? f.centroid : null;
+      if (p) return nearestHoleIndex(analysis.geometry, p.x, p.y);
+      return analysis.geometry.targetIndex;
+    }
+    return Number(holeSelect.value) || 0;
+  }
+
+  function selectedEvent(): EventRecord | null {
+    if (!analysis || selectedEventId === null) return null;
+    return analysis.events.find((e) => e.id === selectedEventId) ?? null;
+  }
+
+  function relabelSelected(holeIndex: number): void {
+    const layer = layerOrNull();
+    const ev = selectedEvent();
+    if (!layer || !ev) {
+      context.announce('Select an event first (click a bar on the timeline, or press E).');
+      return;
+    }
+    if (ev.kind !== 'investigation') {
+      context.announce('Only an investigation can be moved to another hole.');
+      return;
+    }
+    if (ev.holeIndex === holeIndex) return;
+    commit(
+      editEvent(layer, ev.id, { holeIndex, startFrame: ev.startFrame, endFrame: ev.endFrame }, newMeta()),
+      `Event moved from hole ${ev.holeIndex} to hole ${holeIndex}`,
+    );
+  }
+
+  function retimeSelected(edge: EventEdge, frame: number): void {
+    const layer = layerOrNull();
+    const ev = selectedEvent();
+    if (!layer || !ev) return;
+    const start = edge === 'start' ? frame : ev.startFrame;
+    const end = edge === 'end' ? frame : ev.endFrame;
+    if (start > end) {
+      context.announce('An event cannot end before it starts.');
+      return;
+    }
+    commit(
+      editEvent(layer, ev.id, { holeIndex: ev.holeIndex ?? undefined, startFrame: start, endFrame: end }, newMeta()),
+      `Event ${ev.id} ${edge} moved to frame ${frame}`,
+    );
+  }
+
+  function deleteSelected(): void {
+    const layer = layerOrNull();
+    const ev = selectedEvent();
+    if (!layer || !ev) {
+      context.announce('Select an event first (click a bar on the timeline, or press E).');
+      return;
+    }
+    selectedEventId = null;
+    selectedEdge = null;
+    commit(deleteEvent(layer, ev.id, newMeta()), `Event ${ev.id} deleted`);
+  }
+
+  function trialStartHere(): void {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(setTrialStart(layer, playhead, newMeta()), `Trial start set to frame ${playhead}`);
+  }
+
+  // ---- playback -----------------------------------------------------------------------
+
+  function stopPlaying(announce: boolean): void {
+    if (!playing) return;
+    cancelAnimationFrame(playing.raf);
+    playing = null;
+    if (announce) context.announce(`Paused at frame ${playhead}.`);
+    renderStatus();
+  }
+
+  function togglePlay(): void {
+    if (playing) {
+      stopPlaying(true);
+      return;
+    }
+    if (!model) return;
+    const times = model.frameTimes;
+    const last = times.length - 1;
+    if (playhead >= last) seek(0, false);
+    playing = { raf: 0, wallStart: performance.now(), timeStart: times[playhead] ?? 0 };
+    context.announce('Playing at normal speed. Space pauses.');
+    const tick = (): void => {
+      if (!playing || !model) return;
+      const elapsed = (performance.now() - playing.wallStart) / 1000;
+      const target = frameAtTime(model.frameTimes, playing.timeStart + elapsed);
+      if (target !== playhead) seek(target, false);
+      if (target >= last) {
+        stopPlaying(false);
+        context.announce('Reached the end of the video.');
+        return;
+      }
+      playing.raf = requestAnimationFrame(tick);
+    };
+    playing.raf = requestAnimationFrame(tick);
+    renderStatus();
+  }
+
+  // ---- frame view -----------------------------------------------------------------------
+
+  function paint(ctx: CanvasRenderingContext2D, view: ViewTransform): void {
+    const map = videoMap();
+    const at = (p: Point): Point => videoToViewport(p, view);
+    const current = eventAtFrame(model?.events ?? [], playhead);
+    if (map) {
+      const centre = at({ x: map.platform.cx, y: map.platform.cy });
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centre.x, centre.y, map.platform.r * view.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = INK_SOFT;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(centre.x, centre.y, ringRadius(map.platform, map.holes) * view.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const holeRadius = Math.max(map.holes.holeRadius_px * view.zoom, 3);
+      for (const hole of holeCentres(map)) {
+        drawHole(ctx, at(hole), holeRadius, hole.holeIndex, {
+          isTarget: hole.holeIndex === map.target.holeIndex,
+          selected: current?.holeIndex === hole.holeIndex,
+          sized: map.holes.holeRadius_px > 0,
+          emphasised: current?.holeIndex === hole.holeIndex,
+        });
+      }
+    }
+    const frame = analysis?.cleanedTrack[playhead];
+    if (frame) {
+      if (frame.centroid.valid) drawCentroidMarker(ctx, at(frame.centroid), frame.centroid.source);
+      if (frame.nose.valid) drawNoseMarker(ctx, at(frame.nose), frame.nose.source, `nose ${frame.noseHeadingConfidence.toFixed(2)}`);
+      const lines = [`frame ${playhead} · ${frame.t_s.toFixed(3)} s · ${STATE_WORDS[frame.detectionState]} (${frame.reason})`];
+      if (!frame.centroid.valid) lines.push('centroid: not positioned');
+      if (!frame.nose.valid) lines.push('nose: not available');
+      if (analysis?.trial.startFrame === playhead) lines.push('trial start');
+      if (current) lines.push(`${KIND_WORDS[current.kind]} ${current.label}${current.corrected ? ' · user' : ''}`);
+      lines.forEach((line, i) => drawLabel(ctx, line, 8, 8 + i * 18, i === 0));
+    }
+    if (tool !== 'off' && hoverPoint) drawCrosshair(ctx, at(hoverPoint), `place the ${tool} here`);
+  }
+
+  const canvasView = new CanvasView({
+    label:
+      'Video frame with the maze, the centroid and the nose. A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. The tables below repeat everything drawn here.',
+    paint,
+    onPick: (point) => {
+      if (tool === 'off') return;
+      placePoint(tool, point.x, point.y);
+    },
+    onHover: (p) => {
+      hoverPoint = p;
+      if (tool !== 'off') canvasView.requestDraw();
+    },
+    announce: context.announce,
+  });
+
+  async function showFrame(frameIndex: number): Promise<void> {
+    const video = currentVideo();
+    const attachment = video ? store.attachmentFor(video.id) : undefined;
+    if (!attachment) {
+      canvasView.setFrame(null);
+      return;
+    }
+    const token = ++seekToken;
+    try {
+      const bitmap = await attachment.frameSource.getFrame(frameIndex);
+      if (token !== seekToken) return;
+      canvasView.setVideoSize(attachment.index.width, attachment.index.height);
+      canvasView.setFrame(bitmap);
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') return;
+      context.announce(`Frame ${frameIndex} could not be shown: ${(error as Error).message}`);
+    }
+  }
+
+  const scrubber = new Scrubber({
+    onSeek: (frameIndex) => onPlayhead(frameIndex),
+    announce: context.announce,
+  });
+
+  function seek(frame: number, announce: boolean): void {
+    scrubber.seek(frame, announce);
+  }
+
+  function onPlayhead(frame: number): void {
+    playhead = frame;
+    timeline.setPlayhead(frame);
+    void showFrame(frame);
+    canvasView.requestDraw();
+    renderFrameTable();
+    renderStatus();
+  }
+
+  // ---- timeline ------------------------------------------------------------------------
+
+  const timeline = new Timeline({
+    onSeek: (frame) => seek(frame, false),
+    onSelectEvent: (id) => {
+      selectedEventId = id;
+      selectedEdge = null;
+      timeline.setSelection(id, null);
+      renderEventsTable();
+      renderStatus();
+    },
+    onRetime: (eventId, edge, frame) => {
+      selectedEventId = eventId;
+      retimeSelected(edge, frame);
+    },
+    onTrialStart: (frame) => {
+      const layer = layerOrNull();
+      if (!layer) return;
+      commit(setTrialStart(layer, frame, newMeta()), `Trial start moved to frame ${frame}`);
+    },
+    onHover: (text) => {
+      hoverText = text;
+      renderStatus();
+    },
+    announce: context.announce,
+  });
+
+  // ---- toolbar ---------------------------------------------------------------------------
+
+  const noseButton = button('Nose (N)', () => setTool('nose'), { attrs: { 'aria-pressed': 'false' } });
+  const centroidButton = button('Centroid (C)', () => setTool('centroid'), { attrs: { 'aria-pressed': 'false' } });
+  const toolOffButton = button('Off (Esc)', () => setTool('off'));
+  const invalidButton = button('Mark invalid (X)', () => markInvalid());
+  const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible());
+  const escapeBoxButton = button('In escape box from here (B)', () => markEscapeBox());
+  const addEventButton = button('Add investigation from here… (A)', () => addEventHere());
+  const deleteEventButton = button('Delete event (Delete)', () => deleteSelected());
+  const holeSelect = el('select', { id: uniqueId('review-hole'), attrs: { 'aria-label': 'Hole of the selected event' } });
+  holeSelect.addEventListener('change', () => relabelSelected(Number(holeSelect.value)));
+  const edgeStartButton = button('Start edge (S)', () => selectEdge('start'), { attrs: { 'aria-pressed': 'false' } });
+  const edgeEndButton = button('End edge (D)', () => selectEdge('end'), { attrs: { 'aria-pressed': 'false' } });
+  const trialStartButton = button('Set trial start here (T)', () => trialStartHere());
+  const revertTrialStartButton = button('Revert trial start', () => {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(revertTrialStart(layer), 'Trial start reverted to automatic');
+  });
+  const playButton = button('Play / pause (Space)', () => togglePlay());
+
+  const toolbar = el('div', { class: 'review-tools', attrs: { role: 'toolbar', 'aria-label': 'Correction tools' } }, [
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton]),
+    el('div', { class: 'tool-group' }, [
+      el('span', { text: 'Event' }),
+      addEventButton,
+      deleteEventButton,
+      el('div', { class: 'field' }, [el('label', { text: 'Hole (H)', attrs: { for: holeSelect.id } }), holeSelect]),
+      edgeStartButton,
+      edgeEndButton,
+    ]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Trial' }), trialStartButton, revertTrialStartButton]),
+    el('div', { class: 'tool-group' }, [playButton]),
+  ]);
+
+  function setTool(next: PointTool): void {
+    tool = next;
+    painting = null;
+    hoverPoint = null;
+    for (const [control, value] of [
+      [noseButton, 'nose'],
+      [centroidButton, 'centroid'],
+    ] as const) {
+      control.classList.toggle('is-active', tool === value);
+      control.setAttribute('aria-pressed', tool === value ? 'true' : 'false');
+    }
+    context.announce(
+      tool === 'off'
+        ? 'Point tool off: the arrow keys step frames again.'
+        : `${tool === 'nose' ? 'Nose' : 'Centroid'} armed: click the frame to place it, or use the arrow keys to nudge it (Shift for 10 px). X marks it invalid, Escape disarms.`,
+    );
+    canvasView.requestDraw();
+    renderStatus();
+  }
+
+  function selectEdge(edge: EventEdge | null): void {
+    if (!selectedEvent()) {
+      context.announce('Select an event first (click a bar on the timeline, or press E).');
+      return;
+    }
+    selectedEdge = selectedEdge === edge ? null : edge;
+    timeline.setSelection(selectedEventId, selectedEdge);
+    edgeStartButton.setAttribute('aria-pressed', selectedEdge === 'start' ? 'true' : 'false');
+    edgeEndButton.setAttribute('aria-pressed', selectedEdge === 'end' ? 'true' : 'false');
+    edgeStartButton.classList.toggle('is-active', selectedEdge === 'start');
+    edgeEndButton.classList.toggle('is-active', selectedEdge === 'end');
+    context.announce(
+      selectedEdge === null
+        ? 'No edge selected: Shift with the arrows steps ten frames.'
+        : `${selectedEdge === 'start' ? 'Start' : 'End'} edge selected: Shift + ← / → moves it one frame.`,
+    );
+    renderStatus();
+  }
+
+  // ---- keyboard -----------------------------------------------------------------------------
+
+  function dispatch(action: ReviewAction, shift: boolean): void {
+    const big = shift ? NUDGE_PX_LARGE : NUDGE_PX;
+    switch (action) {
+      case 'step-back':
+        seek(playhead - 1, true);
+        break;
+      case 'step-forward':
+        seek(playhead + 1, true);
+        break;
+      case 'step-back-10':
+        seek(playhead - 10, true);
+        break;
+      case 'step-forward-10':
+        seek(playhead + 10, true);
+        break;
+      case 'home':
+        seek(0, true);
+        break;
+      case 'end':
+        seek(frameCount() - 1, true);
+        break;
+      case 'prev-flag':
+      case 'next-flag': {
+        if (!model) return;
+        const run = nextSpan(flaggedRuns(model), playhead, action === 'next-flag' ? 1 : -1);
+        if (!run) {
+          context.announce(action === 'next-flag' ? 'No flagged run after this frame.' : 'No flagged run before this frame.');
+          return;
+        }
+        seek(run.startFrame, false);
+        context.announce(`Flagged run: ${run.reason}, frames ${run.startFrame}–${run.endFrame}.`);
+        break;
+      }
+      case 'prev-event':
+      case 'next-event': {
+        if (!model) return;
+        const ev = nextSpan(model.events, playhead, action === 'next-event' ? 1 : -1);
+        if (!ev) {
+          context.announce(action === 'next-event' ? 'No event after this frame.' : 'No event before this frame.');
+          return;
+        }
+        selectedEventId = ev.id;
+        selectedEdge = null;
+        timeline.setSelection(ev.id, null);
+        seek(ev.startFrame, false);
+        context.announce(`${KIND_WORDS[ev.kind]} ${ev.label}${ev.corrected ? ' (user)' : ''}, frames ${ev.startFrame}–${ev.endFrame}, selected.`);
+        renderEventsTable();
+        break;
+      }
+      case 'focus-frame-field':
+        scrubber.frameField.focus();
+        scrubber.frameField.select();
+        break;
+      case 'play-pause':
+        togglePlay();
+        break;
+      case 'zoom-in':
+        timeline.zoomBy(1.5);
+        break;
+      case 'zoom-out':
+        timeline.zoomBy(1 / 1.5);
+        break;
+      case 'zoom-fit':
+        timeline.zoomFit();
+        break;
+      case 'tool-nose':
+        setTool('nose');
+        break;
+      case 'tool-centroid':
+        setTool('centroid');
+        break;
+      case 'cancel':
+        if (painting) {
+          painting = null;
+          context.announce('Cancelled.');
+        } else if (tool !== 'off') {
+          setTool('off');
+        } else {
+          selectedEventId = null;
+          selectedEdge = null;
+          timeline.setSelection(null, null);
+          renderEventsTable();
+          context.announce('Selection cleared.');
+        }
+        renderStatus();
+        break;
+      case 'nudge-left':
+        nudgePoint(-big, 0);
+        break;
+      case 'nudge-right':
+        nudgePoint(big, 0);
+        break;
+      case 'nudge-up':
+        nudgePoint(0, -big);
+        break;
+      case 'nudge-down':
+        nudgePoint(0, big);
+        break;
+      case 'mark-invalid':
+        markInvalid();
+        break;
+      case 'paint-not-visible':
+        paintNotVisible();
+        break;
+      case 'mark-escape-box':
+        markEscapeBox();
+        break;
+      case 'add-event':
+        addEventHere();
+        break;
+      case 'delete-event':
+        deleteSelected();
+        break;
+      case 'relabel-event':
+        if (!selectedEvent()) {
+          context.announce('Select an event first (click a bar on the timeline, or press E).');
+          return;
+        }
+        holeSelect.focus();
+        break;
+      case 'edge-start':
+        selectEdge('start');
+        break;
+      case 'edge-end':
+        selectEdge('end');
+        break;
+      case 'retime-back':
+      case 'retime-forward': {
+        const ev = selectedEvent();
+        if (!ev || !selectedEdge) return;
+        const at = (selectedEdge === 'start' ? ev.startFrame : ev.endFrame) + (action === 'retime-back' ? -1 : 1);
+        retimeSelected(selectedEdge, Math.max(0, Math.min(frameCount() - 1, at)));
+        break;
+      }
+      case 'trial-start-here':
+        trialStartHere();
+        break;
+    }
+  }
+
+  body.addEventListener('keydown', (event) => {
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    const editing = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+    if (editing && event.key !== 'Escape') return;
+    if (tag === 'BUTTON' && (event.key === ' ' || event.key === 'Enter')) return;
+    if (tag === 'SUMMARY' && (event.key === ' ' || event.key === 'Enter')) return;
+    const action = resolveKey(event, { pointTool: tool !== 'off', edgeSelected: selectedEdge !== null && selectedEventId !== null });
+    if (!action) return;
+    event.preventDefault();
+    dispatch(action, event.shiftKey);
+  });
+
+  // ---- layout ------------------------------------------------------------------------------
+
+  const videoSelect = el('select', { id: uniqueId('review-video') });
+  videoSelect.addEventListener('change', () => {
+    selectedVideoId = videoSelect.value;
+    selectedEventId = null;
+    selectedEdge = null;
+    painting = null;
+    stopPlaying(false);
+    playhead = 0;
+    render();
+    seek(0, false);
+  });
+  const timing = el('p', { class: 'review-timing', attrs: { 'aria-live': 'off' } });
+  const note = el('p', { class: 'review-note' });
+  const status = el('p', { class: 'review-status', attrs: { 'aria-live': 'off' } });
+
+  const legend = disclosure('Keyboard', [
+    el('div', { class: 'table-scroll' }, [
+      el('table', { class: 'mirror-table key-legend' }, [
+        el('caption', { text: 'Every action of this step from the keyboard. Alt with the arrows pans the frame; + − 0 on the frame zoom it.' }),
+        el('thead', {}, [
+          el('tr', {}, [
+            el('th', { text: 'Keys', attrs: { scope: 'col' } }),
+            el('th', { text: 'Does', attrs: { scope: 'col' } }),
+            el('th', { text: 'When', attrs: { scope: 'col' } }),
+          ]),
+        ]),
+        el(
+          'tbody',
+          {},
+          keyLegend().map((row) =>
+            el('tr', {}, [
+              el('th', { text: row.keys, attrs: { scope: 'row' } }),
+              el('td', { text: row.description }),
+              el('td', {
+                text:
+                  row.when === 'point-tool'
+                    ? 'a point tool is armed'
+                    : row.when === 'edge-selected'
+                      ? 'an event edge is selected'
+                      : row.when === 'no-point-tool'
+                        ? 'no point tool armed'
+                        : 'always',
+              }),
+            ]),
+          ),
+        ),
+      ]),
+    ]),
+  ]);
+
+  // mount points for chunk 7b's panels; what is inside them now is this step's minimum
+  const parametersPanel = el('section', { id: 'review-parameters', class: 'review-panel', attrs: { 'data-panel': 'parameters', 'aria-labelledby': 'review-parameters-heading' } });
+  const metricsPanel = el('section', { id: 'review-metrics', class: 'review-panel', attrs: { 'data-panel': 'metrics', 'aria-labelledby': 'review-metrics-heading' } });
+  const eventsPanel = el('section', { id: 'review-events', class: 'review-panel review-panel-wide', attrs: { 'data-panel': 'events', 'aria-labelledby': 'review-events-heading' } });
+  const qualityPanel = el('section', { id: 'review-quality', class: 'review-panel', attrs: { 'data-panel': 'quality', 'aria-labelledby': 'review-quality-heading' } });
+
+  const framesBody = el('tbody');
+  const framesSummary = el('p', { class: 'mirror-summary' });
+  const framesMirror = el('section', { class: 'mirror' }, [
+    el('h3', { text: 'Frames around the playhead' }),
+    framesSummary,
+    el('div', { class: 'table-scroll' }, [
+      el('table', { class: 'mirror-table' }, [
+        el('caption', { text: `The ${FRAME_TABLE_RADIUS} frames either side of the current frame: what the overlay draws, with the source of every point.` }),
+        el('thead', {}, [
+          el('tr', {}, [
+            ...['Frame', 't (s)', 'State', 'Reason', 'Centroid x', 'Centroid y', 'Centroid source', 'Nose x', 'Nose y', 'Nose conf.', 'Nose source', 'Event', 'Corrections'].map((text) =>
+              el('th', { text, attrs: { scope: 'col' } }),
+            ),
+          ]),
+        ]),
+        framesBody,
+      ]),
+    ]),
+  ]);
+
+  const correctionsList = el('ol', { class: 'corrections-list' });
+  const correctionsSummary = el('p', { class: 'mirror-summary' });
+  const correctionsMirror = el('section', { class: 'mirror' }, [
+    el('h3', { text: 'Corrections' }),
+    correctionsSummary,
+    correctionsList,
+  ]);
+
+  body.append(
+    el('div', { class: 'review-top' }, [
+      el('div', { class: 'field' }, [el('label', { text: 'Video', attrs: { for: videoSelect.id } }), videoSelect]),
+      timing,
+    ]),
+    note,
+    toolbar,
+    status,
+    scrubber.element,
+    canvasView.element,
+    timeline.element,
+    legend,
+    el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
+    framesMirror,
+    correctionsMirror,
+  );
+
+  // ---- rendering --------------------------------------------------------------------------
+
+  function render(): void {
+    if (deriving) return;
+    if (store.epoch !== lastEpoch) {
+      lastEpoch = store.epoch;
+      lastVideoId = null;
+      lastAttached = false;
+      selectedVideoId = null;
+      selectedEventId = null;
+      selectedEdge = null;
+      painting = null;
+      tool = 'off';
+      cacheKey = null;
+      stopPlaying(false);
+    }
+    const video = currentVideo();
+    syncSelect(
+      videoSelect,
+      store.videos.map((v) => ({ value: v.id, label: store.analysisFor(v.id) ? v.filename : `${v.filename} (not tracked)` })),
+      video?.id ?? '',
+    );
+    ensureAnalysis();
+
+    const isAttached = video !== null && store.isAttached(video.id);
+    if (video && (video.id !== lastVideoId || isAttached !== lastAttached)) {
+      lastVideoId = video.id;
+      lastAttached = isAttached;
+      const attachment = store.attachmentFor(video.id);
+      if (attachment) {
+        scrubber.setIndex(attachment.index);
+        canvasView.setVideoSize(attachment.index.width, attachment.index.height);
+        void showFrame(playhead);
+      } else {
+        scrubber.setIndex(analysis ? { frameCount: analysis.cleanedTrack.length, frames: analysis.cleanedTrack } : null);
+        canvasView.setVideoSize(video.referenceResolution.width, video.referenceResolution.height);
+        canvasView.setFrame(null);
+      }
+    }
+    note.hidden = video === null || isAttached;
+    note.textContent = video
+      ? `${video.filename} is not attached, so no frame can be shown: drop the file again on the Videos step. The track, the timeline and every correction still work.`
+      : '';
+
+    const blocked = video ? analysisBlockedReason(store, video.id) : 'no video';
+    for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, deleteEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
+      control.disabled = analysis === null;
+    }
+    timing.textContent = analysis && lastTiming
+      ? `Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${lastTiming.totalMs.toFixed(0)} ms with the cache write) · ${analysis.cleanedTrack.length} frames · ${currentLayer()?.entries.length ?? 0} correction${(currentLayer()?.entries.length ?? 0) === 1 ? '' : 's'} · parameters ${analysis.parametersHash.slice(0, 8)}…`
+      : blocked
+        ? `Not analysed: ${blocked}.`
+        : '';
+
+    if (analysis) {
+      const holes = analysis.geometry.holeCount;
+      syncSelect(
+        holeSelect,
+        Array.from({ length: holes }, (_, i) => ({ value: String(i), label: i === analysis!.geometry.targetIndex ? `${i} (target)` : String(i) })),
+        selectedEvent()?.holeIndex?.toString() ?? holeSelect.value,
+      );
+    }
+    timeline.setModel(model, store.parameters.noseConfidenceCutoff);
+    timeline.setPlayhead(playhead);
+    timeline.setSelection(selectedEventId, selectedEdge);
+    renderParameters();
+    renderMetrics();
+    renderQuality();
+    renderEventsTable();
+    renderFrameTable();
+    renderCorrections();
+    renderStatus();
+    canvasView.requestDraw();
+  }
+
+  function renderStatus(): void {
+    const parts: string[] = [];
+    if (tool !== 'off') parts.push(`${tool} armed — click the frame or use the arrows`);
+    if (painting) parts.push(painting.kind === 'not_visible' ? `marking not visible from frame ${painting.startFrame}: press V at the last frame` : `adding an investigation from frame ${painting.startFrame}: press A at the last frame`);
+    if (playing) parts.push('playing');
+    const ev = selectedEvent();
+    if (ev) parts.push(`selected: ${KIND_WORDS[ev.kind]} ${ev.holeIndex ?? ''} frames ${ev.startFrame}–${ev.endFrame}${selectedEdge ? ` (${selectedEdge} edge)` : ''}`);
+    if (hoverText) parts.push(hoverText);
+    status.textContent = parts.join(' · ');
+  }
+
+  function renderEventsTable(): void {
+    const heading = el('h3', { id: 'review-events-heading', text: 'Events' });
+    if (!analysis) {
+      replaceChildren(eventsPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
+      return;
+    }
+    const counts = { investigation: 0, escape_entry: 0, tracking_failure: 0 };
+    for (const ev of analysis.events) counts[ev.kind]++;
+    const tbody = el('tbody');
+    for (const ev of analysis.events) {
+      const selected = ev.id === selectedEventId;
+      const row = el('tr', { class: `${ev.source === 'corrected' ? 'is-corrected ' : ''}${ev.isTarget ? 'is-target ' : ''}${selected ? 'is-selected' : ''}`.trim() }, [
+        el('th', { attrs: { scope: 'row' } }, [
+          button(`${KIND_WORDS[ev.kind]}`, () => {
+            selectedEventId = ev.id;
+            selectedEdge = null;
+            timeline.setSelection(ev.id, null);
+            seek(ev.startFrame, true);
+            renderEventsTable();
+          }, { class: 'metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
+        ]),
+        el('td', { text: ev.holeIndex === null ? '—' : String(ev.holeIndex) }),
+        el('td', { text: ev.isTarget ? 'target' : '' }),
+        el('td', { text: `${ev.startFrame}–${ev.endFrame}` }),
+        el('td', { text: ev.startTime_s.toFixed(2) }),
+        el('td', { text: ev.durationSeconds.toFixed(2) }),
+        el('td', { text: ev.pointUsed }),
+        el('td', { text: ev.minNoseDistance_cm === null ? '—' : ev.minNoseDistance_cm.toFixed(1) }),
+        el('td', { text: Number.isFinite(ev.minCentroidDistance_cm) ? ev.minCentroidDistance_cm.toFixed(1) : '—' }),
+        el('td', {
+          text:
+            ev.source === 'corrected'
+              ? ev.autoShadow
+                ? `user (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
+                : 'user'
+              : 'auto',
+        }),
+        el('td', { text: ev.evidence.startsWith('Physically unlikely') ? 'physically unlikely — review' : '' }),
+        el('td', {}, [
+          disclosure('Evidence', [el('p', { text: ev.evidence })]),
+        ]),
+      ]);
+      tbody.append(row);
+    }
+    replaceChildren(eventsPanel, [
+      heading,
+      el('p', { class: 'mirror-summary', text: `${counts.investigation} investigation${counts.investigation === 1 ? '' : 's'} · ${counts.escape_entry} escape entr${counts.escape_entry === 1 ? 'y' : 'ies'} · ${counts.tracking_failure} tracking failure${counts.tracking_failure === 1 ? '' : 's'}. A hatched row was corrected by hand; its automatic values stay in the Source column.` }),
+      el('div', { class: 'table-scroll' }, [
+        el('table', { class: 'mirror-table' }, [
+          el('caption', { text: 'Every event the timeline draws. The first cell seeks to the event and selects it.' }),
+          el('thead', {}, [
+            el('tr', {}, [
+              ...['Kind', 'Hole', 'Target', 'Frames', 'Start (s)', 'Duration (s)', 'Point used', 'Min nose (cm)', 'Min centroid (cm)', 'Source', 'Flag', 'Evidence'].map((text) =>
+                el('th', { text, attrs: { scope: 'col' } }),
+              ),
+            ]),
+          ]),
+          tbody,
+        ]),
+      ]),
+    ]);
+  }
+
+  function renderFrameTable(): void {
+    if (!analysis) {
+      framesSummary.textContent = 'No analysis yet.';
+      replaceChildren(framesBody, []);
+      return;
+    }
+    const track = analysis.cleanedTrack;
+    const layer = currentLayer();
+    const from = Math.max(0, playhead - FRAME_TABLE_RADIUS);
+    const to = Math.min(track.length - 1, playhead + FRAME_TABLE_RADIUS);
+    const here = track[playhead];
+    framesSummary.textContent = here
+      ? `Current: ${formatFrameTime(playhead, here.t_s)} · ${STATE_WORDS[here.detectionState]} (${here.reason}) · centroid ${here.centroid.valid ? `${here.centroid.x.toFixed(1)}, ${here.centroid.y.toFixed(1)} (${here.centroid.source})` : 'not positioned'} · nose ${here.nose.valid ? `${here.nose.x.toFixed(1)}, ${here.nose.y.toFixed(1)} (${here.nose.source}, confidence ${here.noseHeadingConfidence.toFixed(2)})` : 'not available'}.`
+      : '';
+    const rows: Child[] = [];
+    for (let f = from; f <= to; f++) {
+      const frame = track[f]!;
+      const ev = eventAtFrame(model?.events ?? [], f);
+      const marks = layer ? layer.entries.filter((e) => (e.kind === 'point' && e.frameIndex === f) || (e.kind === 'range' && e.startFrame <= f && f <= e.endFrame) || (e.kind === 'trial_start' && e.frameIndex === f)) : [];
+      rows.push(
+        el('tr', { class: `${f === playhead ? 'is-target ' : ''}${marks.length > 0 ? 'is-corrected' : ''}`.trim() }, [
+          el('th', { attrs: { scope: 'row' } }, [button(String(f), () => seek(f, true), { class: 'metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } })]),
+          el('td', { text: frame.t_s.toFixed(3) }),
+          el('td', { text: STATE_WORDS[frame.detectionState] }),
+          el('td', { text: frame.reason }),
+          el('td', { text: frame.centroid.valid ? frame.centroid.x.toFixed(1) : '—' }),
+          el('td', { text: frame.centroid.valid ? frame.centroid.y.toFixed(1) : '—' }),
+          el('td', { text: frame.centroid.source }),
+          el('td', { text: frame.nose.valid ? frame.nose.x.toFixed(1) : '—' }),
+          el('td', { text: frame.nose.valid ? frame.nose.y.toFixed(1) : '—' }),
+          el('td', { text: frame.nose.valid ? frame.noseHeadingConfidence.toFixed(2) : '—' }),
+          el('td', { text: frame.nose.source }),
+          el('td', { text: ev ? `${KIND_WORDS[ev.kind]} ${ev.label}${ev.corrected ? ' (user)' : ''}` : '' }),
+          el('td', { text: marks.map((m) => describeCorrection(m)).join('; ') }),
+        ]),
+      );
+    }
+    replaceChildren(framesBody, rows);
+  }
+
+  function renderCorrections(): void {
+    const layer = currentLayer();
+    if (!layer || !analysis) {
+      correctionsSummary.textContent = 'No analysis yet.';
+      replaceChildren(correctionsList, []);
+      return;
+    }
+    const orphans = new Map(orphanedCorrections(layer, analysis.reviewFlags).map((o) => [o.entry.id, o.flag]));
+    correctionsSummary.textContent =
+      layer.entries.length === 0
+        ? 'No corrections: everything shown is automatic.'
+        : `${layer.entries.length} correction${layer.entries.length === 1 ? '' : 's'}, newest last. Each can be reverted on its own; the automatic values are never overwritten.${orphans.size > 0 ? ` ${orphans.size} no longer match${orphans.size === 1 ? 'es' : ''} an automatic event under the current parameters.` : ''}`;
+    replaceChildren(
+      correctionsList,
+      [...layer.entries]
+        .sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0))
+        .map((entry) => {
+          const orphan = orphans.get(entry.id);
+          const frame =
+            entry.kind === 'point' || entry.kind === 'trial_start' ? entry.frameIndex : entry.kind === 'range' ? entry.startFrame : entry.kind === 'event' ? (entry.startFrame ?? null) : null;
+          return el('li', { class: orphan ? 'is-orphan' : '' }, [
+            el('span', { text: describeCorrection(entry) }),
+            ' ',
+            el('span', { class: 'hint', text: `(${entry.timestamp.replace('T', ' ').slice(0, 19)})` }),
+            ' ',
+            orphan ? el('span', { class: 'orphan', text: `no longer matches an automatic event: ${orphan.message}` }) : null,
+            ' ',
+            frame !== null ? button('Seek', () => seek(frame, true), { attrs: { 'aria-label': `Seek to frame ${frame}` } }) : null,
+            ' ',
+            button('Revert to automatic', () => {
+              const current = currentLayer();
+              if (!current) return;
+              if (entry.kind === 'event' && entry.eventId && entry.action !== 'add') {
+                commit(revertEvent(current, entry.eventId), `Reverted: ${describeCorrection(entry)}`);
+              } else {
+                commit(revertCorrection(current, entry.id), `Reverted: ${describeCorrection(entry)}`);
+              }
+            }),
+          ]);
+        }),
+    );
+  }
+
+  // ---- metrics card (minimal; chunk 7b replaces it) -------------------------------------------
+
+  const strategySelect = el('select', { id: uniqueId('review-strategy') });
+  for (const s of STRATEGIES) strategySelect.append(el('option', { text: s, attrs: { value: s } }));
+  const strategyReason = el('input', { id: uniqueId('review-strategy-reason'), class: 'range-input' });
+  strategyReason.type = 'text';
+  strategyReason.placeholder = 'why (optional)';
+  const strategyApply = button('Override strategy', () => {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(setStrategyOverride(layer, strategySelect.value as SearchStrategy, strategyReason.value.trim(), newMeta()), `Strategy set to ${strategySelect.value} by hand`);
+  });
+  const strategyRevert = button('Revert to automatic', () => {
+    const layer = layerOrNull();
+    if (!layer) return;
+    commit(revertStrategyOverride(layer), 'Strategy override removed');
+  });
+
+  function renderMetrics(): void {
+    const heading = el('h3', { id: 'review-metrics-heading', text: 'Metrics' });
+    if (!analysis) {
+      replaceChildren(metricsPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
+      return;
+    }
+    const a = analysis;
+    const m = a.metrics;
+    const list = el('dl', { class: 'metric-list' });
+    for (const row of METRIC_ROWS) {
+      const frame = seekFrameFor(row.seek, a);
+      const text = metricValueText(m, row.key);
+      const def = metricDefinition(row.key);
+      const value =
+        frame === null
+          ? el('span', { class: 'metric-plain', text })
+          : button(text, () => seek(frame, true), { class: 'metric-value', attrs: { 'aria-label': `${row.label} ${text}: seek to frame ${frame}` } });
+      list.append(
+        el('dt', {}, [el('span', { text: row.label }), ' ', disclosure(`Definition (${def.decision})`, [el('p', { text: def.text })])]),
+        el('dd', {}, [
+          value,
+          row.key === 'status' && a.reviewFlags.length > 0
+            ? el('ul', { class: 'notes' }, a.reviewFlags.map((flag) => el('li', {}, [
+                el('span', { text: flag.message }),
+                ' ',
+                flag.frameIndex !== undefined ? button('Seek', () => seek(flag.frameIndex!, true), { attrs: { 'aria-label': `Seek to frame ${flag.frameIndex}` } }) : null,
+              ])))
+            : null,
+        ]),
+      );
+    }
+    const s = a.strategy;
+    const override = strategyOverride(currentLayer() ?? { entries: [] });
+    const start = trialStartCorrection(currentLayer() ?? { entries: [] });
+    const strategyDef = metricDefinition('strategy');
+    const block = el('div', { class: 'strategy-block' }, [
+      el('h4', {}, [el('span', { text: `Strategy: ${s.strategy} (${s.strategySource === 'corrected' ? 'user override' : 'automatic'}), runner-up ${s.runnerUp}` }), ' ', disclosure(`Definition (${strategyDef.decision})`, [el('p', { text: strategyDef.text })])]),
+      el('ul', { class: 'notes' }, s.reasoning.map((line) => el('li', { text: line }))),
+      el('div', { class: 'field-row' }, [
+        el('div', { class: 'field' }, [el('label', { text: 'Strategy by hand', attrs: { for: strategySelect.id } }), strategySelect]),
+        el('div', { class: 'field' }, [el('label', { text: 'Reason', attrs: { for: strategyReason.id } }), strategyReason]),
+        strategyApply,
+        override ? strategyRevert : null,
+      ]),
+      el('p', { class: 'hint', text: `Trial start: frame ${a.trial.startFrame ?? '—'} (${a.trial.startSource === 'corrected' ? 'set by hand' : 'automatic'})${start ? '' : '; drag the marker on the timeline or press T to change it'}. Trial end: frame ${a.trial.endFrame ?? '—'}, ${a.trial.endReason.replaceAll('_', ' ')}.` }),
+    ]);
+    if (override) strategySelect.value = override.strategy;
+    replaceChildren(metricsPanel, [heading, list, block]);
+  }
+
+  function renderQuality(): void {
+    const heading = el('h3', { id: 'review-quality-heading', text: 'Quality' });
+    if (!analysis) {
+      replaceChildren(qualityPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
+      return;
+    }
+    const q = analysis.quality;
+    replaceChildren(qualityPanel, [
+      heading,
+      el('p', {}, [
+        el('span', { class: `badge ${q.tier === 'GOOD' ? 'badge-ok' : 'badge-warn'}`, text: `Tier ${q.tier}` }),
+        ` · positioned ${formatPercentage(q.positionedFraction)} of the trial window (${formatPercentage(q.wholeClipPositionedFraction)} of the whole clip) · ${q.gaps.length} gap${q.gaps.length === 1 ? '' : 's'}, longest ${formatSeconds(q.longestGapSeconds)} · ${formatPercentage(q.noseJudgedEventFraction)} of events judged on the nose · calibration ${q.pxPerCm.toFixed(3)} px/cm.`,
+      ]),
+      el('p', { class: 'hint', text: 'The full quality report, with its gap list and the tracking strip, is shown in the Review step’s quality panel once it is mounted here.' }),
+    ]);
+  }
+
+  // ---- provisional parameter fields (chunk 7b replaces them with the panel) ------------------
+
+  const parameterInputs = new Map<ParameterPath, HTMLInputElement>();
+
+  function renderParameters(): void {
+    const heading = el('h3', { id: 'review-parameters-heading', text: 'Thresholds' });
+    const p = store.parameters;
+    const fields: Child[] = [];
+    for (const path of PROVISIONAL_PARAMETERS) {
+      let input = parameterInputs.get(path);
+      if (!input) {
+        input = el('input', { id: uniqueId('review-param'), class: 'number-input' });
+        input.type = 'number';
+        input.step = 'any';
+        input.addEventListener('change', () => applyParameter(path, input!));
+        parameterInputs.set(path, input);
+      }
+      if (document.activeElement !== input) input.value = String(parameterAt(p, path));
+      input.disabled = analysis === null;
+      fields.push(
+        el('div', { class: 'field' }, [
+          el('label', { text: `${path} (${PARAMETER_UNITS[path]})`, attrs: { for: input.id } }),
+          input,
+          disclosure(`Definition (${PARAMETER_DECISIONS[path]})`, [el('p', { text: PARAMETER_DEFINITIONS[path] })]),
+        ]),
+      );
+    }
+    replaceChildren(parametersPanel, [
+      heading,
+      el('p', { class: 'hint', text: 'Change a threshold and every event, metric and figure is recomputed at once; corrected events stay pinned (D20). The remaining thresholds are on the export’s parameters sheet.' }),
+      ...fields,
+    ]);
+  }
+
+  function applyParameter(path: ParameterPath, input: HTMLInputElement): void {
+    const value = Number(input.value);
+    if (!Number.isFinite(value)) {
+      context.announce(`${path} needs a number.`);
+      input.value = String(parameterAt(store.parameters, path));
+      return;
+    }
+    const next = structuredClone(store.parameters) as Parameters;
+    const keys = path.split('.');
+    let node = next as unknown as Record<string, unknown>;
+    for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+    node[keys[keys.length - 1]!] = value;
+    const problems = validateParameters(next);
+    if (problems.length > 0) {
+      context.announce(`Not applied: ${problems[0]}`);
+      input.value = String(parameterAt(store.parameters, path));
+      return;
+    }
+    const started = performance.now();
+    store.setParameters(next); // notifies → refresh → re-derive
+    const total = performance.now() - started;
+    context.announce(`${path} set to ${value}.${lastTiming ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${total.toFixed(0)} ms with the redraw).` : ''}`);
+  }
+
+  // ---- helpers ------------------------------------------------------------------------------
+
+  function syncSelect(select: HTMLSelectElement, options: { value: string; label: string }[], value: string): void {
+    const same =
+      select.options.length === options.length &&
+      options.every((o, i) => select.options[i]!.value === o.value && select.options[i]!.textContent === o.label);
+    if (!same) replaceChildren(select, options.map((o) => el('option', { text: o.label, attrs: { value: o.value } })));
+    if (document.activeElement !== select) select.value = value;
+  }
+
+  // The app shell calls `refresh` on every store change; no second subscription here.
+  return {
+    id: 'review',
+    label: 'Review & Export',
+    what:
+      'Check every event against the frames it came from, correct what the tracker got wrong, and read the metrics. ' +
+      'Every correction is stored beside the automatic values and everything is recomputed from both.',
+    definitions: () => [
+      el('ul', {}, [
+        el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item (D9, D20, D25).' }),
+        el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user" (D16, D26).' }),
+        el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate (D7).' }),
+        el('li', { text: 'Every threshold and metric shows its definition and the decision it comes from beside its control.' }),
+      ]),
+    ],
+    body,
+    blocked: () => {
+      if (store.videos.length === 0) return 'no videos are loaded yet — start on the Videos step';
+      if (store.current.mazeMap === null) return 'the maze is not finished — mark the platform and enter its diameter on the Maze step';
+      if (!store.videos.some((v) => store.analysisFor(v.id) !== undefined)) return 'no video has been tracked yet — run the Track step';
+      return null;
+    },
+    refresh: render,
+    onShow: () => {
+      render();
+      canvasView.fit();
+      seek(playhead, false);
+    },
+  };
+}
