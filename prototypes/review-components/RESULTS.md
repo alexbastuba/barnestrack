@@ -59,6 +59,21 @@ Typing `0.1` into **Frame timing → Drop gap factor** (it must exceed `duplicat
 The override is applied by adding a `StrategyOverrideCorrection` and re-deriving — never by patching
 the analysis — which is the wiring chunk 7b has to reproduce.
 
+## Focus through a recompute
+
+Re-checked after the fix in `fe87661`. With the keyboard focus on the **Min duration** slider:
+
+- driving it to 3 and then to 5, each crossing the 100 ms debounce, left the focus on that same
+  element both times, and the element itself stayed in the DOM (`document.contains` true) — so a
+  drag is not interrupted by the recompute it triggers;
+- driving it to 10, which really does change the analysis (16 events → 9, and the event list rebuilt
+  to 9 cards), still kept the focus on the slider;
+- the numeric twin followed to 5 and the badge stayed correct throughout.
+
+Before the fix the harness destroyed and recreated all four panels on every recompute, and the event
+list rebuilt every card even when no event had changed. Both are why the panels now expose
+`update()` and the harness uses it.
+
 ## Seeking
 
 All three seek paths emit a sample-table `FrameIndex`:
