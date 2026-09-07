@@ -4,8 +4,6 @@ import type { Parameters } from '../../src/contracts/parameters.js';
 import {
   ANALYSIS_MODEL,
   ANALYSIS_MODEL_DEFINITIONS,
-  ANALYSIS_OPTION_DEFINITIONS,
-  DEFAULT_ANALYSIS_OPTIONS,
   DEFAULT_PARAMETERS,
   MAZE_DEFAULTS,
   MAZE_DEFAULT_DEFINITIONS,
@@ -60,6 +58,18 @@ describe('DEFAULT_PARAMETERS', () => {
     }); // O11
     expect(DEFAULT_PARAMETERS.noseConfidenceCutoff).toBe(0.5); // O16, revised 2026-09-05
     expect(DEFAULT_PARAMETERS.outlierVelocityThreshold_cmPerS).toBe(150); // O17
+    expect(DEFAULT_PARAMETERS.trialCensoring).toEqual({ censorToCutoff: false }); // O5
+    expect(DEFAULT_PARAMETERS.strategy).toEqual({
+      spatialMaxErrors: 3,
+      spatialMaxHoleDistance: 2,
+      spatialMaxCentreCrossings: 1,
+      serialMinRun: 3,
+      centreZoneRadiusFraction: 0.5,
+    }); // O7, hashed since D55
+    expect(DEFAULT_PARAMETERS.quality).toEqual({
+      goodMinPositionedFraction: 0.9,
+      poorMaxPositionedFraction: 0.7,
+    }); // D30, hashed since D55
     expect(DEFAULT_PARAMETERS.tracking).toBe(DEFAULT_TRACKING_PARAMETERS); // D6, reused not copied
   });
 
@@ -89,9 +99,13 @@ describe('definitions', () => {
   it('name the decision each analysis default comes from, with its unit, in the sentence', () => {
     for (const path of parameterPaths(DEFAULT_PARAMETERS)) {
       if (path.startsWith('tracking.')) continue;
-      expect(PARAMETER_DEFINITIONS[path], path).toMatch(/\(.+; O\d+\)\.$/);
-      expect(PARAMETER_DECISIONS[path], path).toMatch(/^O\d+$/);
+      // an open decision (O-number) or, for the D30 tier thresholds, a closed one
+      expect(PARAMETER_DEFINITIONS[path], path).toMatch(/\(.+; [OD]\d+\)\.$/);
+      expect(PARAMETER_DECISIONS[path], path).toMatch(/^[OD]\d+$/);
     }
+    expect(PARAMETER_DECISIONS['strategy.serialMinRun']).toBe('O7');
+    expect(PARAMETER_DECISIONS['quality.goodMinPositionedFraction']).toBe('D30');
+    expect(PARAMETER_DECISIONS['trialCensoring.censorToCutoff']).toBe('O5');
   });
 
   it('reuse the tracker definitions verbatim', () => {
@@ -103,14 +117,7 @@ describe('definitions', () => {
     }
   });
 
-  it('exist for every option, model constant and maze default', () => {
-    const optionPaths: string[] = [];
-    for (const [group, values] of Object.entries(DEFAULT_ANALYSIS_OPTIONS)) {
-      for (const key of Object.keys(values)) optionPaths.push(`${group}.${key}`);
-    }
-    expect(new Set(Object.keys(ANALYSIS_OPTION_DEFINITIONS))).toEqual(new Set(optionPaths));
-    for (const text of Object.values(ANALYSIS_OPTION_DEFINITIONS))
-      expect(text).toMatch(/[OD]\d+\)\.$/);
+  it('exist for every model constant and maze default', () => {
     expect(new Set(Object.keys(ANALYSIS_MODEL_DEFINITIONS))).toEqual(
       new Set(Object.keys(ANALYSIS_MODEL)),
     );
@@ -159,6 +166,15 @@ describe('canonicalJson and hashing (D51)', () => {
   it('is stable across key order and a JSON round trip', () => {
     const reordered = {
       tracking: clone(DEFAULT_PARAMETERS.tracking),
+      quality: { poorMaxPositionedFraction: 0.7, goodMinPositionedFraction: 0.9 },
+      strategy: {
+        centreZoneRadiusFraction: 0.5,
+        serialMinRun: 3,
+        spatialMaxCentreCrossings: 1,
+        spatialMaxHoleDistance: 2,
+        spatialMaxErrors: 3,
+      },
+      trialCensoring: { censorToCutoff: false },
       outlierVelocityThreshold_cmPerS: 150,
       noseConfidenceCutoff: 0.5,
       kinematics: { dropGapFactor: 1.5, duplicateTimestampFactor: 0.25, speedWindowFrames: 2 },
@@ -210,6 +226,11 @@ describe('validateParameters', () => {
     ['kinematics.dropGapFactor', 1],
     ['noseConfidenceCutoff', 1.2],
     ['outlierVelocityThreshold_cmPerS', 0],
+    ['strategy.spatialMaxErrors', 2.5],
+    ['strategy.serialMinRun', 0],
+    ['strategy.centreZoneRadiusFraction', 0],
+    ['quality.goodMinPositionedFraction', 1.5],
+    ['trialCensoring.censorToCutoff', 'yes'],
     ['tracking.backgroundSampleCount', 0],
     ['tracking.threshold.manualValue', 300],
     ['tracking.minBlobArea_cm2', Number.NaN],
@@ -232,6 +253,17 @@ describe('validateParameters', () => {
     const q = clone(DEFAULT_PARAMETERS);
     q.tracking.minBlobArea_cm2 = 90;
     expect(validateParameters(q).join('\n')).toContain('tracking.minBlobArea_cm2 must be below');
+  });
+
+  it('rejects a POOR threshold above the GOOD threshold, and accepts them equal', () => {
+    const crossed = clone(DEFAULT_PARAMETERS);
+    crossed.quality.poorMaxPositionedFraction = 0.95;
+    expect(validateParameters(crossed).join('\n')).toContain(
+      'quality.poorMaxPositionedFraction must not exceed quality.goodMinPositionedFraction',
+    );
+    const equal = clone(DEFAULT_PARAMETERS);
+    equal.quality.poorMaxPositionedFraction = equal.quality.goodMinPositionedFraction;
+    expect(validateParameters(equal)).toEqual([]);
   });
 
   it('accepts a null expected area and rejects a negative one; rejects a bad exclude range', () => {

@@ -18,7 +18,6 @@ import type { Parameters } from '../contracts/parameters.js';
 import { holeCentres, pxPerCm as platformPxPerCm, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
 import { angleDifferenceDeg, normaliseDeg } from '../maze/types.js';
-import type { AnalysisOptions } from './parameters.js';
 
 export interface HoleCentre {
   holeIndex: number;
@@ -63,11 +62,10 @@ export interface GeometryInput {
   transform: SimilarityTransform;
   referenceResolution: Resolution;
   parameters: Parameters;
-  options: AnalysisOptions;
 }
 
 export function mazeGeometry(input: GeometryInput): MazeGeometry {
-  const { map, transform, referenceResolution, parameters, options } = input;
+  const { map, transform, referenceResolution, parameters } = input;
   if (!Number.isInteger(map.holes.n) || map.holes.n < 1) {
     throw new RangeError(
       `maze map holes.n must be a whole number of at least 1, got ${map.holes.n}`,
@@ -126,7 +124,7 @@ export function mazeGeometry(input: GeometryInput): MazeGeometry {
       centreAngleDeg,
       halfAngleDeg: (parameters.targetQuadrant.holeSpan * 360) / placed.holes.n,
     },
-    centreZoneRadius_px: options.strategy.centreZoneRadiusFraction * platform.r,
+    centreZoneRadius_px: parameters.strategy.centreZoneRadiusFraction * platform.r,
     investigationRadius_px: parameters.holeInvestigation.radiusFactor * holeRadius_px,
     escapeRadius_px: parameters.escapeEntry.radiusFactor * holeRadius_px,
     fillExclusionRadius_px: holeRadius_px,

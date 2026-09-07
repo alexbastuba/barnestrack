@@ -3,16 +3,17 @@
  * named features of the search phase (trial start to the first target
  * visit), showing the feature values, the rule that fired, the runner-up and
  * the reasoning in sentences a student can read aloud. The placeholder rules
- * and their numbers come from `DEFAULT_ANALYSIS_OPTIONS.strategy`; a user
- * override wins and is stored as a correction.
+ * and their numbers come from `Parameters.strategy` (D55, hashed like every
+ * other threshold); a user override wins and is stored as a correction.
  */
 import type { EventRecord } from '../contracts/events.js';
+import type { Parameters } from '../contracts/parameters.js';
 import type { TrackFrame } from '../contracts/track.js';
 import type { CorrectionsLayer, SearchStrategy } from '../contracts/session.js';
 import { latestCorrection } from './corrections.js';
 import { holeIndexDistance, inCentreZone, type MazeGeometry } from './geometry.js';
 import type { KinematicsSummary } from './kinematics.js';
-import { ANALYSIS_MODEL, type AnalysisOptions } from './parameters.js';
+import { ANALYSIS_MODEL } from './parameters.js';
 import { firstTargetEvent } from './metrics.js';
 import { framePosition, type TrackArrays } from './track-arrays.js';
 import type { TrialBounds } from './trial.js';
@@ -69,7 +70,7 @@ export interface StrategyInput {
   g: MazeGeometry;
   bounds: TrialBounds;
   corrections: CorrectionsLayer;
-  options: AnalysisOptions;
+  parameters: Parameters;
 }
 
 const ORDER: SearchStrategy[] = ['spatial', 'serial', 'random'];
@@ -156,7 +157,7 @@ function tortuosity(
 }
 
 export function computeStrategyFeatures(
-  input: Omit<StrategyInput, 'corrections' | 'options'>,
+  input: Omit<StrategyInput, 'corrections' | 'parameters'>,
 ): StrategyFeatures {
   const { events, kinematics, a, g, bounds, frames } = input;
   if (bounds.startFrame === null || bounds.endFrame === null) return emptyFeatures();
@@ -250,7 +251,7 @@ function atLeast(text: string, value: number, limit: number): RuleCondition {
   return { text, satisfied, degree: satisfied ? 1 : limit > 0 ? value / limit : 1 };
 }
 
-function evaluateRules(f: StrategyFeatures, o: AnalysisOptions['strategy']): RuleOutcome[] {
+function evaluateRules(f: StrategyFeatures, o: Parameters['strategy']): RuleOutcome[] {
   const spatial: RuleOutcome = {
     strategy: 'spatial',
     conditions: [
@@ -310,7 +311,7 @@ function closeness(r: RuleOutcome): number {
 }
 
 export function classifyStrategy(input: StrategyInput): StrategyResult {
-  const { bounds, corrections, options } = input;
+  const { bounds, corrections, parameters } = input;
   const override = latestCorrection(corrections.entries, 'strategy_override');
   const features = computeStrategyFeatures(input);
   const reasoning: string[] = [];
@@ -326,7 +327,7 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
       'Not classified: no trial start could be proposed, so the placeholder rules were not applied; recorded as random.',
     );
   } else {
-    rules = evaluateRules(features, options.strategy);
+    rules = evaluateRules(features, parameters.strategy);
     const winner = ORDER.find((s) => rules.find((r) => r.strategy === s)!.fired) ?? 'random';
     autoStrategy = winner;
     const others = rules.filter((r) => r.strategy !== winner);

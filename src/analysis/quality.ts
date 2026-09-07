@@ -30,7 +30,7 @@ import {
   nearestHoleIndex,
   type MazeGeometry,
 } from './geometry.js';
-import { ANALYSIS_MODEL, type AnalysisOptions } from './parameters.js';
+import { ANALYSIS_MODEL } from './parameters.js';
 import { STATE_BY_CODE, STATE_CODE, type TrackArrays } from './track-arrays.js';
 import type { TrialBounds } from './trial.js';
 
@@ -44,7 +44,6 @@ export interface QualityInput {
   frames: readonly TrackFrame[];
   g: MazeGeometry;
   p: Parameters;
-  options: AnalysisOptions;
   parametersHash: string;
   bounds: TrialBounds;
   /** The MP4 index's own anomaly record, when the video is attached; only its drift is used. */
@@ -155,15 +154,19 @@ export function noseConfidenceHistogram(
   return counts.map((count, b) => ({ min: b / bins, max: (b + 1) / bins, count }));
 }
 
-export function qualityTier(positionedFraction: number, options: AnalysisOptions): QualityTier {
+/** The D30 tier from the positioned fraction and the two `Parameters.quality` thresholds (D55). */
+export function qualityTier(
+  positionedFraction: number,
+  thresholds: Parameters['quality'],
+): QualityTier {
   if (!Number.isFinite(positionedFraction)) return 'POOR';
-  if (positionedFraction >= options.quality.goodMinPositionedFraction) return 'GOOD';
-  if (positionedFraction < options.quality.poorMaxPositionedFraction) return 'POOR';
+  if (positionedFraction >= thresholds.goodMinPositionedFraction) return 'GOOD';
+  if (positionedFraction < thresholds.poorMaxPositionedFraction) return 'POOR';
   return 'REVIEW';
 }
 
 export function qualityReport(input: QualityInput): QualityReport {
-  const { videoId, corrected, cleaned, frames, g, p, options, parametersHash, bounds } = input;
+  const { videoId, corrected, cleaned, frames, g, p, parametersHash, bounds } = input;
   const n = cleaned.length;
   const hasTrial = bounds.startFrame !== null && bounds.endFrame !== null;
   const from = hasTrial ? bounds.startFrame! : 0;
@@ -202,6 +205,6 @@ export function qualityReport(input: QualityInput): QualityReport {
     platformDiameter_cm: g.platformDiameter_cm,
     pxPerCm: g.pxPerCm,
     parametersHash,
-    tier: qualityTier(fraction(positioned), options),
+    tier: qualityTier(fraction(positioned), p.quality),
   };
 }

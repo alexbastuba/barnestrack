@@ -179,7 +179,7 @@ describe('investigations (O1)', () => {
     expect(ev.pointUsed).toBe('centroid');
     // the approach frames carry a nose, so a nose distance exists; strip them by dwelling only
     const only = run([{ kind: 'dwell', hole: 3, seconds: 0.5, nose: null }]).auto.events[0]!;
-    expect(Number.isNaN(only.minNoseDistance_cm)).toBe(true);
+    expect(only.minNoseDistance_cm).toBeNull(); // null, not NaN, in the contract (D55)
     expect(only.minCentroidDistance_cm).toBeCloseTo(1, 6);
     expect(only.evidence).toContain('nose distance is not recorded');
   });

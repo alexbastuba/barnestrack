@@ -1,9 +1,9 @@
 /**
- * Every threshold that defines an event or a cleaning step, as one type.
- * Defaults live in a single configuration module (chunk 5) — never inline
+ * Every threshold that changes a number, as one type (D55). Defaults live in
+ * the single configuration module `src/analysis/parameters.ts` — never inline
  * in analysis code — and this shape is what gets hashed into
- * `parametersHash` and embedded in every export. O1, O2, O4–O6, O9–O11,
- * O16, O17.
+ * `parametersHash` and embedded in every export. O1, O2, O4–O7, O9–O11,
+ * O16, O17, D30.
  */
 export interface Parameters {
   /** O1 · hole investigation. */
@@ -46,6 +46,25 @@ export interface Parameters {
   noseConfidenceCutoff: number;
   /** O17 · centroid velocity jump marking a frame invalid for kinematics, cm/s. */
   outlierVelocityThreshold_cmPerS: number;
+  /** O5 · what a trial that never reached the escape box reports. D55. */
+  trialCensoring: {
+    /** Report the cutoff as the total latency instead of a blank, for statistics. */
+    censorToCutoff: boolean;
+  };
+  /** O7 · the numbers of the search-strategy rule engine (D23). D55. */
+  strategy: {
+    spatialMaxErrors: number;
+    spatialMaxHoleDistance: number;
+    spatialMaxCentreCrossings: number;
+    serialMinRun: number;
+    /** Centre zone radius as a fraction of the platform radius. */
+    centreZoneRadiusFraction: number;
+  };
+  /** D30 · the GOOD / REVIEW / POOR tier thresholds on the positioned fraction of the trial. D55. */
+  quality: {
+    goodMinPositionedFraction: number;
+    poorMaxPositionedFraction: number;
+  };
   /** D6 · the tracking pass (background, threshold, blob selection, nose). */
   tracking: TrackingParameters;
 }

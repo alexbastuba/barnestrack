@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { firstTargetEvent, isPersistentEscape } from '../../src/analysis/metrics.js';
-import {
-  DEFAULT_ANALYSIS_OPTIONS,
-  DEFAULT_PARAMETERS,
-  isRecorded,
-} from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS, isRecorded } from '../../src/analysis/parameters.js';
 import type { EventRecord } from '../../src/contracts/events.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
 import { pipeline } from './pipeline.js';
@@ -48,8 +44,8 @@ describe('computeMetrics (O2, O3, O4, O5)', () => {
     expect(m.trialStart_s).toBeCloseTo(1.0, 6);
     const target = firstTargetEvent(r.events)!;
     expect(target.kind).toBe('investigation');
-    expect(m.primaryLatency_s).toBeCloseTo(target.startTime_s - m.trialStart_s, 12);
-    expect(m.totalLatency_s).toBeCloseTo(r.bounds.endTime_s - m.trialStart_s, 12);
+    expect(m.primaryLatency_s).toBeCloseTo(target.startTime_s - m.trialStart_s!, 12);
+    expect(m.totalLatency_s).toBeCloseTo(r.bounds.endTime_s - m.trialStart_s!, 12);
     expect(m.totalLatency_s!).toBeGreaterThan(m.primaryLatency_s!);
     expect(m.primaryErrors).toBe(3);
     expect(m.totalErrors).toBe(3);
@@ -97,8 +93,7 @@ describe('computeMetrics (O2, O3, O4, O5)', () => {
     expect(r.metrics.status).toBe('review');
     expect(r.bounds.endReason).toBe('cutoff');
     const censored = pipeline(visitHoles([3, 4, 5]), {
-      p,
-      options: { ...DEFAULT_ANALYSIS_OPTIONS, trialCensoring: { censorToCutoff: true } },
+      p: { ...p, trialCensoring: { censorToCutoff: true } },
     });
     expect(censored.metrics.totalLatency_s).toBe(2);
     expect(censored.metrics.escaped).toBe(false);

@@ -19,7 +19,8 @@ export interface EventRecord {
   durationSeconds: number;
   /** Which named point this event's distance/dwell was judged on. O16. */
   pointUsed: NamedPointId;
-  minNoseDistance_cm: number;
+  /** null when the nose was never usable during the event (O16, D55); recorded whichever point was used otherwise (O1). */
+  minNoseDistance_cm: number | null;
   minCentroidDistance_cm: number;
   /** Plain-language evidence: last-seen location, loss duration, reappearance, blob-area trend. D19. */
   evidence: string;

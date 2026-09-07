@@ -836,7 +836,7 @@ function buildMetrics(
     totalErrors: investigations.filter((event) => !event.isTarget).length,
     pathLength_cm: round(length, 2),
     pathLengthSmoothed_cm: round(smoothed, 2),
-    meanSpeed_cmPerS: round(trackedSeconds > 0 ? length / trackedSeconds : 0, 2),
+    meanSpeed_cmPerS: trackedSeconds > 0 ? round(length / trackedSeconds, 2) : null,
     targetQuadrantTime_s: round(quadrantFrames / script.fps, 3),
     strategy: script.strategy,
     strategySource: 'auto',

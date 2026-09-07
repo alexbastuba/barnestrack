@@ -13,11 +13,7 @@ import {
 import type { MazeGeometry } from '../../src/analysis/geometry.js';
 import { computeKinematics } from '../../src/analysis/kinematics.js';
 import { computeMetrics } from '../../src/analysis/metrics.js';
-import {
-  DEFAULT_ANALYSIS_OPTIONS,
-  DEFAULT_PARAMETERS,
-  type AnalysisOptions,
-} from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import { classifyStrategy } from '../../src/analysis/strategy.js';
 import { buildTrackArrays } from '../../src/analysis/track-arrays.js';
 import { proposeTrialStart, trialBounds } from '../../src/analysis/trial.js';
@@ -30,7 +26,6 @@ import { scriptTrack, type Segment } from './synthetic-track.js';
 export interface PipelineOptions {
   g?: MazeGeometry;
   p?: Parameters;
-  options?: AnalysisOptions;
   corrections?: CorrectionsLayer;
   fps?: number;
 }
@@ -38,7 +33,6 @@ export interface PipelineOptions {
 export function pipeline(segments: Segment[], opts: PipelineOptions = {}) {
   const g = opts.g ?? testGeometry();
   const p = opts.p ?? DEFAULT_PARAMETERS;
-  const options = opts.options ?? DEFAULT_ANALYSIS_OPTIONS;
   const corrections = opts.corrections ?? { entries: [] };
   const scripted = scriptTrack(segments, { g, fps: opts.fps });
   const frames = applyTrackCorrections(scripted.frames, corrections).frames;
@@ -65,7 +59,7 @@ export function pipeline(segments: Segment[], opts: PipelineOptions = {}) {
     g,
     bounds,
     corrections,
-    options,
+    parameters: p,
   });
   const flags: ReviewFlag[] = [...proposal.flags, ...auto.flags, ...corrected.flags];
   const metrics = computeMetrics({
@@ -77,7 +71,6 @@ export function pipeline(segments: Segment[], opts: PipelineOptions = {}) {
     strategy,
     correctionCount: corrections.entries.length,
     parameters: p,
-    options,
   });
   return {
     g,

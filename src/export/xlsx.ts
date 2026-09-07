@@ -116,18 +116,19 @@ function addReadme(
       'A corrected event carries the automatic values alongside it in the auto_hole_index, auto_start_frame and auto_end_frame columns; nothing automatic is overwritten. correction_count on the trials sheet says how many edits a trial carries.',
     ],
     [
-      'Smoothing window',
-      'The path-smoothing window is a parameter, not a column. trials reports both path_length_cm and path_length_smoothed_cm; the window itself is kinematicsSmoothingWindowFrames on the parameters sheet, and parameters_hash and parameters.json cover it.',
+      'Thresholds that are not columns',
+      'The path-smoothing window (kinematicsSmoothingWindowFrames), the trial-censoring switch (trialCensoring.censorToCutoff), the search-strategy rule numbers (strategy.*) and the quality-tier thresholds (quality.*) are parameters, not columns: they are on the parameters sheet and in parameters.json, and parameters_hash covers them. trials reports both path_length_cm and path_length_smoothed_cm.',
     ],
     [
       'Reproducing a number',
       'Every row carries tool_version, schema_version and parameters_hash. The same tool version and the same parameters hash reproduce the same numbers from the session file in this bundle.',
     ],
   ];
-  for (const line of lines) sheet.addRow(line);
-  sheet.getRow(1).font = { bold: true };
-  sheet.getRow(7).font = { bold: true };
-  sheet.getRow(13).font = { bold: true };
+  const headings = new Set(['BarnesTrack export', 'Sheet', 'Note']);
+  lines.forEach((line, index) => {
+    sheet.addRow(line);
+    if (headings.has(line[0])) sheet.getRow(index + 1).font = { bold: true };
+  });
   sheet.getColumn(1).width = 24;
   sheet.getColumn(2).width = 110;
   sheet.getColumn(2).alignment = { wrapText: true, vertical: 'top' };

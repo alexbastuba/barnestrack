@@ -29,8 +29,10 @@ function seconds(value: number | null): number | null {
   return value === null ? null : round(value, 3);
 }
 
-function centimetres(value: number): number {
-  return round(value, 2);
+function centimetres(value: number): number;
+function centimetres(value: number | null): number | null;
+function centimetres(value: number | null): number | null {
+  return value === null ? null : round(value, 2);
 }
 
 function round(value: number, digits: number): number {

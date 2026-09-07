@@ -27,11 +27,9 @@ import { computeKinematics, type KinematicsSummary } from './kinematics.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
   ANALYSIS_MODEL,
-  DEFAULT_ANALYSIS_OPTIONS,
   assertValidParameters,
   hashParameters,
   hashTrackingParameters,
-  type AnalysisOptions,
 } from './parameters.js';
 import { qualityReport } from './quality.js';
 import { classifyStrategy, type StrategyResult } from './strategy.js';
@@ -54,9 +52,8 @@ export interface DeriveInput {
   mazeTransform: SimilarityTransform;
   /** The video's reference resolution and, when the video is attached, the index's timebase record. */
   index: Pick<Mp4Index, 'width' | 'height'> & Partial<Pick<Mp4Index, 'timebaseAnomalies'>>;
+  /** Every threshold, including the strategy, censoring and tier blocks (D55). */
   parameters: Parameters;
-  /** Thresholds the contract does not carry yet; defaults when omitted. */
-  options?: AnalysisOptions;
 }
 
 /**
@@ -88,7 +85,6 @@ export function toDerivedLayer(analysis: DerivedAnalysis): DerivedLayer {
 export function derive(input: DeriveInput): DerivedAnalysis {
   const { videoId, auto, corrections, mazeMap, mazeTransform, index, parameters } = input;
   assertValidParameters(parameters);
-  const options = input.options ?? DEFAULT_ANALYSIS_OPTIONS;
   const parametersHash = hashParameters(parameters);
   const trackingParametersHash = hashTrackingParameters(parameters.tracking);
 
@@ -97,7 +93,6 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     transform: mazeTransform,
     referenceResolution: { width: index.width, height: index.height },
     parameters,
-    options,
   });
 
   const corrected = applyTrackCorrections(auto.frames, corrections);
@@ -198,7 +193,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     g,
     bounds,
     corrections,
-    options,
+    parameters,
   });
   const metrics = computeMetrics({
     bounds,
@@ -209,7 +204,6 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     strategy,
     correctionCount: corrections.entries.length,
     parameters,
-    options,
   });
   const quality = qualityReport({
     videoId,
@@ -218,7 +212,6 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     frames: cleaned.track,
     g,
     p: parameters,
-    options,
     parametersHash,
     bounds,
     indexTimebase: index.timebaseAnomalies ?? null,

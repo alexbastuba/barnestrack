@@ -20,7 +20,7 @@ import {
   nearestHoleIndex,
   type MazeGeometry,
 } from './geometry.js';
-import { ANALYSIS_MODEL } from './parameters.js';
+import { ANALYSIS_MODEL, isRecorded } from './parameters.js';
 import { framePosition, type TrackArrays } from './track-arrays.js';
 import { cutoffFrame, resolveTrialEnd, type TrialEndReason } from './trial.js';
 import type { ReviewFlag } from './types.js';
@@ -442,7 +442,8 @@ function record(
     endTime_s: a.t[end]!,
     durationSeconds: a.t[end]! - a.t[start]!,
     pointUsed,
-    minNoseDistance_cm: distances.minNose_cm,
+    // null, not NaN, when the nose was never usable during the event (D55)
+    minNoseDistance_cm: isRecorded(distances.minNose_cm) ? distances.minNose_cm : null,
     minCentroidDistance_cm: distances.minCentroid_cm,
     evidence,
     source: 'auto',

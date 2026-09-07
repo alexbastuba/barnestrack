@@ -7,7 +7,8 @@ import type { SearchStrategy } from './session.js';
 export type TrialStatus = 'ok' | 'review' | 'unresolved';
 
 export interface TrialMetrics {
-  trialStart_s: number;
+  /** null when no trial start could be proposed (O5, D55). */
+  trialStart_s: number | null;
   /** null when the animal never reaches the target hole (O3). */
   primaryLatency_s: number | null;
   /** null when the trial is cut off before escape (O5). */
@@ -16,7 +17,8 @@ export interface TrialMetrics {
   totalErrors: number;
   pathLength_cm: number;
   pathLengthSmoothed_cm: number;
-  meanSpeed_cmPerS: number;
+  /** null when the trial has no tracked time to divide by (O9, D55). */
+  meanSpeed_cmPerS: number | null;
   targetQuadrantTime_s: number;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';

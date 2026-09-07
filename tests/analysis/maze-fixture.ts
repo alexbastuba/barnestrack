@@ -6,11 +6,7 @@
 import type { MazeMapFile, SimilarityTransform } from '../../src/contracts/mazeMap.js';
 import { MAZE_MAP_SCHEMA_VERSION } from '../../src/contracts/mazeMap.js';
 import { mazeGeometry, type MazeGeometry } from '../../src/analysis/geometry.js';
-import {
-  DEFAULT_ANALYSIS_OPTIONS,
-  DEFAULT_PARAMETERS,
-  type AnalysisOptions,
-} from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
 import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
 
@@ -37,7 +33,6 @@ export function testGeometry(
     map?: Partial<MazeMapFile>;
     transform?: SimilarityTransform;
     parameters?: Parameters;
-    options?: AnalysisOptions;
   } = {},
 ): MazeGeometry {
   return mazeGeometry({
@@ -45,6 +40,5 @@ export function testGeometry(
     transform: overrides.transform ?? IDENTITY_TRANSFORM,
     referenceResolution: TEST_RESOLUTION,
     parameters: overrides.parameters ?? DEFAULT_PARAMETERS,
-    options: overrides.options ?? DEFAULT_ANALYSIS_OPTIONS,
   });
 }

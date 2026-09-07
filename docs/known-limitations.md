@@ -118,20 +118,11 @@ session it is found (D39).
   visit may be the run's last element, so 9→8→7 with target 7 is a run of three where O7's
   "precedes the target visit" could be read as two. Both readings are stated in the serial rule's
   definition text; which one O7 means is a decision for `docs/decisions.md`.
-- **Thresholds outside the contract are not in the parameters hash.** The O5 censoring switch,
-  the five O7 rule numbers and the two D30 tier thresholds live in `DEFAULT_ANALYSIS_OPTIONS`
-  (`trialCensoring.censorToCutoff`, `strategy.spatialMaxErrors`, `strategy.spatialMaxHoleDistance`,
-  `strategy.spatialMaxCentreCrossings`, `strategy.serialMinRun`, `strategy.centreZoneRadiusFraction`,
-  `quality.goodMinPositionedFraction`, `quality.poorMaxPositionedFraction`) because `Parameters` has
-  no field for them; they are neither hashed into `parametersHash` nor stamped on exports. Two
-  derived layers or exports can therefore carry the same `parameters_hash` and disagree on
-  `strategy`, `total_latency_s` or the quality tier if these were changed between them. Until the
-  fields join the contract, the defaults are the only values in use and the tool version identifies
-  them.
-- **Some derived numbers cannot be null in the contract.** `TrialMetrics.trialStart_s` and
-  `meanSpeed_cmPerS`, and `EventRecord.minNoseDistance_cm` (when the nose was never usable during
-  an event, a common case on these clips) are `NaN`, which JSON writes as `null`; consumers must
-  treat non-finite and null alike and a CSV writer must emit an empty cell.
+- **A few derived numbers still carry `NaN` rather than `null`.** D55 made `trialStart_s`,
+  `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable; `minCentroidDistance_cm` (a loss with no
+  positioned approach frame) and the kinematics fractions of an empty trial are still typed as
+  plain `number` and hold `NaN`, which JSON writes as `null`. Consumers treat non-finite and null
+  alike (`isRecorded()`) and the CSV writer emits an empty cell for either.
 - **Cleaning counts and the strategy reasoning are not persisted.** `n_filled_frames`, the outlier
   indices, the unfilled-gap reasons, the trial bounds, the strategy features and reasoning and the
   review flags live on the result of `derive()` and not in the session's `DerivedLayer`; they are

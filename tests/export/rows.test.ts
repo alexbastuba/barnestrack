@@ -56,10 +56,11 @@ describe('trialRows', () => {
 
   it('keeps numbers as numbers, times to 3 dp and distances to 2 dp', () => {
     for (const row of trialRows(session)) {
+      // the fixture's trials all have a start and tracked time, so neither nullable cell is null here
       expect(typeof row.trialStart_s).toBe('number');
-      expect(row.trialStart_s).toBe(Number(row.trialStart_s.toFixed(3)));
+      expect(row.trialStart_s).toBe(Number(row.trialStart_s!.toFixed(3)));
       expect(row.pathLength_cm).toBe(Number(row.pathLength_cm.toFixed(2)));
-      expect(row.meanSpeed_cmPerS).toBe(Number(row.meanSpeed_cmPerS.toFixed(2)));
+      expect(row.meanSpeed_cmPerS).toBe(Number(row.meanSpeed_cmPerS!.toFixed(2)));
     }
   });
 

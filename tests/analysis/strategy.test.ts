@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ANALYSIS_OPTIONS, DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
 import type { CorrectionsLayer } from '../../src/contracts/session.js';
 import { testGeometry } from './maze-fixture.js';
@@ -188,12 +188,12 @@ describe('classifyStrategy (O7)', () => {
     expect(changed.strategy.strategySource).toBe('corrected');
   });
 
-  it('reads its thresholds from the options block', () => {
-    const strict = {
-      ...DEFAULT_ANALYSIS_OPTIONS,
-      strategy: { ...DEFAULT_ANALYSIS_OPTIONS.strategy, serialMinRun: 6 },
+  it('reads its thresholds from the strategy block of the parameters (D55)', () => {
+    const strict: Parameters = {
+      ...DEFAULT_PARAMETERS,
+      strategy: { ...DEFAULT_PARAMETERS.strategy, serialMinRun: 6 },
     };
-    const r = pipeline(visitHoles([12, 11, 10, 9, 8]), { g: target8, options: strict });
+    const r = pipeline(visitHoles([12, 11, 10, 9, 8]), { g: target8, p: strict });
     expect(r.strategy.strategy).toBe('random');
     expect(r.strategy.runnerUp).toBe('serial'); // a run of 5 against 6 is closer than 4 errors against 3
     expect(

@@ -12,7 +12,7 @@ import {
   nearestHoleIndex,
   pxToCm,
 } from '../../src/analysis/geometry.js';
-import { DEFAULT_ANALYSIS_OPTIONS, DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import { holeCentres, pxPerCm } from '../../src/maze/ring.js';
 import { IDENTITY_TRANSFORM, transformMap } from '../../src/maze/similarity.js';
 import {
@@ -43,7 +43,6 @@ describe('mazeGeometry', () => {
         transform,
         referenceResolution: TEST_RESOLUTION,
         parameters: DEFAULT_PARAMETERS,
-        options: DEFAULT_ANALYSIS_OPTIONS,
       });
       const placed = transformMap(map, transform, TEST_RESOLUTION);
       const expected = holeCentres(placed);
@@ -61,7 +60,7 @@ describe('mazeGeometry', () => {
     }
   });
 
-  it('derives the event radii from the parameters and the centre zone from the options', () => {
+  it('derives the event radii and the centre zone from the parameters', () => {
     const g = testGeometry();
     expect(g.investigationRadius_px).toBeCloseTo(1.5 * g.holeRadius_px, 12);
     expect(g.escapeRadius_px).toBeCloseTo(1.0 * g.holeRadius_px, 12);

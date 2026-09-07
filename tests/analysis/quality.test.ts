@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanTrack } from '../../src/analysis/clean.js';
 import { applyTrackCorrections } from '../../src/analysis/corrections.js';
-import {
-  DEFAULT_ANALYSIS_OPTIONS,
-  DEFAULT_PARAMETERS,
-  hashParameters,
-} from '../../src/analysis/parameters.js';
+import { DEFAULT_PARAMETERS, hashParameters } from '../../src/analysis/parameters.js';
 import {
   findGaps,
   noseConfidenceHistogram,
@@ -54,7 +50,6 @@ function report(
     frames: cleanedFrames,
     g,
     p,
-    options: DEFAULT_ANALYSIS_OPTIONS,
     parametersHash: hashParameters(p),
     bounds,
   });
@@ -211,12 +206,17 @@ describe('qualityReport (D30)', () => {
   });
 
   it('tiers the video on the positioned fraction of the trial window with the two thresholds', () => {
-    expect(qualityTier(0.95, DEFAULT_ANALYSIS_OPTIONS)).toBe('GOOD');
-    expect(qualityTier(0.9, DEFAULT_ANALYSIS_OPTIONS)).toBe('GOOD');
-    expect(qualityTier(0.8, DEFAULT_ANALYSIS_OPTIONS)).toBe('REVIEW');
-    expect(qualityTier(0.7, DEFAULT_ANALYSIS_OPTIONS)).toBe('REVIEW');
-    expect(qualityTier(0.69, DEFAULT_ANALYSIS_OPTIONS)).toBe('POOR');
-    expect(qualityTier(Number.NaN, DEFAULT_ANALYSIS_OPTIONS)).toBe('POOR');
+    const thresholds = DEFAULT_PARAMETERS.quality;
+    expect(qualityTier(0.95, thresholds)).toBe('GOOD');
+    expect(qualityTier(0.9, thresholds)).toBe('GOOD');
+    expect(qualityTier(0.8, thresholds)).toBe('REVIEW');
+    expect(qualityTier(0.7, thresholds)).toBe('REVIEW');
+    expect(qualityTier(0.69, thresholds)).toBe('POOR');
+    expect(qualityTier(Number.NaN, thresholds)).toBe('POOR');
+    // the thresholds are parameters (D55): a stricter GOOD line moves the tier
+    expect(qualityTier(0.95, { goodMinPositionedFraction: 0.97, poorMaxPositionedFraction: 0.7 })).toBe(
+      'REVIEW',
+    );
     const poor = report([
       { kind: 'dwell', seconds: 0.5 },
       { kind: 'lost', seconds: 2 },

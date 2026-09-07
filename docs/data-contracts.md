@@ -227,7 +227,7 @@ so hole numbering stays consistent across a cohort.
 | `startTime_s`/`endTime_s` | number                               | seconds | —                                                            |
 | `durationSeconds`      | number                                  | seconds | —                                                            |
 | `pointUsed`            | `'nose' \| 'centroid'`                 | —       | Nose when heading confidence ≥ cutoff (O16), else centroid.  |
-| `minNoseDistance_cm`   | number                                  | cm      | Always recorded, whichever point was used (O1).              |
+| `minNoseDistance_cm`   | number \| null                         | cm      | Recorded whichever point was used (O1); `null` when the nose was never usable during the event (D55). |
 | `minCentroidDistance_cm`| number                                 | cm      | Always recorded (O1).                                        |
 | `evidence`             | string                                  | —       | Plain-language: last seen, loss duration, reappearance, blob-area trend. |
 | `source`               | `'auto' \| 'corrected'`                | —       | —                                                            |
@@ -235,8 +235,9 @@ so hole numbering stays consistent across a cohort.
 
 ## 6. Parameters
 
-Every event-defining or cleaning threshold lives in one `Parameters` value
-(`src/contracts/parameters.ts`), never inline in analysis code. Defaults and the one-sentence
+Every threshold that changes a number — an event or cleaning threshold, the trial-censoring switch,
+the search-strategy rule numbers and the quality-tier thresholds — lives in one `Parameters` value
+(`src/contracts/parameters.ts`), never inline in analysis code (D55). Defaults and the one-sentence
 definitions the UI shows verbatim live in the single configuration module
 `src/analysis/parameters.ts` (`DEFAULT_PARAMETERS`, `PARAMETER_DEFINITIONS`, `PARAMETER_UNITS`,
 `PARAMETER_DECISIONS`, keyed by dotted path); the value is hashed into `parametersHash`, embedded in
@@ -244,7 +245,7 @@ every export and drives live recomputation (D20). Spatial thresholds are centime
 the hole radius, converted per video from the maze calibration (D14, D44); temporal thresholds are
 seconds applied to each frame's own timestamp (D7).
 
-### Analysis parameters (O1–O17)
+### Analysis parameters (O1–O17, D30)
 
 | Field                                  | Unit               | Default | Definition                                                                                                                      | From |
 | -------------------------------------- | ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- | ---- |
@@ -264,35 +265,31 @@ seconds applied to each frame's own timestamp (D7).
 | `kinematics.dropGapFactor`             | × nominal interval | 1.5     | Consecutive frames farther apart than this multiple of the nominal interval are a dropped-frame gap: counted, path keeps the straight segment. | O11 |
 | `noseConfidenceCutoff`                 | 0–1                | 0.5     | Events use the nose when its heading confidence is at least this (or it was placed by hand), otherwise the centroid; `pointUsed` records which. | O16 |
 | `outlierVelocityThreshold_cmPerS`      | cm/s               | 150     | A centroid moving faster than this from the previous positioned frame is an outlier: marked invalid, kept, never replaced.        | O17 |
+| `trialCensoring.censorToCutoff`        | on/off             | off     | Report the cutoff as total latency for a trial that never reached the escape box, for statistics; `escaped` stays false and the status stays `review`. | O5 |
+| `strategy.spatialMaxErrors`            | count              | 3       | Spatial: at most this many non-target investigations before the target.                                                          | O7 |
+| `strategy.spatialMaxHoleDistance`      | holes              | 2       | Spatial: every error hole within this many holes of the target around the ring.                                                  | O7 |
+| `strategy.spatialMaxCentreCrossings`   | count              | 1       | Spatial: at most this many entries into the centre zone before the target.                                                       | O7 |
+| `strategy.serialMinRun`                | count              | 3       | Serial: a run of at least this many adjacent-hole investigations with no centre crossing during it, before or ending at the target visit. | O7 |
+| `strategy.centreZoneRadiusFraction`    | fraction           | 0.5     | The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing. | O7 |
+| `quality.goodMinPositionedFraction`    | fraction           | 0.9     | GOOD when at least this fraction of trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count). | D30 |
+| `quality.poorMaxPositionedFraction`    | fraction           | 0.7     | POOR below this fraction; REVIEW between the two.                                                                                | D30 |
 
 The nominal frame interval used by the O11 and O17 rules is the median of the positive
-timestamp differences over the whole track, computed once per derive run.
+timestamp differences over the whole track, computed once per derive run. The eight thresholds
+after O17 joined `Parameters` under D55: they are hashed and travel on the parameters sheet and in
+`parameters.json`, but they are not `trials.csv` columns (D11's column rule covers event-defining
+thresholds; the readme sheet says so, as it does for the O9 smoothing window).
 
 ### Maze defaults (O8)
 
 `MAZE_DEFAULTS` in the same module: 20 holes, ring ratio 0.89, hole diameter 5 cm, platform diameter
 hint 92 cm. `src/maze/ring.ts` re-exports them under its original names.
 
-### Proposed additions to `Parameters` (not in the contract; not hashed; ASK)
-
-`DEFAULT_ANALYSIS_OPTIONS` in the same module holds thresholds the analysis needs that the contract
-does not carry yet, grouped as the fields proposed for `Parameters` so that adding them is one edit.
-Until then they are neither hashed into `parametersHash` nor stamped on exports:
-
-| Proposed field                        | Default | Definition                                                                                          | From |
-| ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------- | ---- |
-| `trialCensoring.censorToCutoff`       | off     | Report the cutoff as total latency for a trial that never reached the escape box, for statistics.   | O5 |
-| `strategy.spatialMaxErrors`           | 3       | Spatial: at most this many errors before the target.                                                | O7 |
-| `strategy.spatialMaxHoleDistance`     | 2       | Spatial: every error hole within this many holes of the target.                                     | O7 |
-| `strategy.spatialMaxCentreCrossings`  | 1       | Spatial: at most this many centre crossings before the target.                                      | O7 |
-| `strategy.serialMinRun`               | 3       | Serial: a run of at least this many adjacent-hole investigations with no centre crossing during it. | O7 |
-| `strategy.centreZoneRadiusFraction`   | 0.5     | The centre zone is this fraction of the platform radius.                                            | O7 |
-| `quality.goodMinPositionedFraction`   | 0.9     | GOOD when at least this fraction of trial frames carry a positioned centroid.                       | D30 |
-| `quality.poorMaxPositionedFraction`   | 0.7     | POOR below this fraction; REVIEW between the two.                                                   | D30 |
+### Strategy rule order (O7, D23)
 
 The strategy rules are tried in the order spatial, serial, random; the first rule to fire is the
 classification, a later rule that also fired is reported as "fired, outranked", and the runner-up
-is the rule that would fire next (O7, D23).
+is the rule that would fire next.
 
 Fixed model constants (`ANALYSIS_MODEL`, not user-adjustable): the blob-area trend window before a
 loss (10 frames), the minimum smoothed step that contributes heading change to tortuosity (1 cm),
@@ -319,11 +316,13 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   time between the positioned frames either side; the nose stays invalid and `detectionState` /
   `reason` keep the tracker's values. Gaps that touch an outlier or contain a hand-corrected point are
   never filled. The automatic layer never contains a filled point (D16).
-- **Not-recorded numbers.** A `number` field the contract does not allow to be `null`
-  (`trialStart_s` with no trial start, `meanSpeed_cmPerS` with no tracked time,
-  `minNoseDistance_cm` when the nose was never usable during an event) is `NaN`; JSON serialises it
-  as `null`, so consumers treat non-finite and `null` alike (`isRecorded()`) and a CSV writer emits an
-  empty cell.
+- **Not-recorded numbers.** `trialStart_s` (no trial start), `meanSpeed_cmPerS` (no tracked
+  time) and `minNoseDistance_cm` (the nose was never usable during the event) are `null` in the
+  contract when they cannot exist (D55). A `number` field the contract still types as plain
+  `number` but that cannot always be computed (`minCentroidDistance_cm` of a loss with no
+  positioned approach frame, the kinematics fractions of an empty trial) is `NaN`, which JSON
+  serialises as `null`; consumers treat non-finite and `null` alike (`isRecorded()`) and a CSV
+  writer emits an empty cell for either.
 - **Event ids and correction matching.** Automatic ids are deterministic from content:
   `auto-<kind>-h<holeIndex|x>-f<startFrame>`; user-added events are `user-<correctionId>`. An event
   correction matches its automatic event by exact id first; otherwise by the automatic event of the
@@ -414,12 +413,12 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | Column | Unit | Source |
 | --- | --- | --- |
 | `session_id`, `video_id`, `animal`, `day`, `trial_label`, `group` | — | identifiers / O12 metadata |
-| `trial_start_s` | s | O5 |
+| `trial_start_s` | s (nullable: no trial start) | O5 |
 | `primary_latency_s` | s (nullable) | O3 |
 | `total_latency_s` | s (nullable) | O4 |
 | `primary_errors`, `total_errors` | count | O2 |
 | `path_length_cm`, `path_length_smoothed_cm` | cm | O9 |
-| `mean_speed_cm_per_s` | cm/s | O9 |
+| `mean_speed_cm_per_s` | cm/s (nullable: no tracked time) | O9 |
 | `target_quadrant_time_s` | s | O6 |
 | `strategy`, `strategy_source` | — | O7 |
 | `escaped` | bool | O4 |
@@ -445,7 +444,7 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | `start_frame`, `end_frame` | — | D7 |
 | `start_time_s`, `end_time_s`, `duration_s` | s | D7 |
 | `point_used` | — | `nose \| centroid` (O16) |
-| `min_nose_distance_cm`, `min_centroid_distance_cm` | cm | O1 |
+| `min_nose_distance_cm` (nullable: nose never usable), `min_centroid_distance_cm` | cm | O1 |
 | `evidence_summary` | — | D19 |
 | `source` | — | `auto \| corrected` |
 | `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | — | shadow columns, populated only when `source = corrected` |

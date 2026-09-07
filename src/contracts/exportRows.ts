@@ -30,14 +30,14 @@ export interface TrialRow extends ExportProvenance {
   trialLabel: string | null;
   group: string | null;
 
-  trialStart_s: number;
+  trialStart_s: number | null;
   primaryLatency_s: number | null;
   totalLatency_s: number | null;
   primaryErrors: number;
   totalErrors: number;
   pathLength_cm: number;
   pathLengthSmoothed_cm: number;
-  meanSpeed_cmPerS: number;
+  meanSpeed_cmPerS: number | null;
   targetQuadrantTime_s: number;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
@@ -80,7 +80,7 @@ export interface EventRow extends ExportProvenance {
   endTime_s: number;
   durationSeconds: number;
   pointUsed: NamedPointId;
-  minNoseDistance_cm: number;
+  minNoseDistance_cm: number | null;
   minCentroidDistance_cm: number;
   evidenceSummary: string;
   source: 'auto' | 'corrected';

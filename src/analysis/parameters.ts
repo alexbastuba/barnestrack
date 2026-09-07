@@ -1,15 +1,16 @@
 /**
- * The single configuration module (D20, D51). Every threshold that defines an
- * event, a cleaning step or a metric lives here with its default and the
- * one-sentence definition the UI shows verbatim beside its control. Defaults
- * are the provisional O-decisions of `docs/decisions.md`, verbatim: O1, O4,
- * O5, O6, O9, O10, O11, O16, O17, plus the O8 maze defaults and the tracking
- * block (D6) re-exported from `src/analysis/tracker/params.ts`.
+ * The single configuration module (D20, D51, D55). Every threshold that
+ * changes a number — an event, a cleaning step, a metric, the strategy rules,
+ * the quality tier — lives here with its default and the one-sentence
+ * definition the UI shows verbatim beside its control. Defaults are the
+ * provisional O-decisions of `docs/decisions.md`, verbatim: O1, O4, O5, O6,
+ * O7, O9, O10, O11, O16, O17, the D30 tier thresholds, plus the O8 maze
+ * defaults and the tracking block (D6) re-exported from
+ * `src/analysis/tracker/params.ts`.
  *
  * Nothing under `src/analysis/` may hold a number of its own: fixed model
- * constants live in `ANALYSIS_MODEL`, and the thresholds the contract does not
- * yet carry live in `DEFAULT_ANALYSIS_OPTIONS`, grouped so that moving them
- * into `Parameters` is one edit.
+ * constants live in `ANALYSIS_MODEL`, everything else is a `Parameters` field
+ * and therefore part of `parametersHash` (D55).
  */
 import type { Parameters, TrackingParameters } from '../contracts/parameters.js';
 import { sha256Hex } from '../video/sha256.js';
@@ -18,7 +19,7 @@ import { DEFAULT_TRACKING_PARAMETERS, TRACKING_PARAMETER_DEFINITIONS } from './t
 export type { Parameters, TrackingParameters } from '../contracts/parameters.js';
 
 // ---------------------------------------------------------------------------
-// Defaults (O1, O4, O5, O6, O9, O10, O11, O16, O17; tracking D6)
+// Defaults (O1, O4, O5, O6, O7, O9, O10, O11, O16, O17; D30; tracking D6)
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_PARAMETERS: Parameters = {
@@ -31,6 +32,15 @@ export const DEFAULT_PARAMETERS: Parameters = {
   kinematics: { speedWindowFrames: 2, duplicateTimestampFactor: 0.25, dropGapFactor: 1.5 },
   noseConfidenceCutoff: 0.5,
   outlierVelocityThreshold_cmPerS: 150,
+  trialCensoring: { censorToCutoff: false },
+  strategy: {
+    spatialMaxErrors: 3,
+    spatialMaxHoleDistance: 2,
+    spatialMaxCentreCrossings: 1,
+    serialMinRun: 3,
+    centreZoneRadiusFraction: 0.5,
+  },
+  quality: { goodMinPositionedFraction: 0.9, poorMaxPositionedFraction: 0.7 },
   tracking: DEFAULT_TRACKING_PARAMETERS,
 };
 
@@ -57,7 +67,15 @@ export type AnalysisParameterPath =
   | 'kinematics.duplicateTimestampFactor'
   | 'kinematics.dropGapFactor'
   | 'noseConfidenceCutoff'
-  | 'outlierVelocityThreshold_cmPerS';
+  | 'outlierVelocityThreshold_cmPerS'
+  | 'trialCensoring.censorToCutoff'
+  | 'strategy.spatialMaxErrors'
+  | 'strategy.spatialMaxHoleDistance'
+  | 'strategy.spatialMaxCentreCrossings'
+  | 'strategy.serialMinRun'
+  | 'strategy.centreZoneRadiusFraction'
+  | 'quality.goodMinPositionedFraction'
+  | 'quality.poorMaxPositionedFraction';
 
 export type TrackingParameterPath = `tracking.${keyof TrackingParameters}`;
 
@@ -96,6 +114,22 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
     'Events use the nose as the event point when its heading confidence is at least this, or when the nose was placed by hand; otherwise they use the centroid, and every event records which point was used (0–1; O16).',
   outlierVelocityThreshold_cmPerS:
     'A centroid that moves faster than this from the previous positioned frame is an outlier: the frame is marked invalid for events and kinematics and the point is kept, never replaced (cm/s; O17).',
+  'trialCensoring.censorToCutoff':
+    'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
+  'strategy.spatialMaxErrors':
+    'Spatial search: at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
+  'strategy.spatialMaxHoleDistance':
+    'Spatial search: every error hole lies within this many holes of the target around the ring (holes; O7).',
+  'strategy.spatialMaxCentreCrossings':
+    'Spatial search: at most this many entries into the centre zone before the target (count; O7).',
+  'strategy.serialMinRun':
+    'Serial search: a run of at least this many investigations of adjacent holes, in either direction and with no centre crossing during the run, before or ending at the target visit (count; O7).',
+  'strategy.centreZoneRadiusFraction':
+    'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
+  'quality.goodMinPositionedFraction':
+    'A video is GOOD when at least this fraction of the trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count); judged over the trial window so empty pre-trial frames do not count against it (fraction; D30).',
+  'quality.poorMaxPositionedFraction':
+    'A video is POOR when fewer than this fraction of the trial frames were positioned by the tracker (tracked or low confidence); between the two thresholds it is REVIEW (fraction; D30).',
 };
 
 const TRACKING_KEYS = Object.keys(TRACKING_PARAMETER_DEFINITIONS) as (keyof TrackingParameters)[];
@@ -125,6 +159,14 @@ export const PARAMETER_UNITS: Record<ParameterPath, string> = {
   'kinematics.dropGapFactor': '× nominal interval',
   noseConfidenceCutoff: '0–1',
   outlierVelocityThreshold_cmPerS: 'cm/s',
+  'trialCensoring.censorToCutoff': 'on/off',
+  'strategy.spatialMaxErrors': 'count',
+  'strategy.spatialMaxHoleDistance': 'holes',
+  'strategy.spatialMaxCentreCrossings': 'count',
+  'strategy.serialMinRun': 'count',
+  'strategy.centreZoneRadiusFraction': 'fraction',
+  'quality.goodMinPositionedFraction': 'fraction',
+  'quality.poorMaxPositionedFraction': 'fraction',
   'tracking.backgroundSampleCount': 'frames',
   'tracking.backgroundExcludeRanges': 'frame ranges',
   'tracking.platformMaskMargin_cm': 'cm',
@@ -202,75 +244,6 @@ export const MAZE_DEFAULT_DEFINITIONS: Record<keyof typeof MAZE_DEFAULTS, string
   holeDiameter_cm: 'Diameter of one hole; the one hole dimension a user may change (cm; O8).',
   typicalPlatformDiameter_cm:
     'The hint shown beside the calibration field; the user must enter the real platform diameter before anything is computed (cm; O8).',
-};
-
-// ---------------------------------------------------------------------------
-// Thresholds the contract does not carry yet (O5 censoring, the O7 rule
-// numbers, the D30 tier thresholds). Grouped as the fields proposed for
-// `Parameters`; until they are added they are neither hashed nor exported.
-// ---------------------------------------------------------------------------
-
-export interface AnalysisOptions {
-  /** O5 · proposed `Parameters.trialCensoring`. */
-  trialCensoring: {
-    /** Substitute the cutoff value for a blank total latency, for statistics. */
-    censorToCutoff: boolean;
-  };
-  /** O7 · proposed `Parameters.strategy`. */
-  strategy: {
-    spatialMaxErrors: number;
-    spatialMaxHoleDistance: number;
-    spatialMaxCentreCrossings: number;
-    serialMinRun: number;
-    /** Centre zone radius as a fraction of the platform radius. */
-    centreZoneRadiusFraction: number;
-  };
-  /** D30 · proposed `Parameters.quality`. */
-  quality: {
-    goodMinPositionedFraction: number;
-    poorMaxPositionedFraction: number;
-  };
-}
-
-export const DEFAULT_ANALYSIS_OPTIONS: AnalysisOptions = {
-  trialCensoring: { censorToCutoff: false },
-  strategy: {
-    spatialMaxErrors: 3,
-    spatialMaxHoleDistance: 2,
-    spatialMaxCentreCrossings: 1,
-    serialMinRun: 3,
-    centreZoneRadiusFraction: 0.5,
-  },
-  quality: { goodMinPositionedFraction: 0.9, poorMaxPositionedFraction: 0.7 },
-};
-
-export type AnalysisOptionPath =
-  | 'trialCensoring.censorToCutoff'
-  | 'strategy.spatialMaxErrors'
-  | 'strategy.spatialMaxHoleDistance'
-  | 'strategy.spatialMaxCentreCrossings'
-  | 'strategy.serialMinRun'
-  | 'strategy.centreZoneRadiusFraction'
-  | 'quality.goodMinPositionedFraction'
-  | 'quality.poorMaxPositionedFraction';
-
-export const ANALYSIS_OPTION_DEFINITIONS: Record<AnalysisOptionPath, string> = {
-  'trialCensoring.censorToCutoff':
-    'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
-  'strategy.spatialMaxErrors':
-    'Spatial search: at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
-  'strategy.spatialMaxHoleDistance':
-    'Spatial search: every error hole lies within this many holes of the target around the ring (holes; O7).',
-  'strategy.spatialMaxCentreCrossings':
-    'Spatial search: at most this many entries into the centre zone before the target (count; O7).',
-  'strategy.serialMinRun':
-    'Serial search: a run of at least this many investigations of adjacent holes, in either direction and with no centre crossing during the run, before or ending at the target visit (count; O7).',
-  'strategy.centreZoneRadiusFraction':
-    'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
-  'quality.goodMinPositionedFraction':
-    'A video is GOOD when at least this fraction of the trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count); judged over the trial window so empty pre-trial frames do not count against it (fraction; D30).',
-  'quality.poorMaxPositionedFraction':
-    'A video is POOR when fewer than this fraction of the trial frames were positioned by the tracker (tracked or low confidence); between the two thresholds it is REVIEW (fraction; D30).',
 };
 
 // ---------------------------------------------------------------------------
@@ -408,6 +381,33 @@ const RULES: Rule[] = [
   { path: 'noseConfidenceCutoff', check: unit, expects: 'a value from 0 to 1' },
   { path: 'outlierVelocityThreshold_cmPerS', check: positive, expects: 'a positive speed in cm/s' },
   {
+    path: 'strategy.spatialMaxErrors',
+    check: integerAtLeast(0),
+    expects: 'a whole number of investigations',
+  },
+  {
+    path: 'strategy.spatialMaxHoleDistance',
+    check: integerAtLeast(0),
+    expects: 'a whole number of holes',
+  },
+  {
+    path: 'strategy.spatialMaxCentreCrossings',
+    check: integerAtLeast(0),
+    expects: 'a whole number of crossings',
+  },
+  {
+    path: 'strategy.serialMinRun',
+    check: integerAtLeast(1),
+    expects: 'a whole number of investigations, at least 1',
+  },
+  {
+    path: 'strategy.centreZoneRadiusFraction',
+    check: (v) => finite(v) && v > 0 && v <= 1,
+    expects: 'a fraction of the platform radius above 0 and up to 1',
+  },
+  { path: 'quality.goodMinPositionedFraction', check: unit, expects: 'a fraction from 0 to 1' },
+  { path: 'quality.poorMaxPositionedFraction', check: unit, expects: 'a fraction from 0 to 1' },
+  {
     path: 'tracking.backgroundSampleCount',
     check: integerAtLeast(1),
     expects: 'a whole number of frames, at least 1',
@@ -455,6 +455,22 @@ export function validateParameters(parameters: Parameters): string[] {
   if (typeof parameters.gapFilling?.enabled !== 'boolean') {
     problems.push(
       `gapFilling.enabled must be true or false, got ${String(parameters.gapFilling?.enabled)}`,
+    );
+  }
+  if (typeof parameters.trialCensoring?.censorToCutoff !== 'boolean') {
+    problems.push(
+      `trialCensoring.censorToCutoff must be true or false, got ${String(parameters.trialCensoring?.censorToCutoff)}`,
+    );
+  }
+  const q = parameters.quality;
+  if (
+    q &&
+    Number.isFinite(q.goodMinPositionedFraction) &&
+    Number.isFinite(q.poorMaxPositionedFraction) &&
+    q.poorMaxPositionedFraction > q.goodMinPositionedFraction
+  ) {
+    problems.push(
+      `quality.poorMaxPositionedFraction must not exceed quality.goodMinPositionedFraction, got ${q.poorMaxPositionedFraction} and ${q.goodMinPositionedFraction}`,
     );
   }
   const k = parameters.kinematics;
