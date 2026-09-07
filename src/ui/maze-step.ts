@@ -29,7 +29,6 @@ import {
   ringRadius,
   ringRotationForClick,
   TYPICAL_PLATFORM_DIAMETER_CM,
-  type HolePosition,
 } from '../maze/ring.js';
 import {
   IDENTITY_TRANSFORM,
@@ -49,6 +48,7 @@ import { CanvasView } from './canvas-view.js';
 import { Scrubber } from './scrubber.js';
 import { button, el, replaceChildren, uniqueId } from './dom.js';
 import { downloadText, pickFiles } from './download.js';
+import { drawHole, drawLabel } from './overlay-draw.js';
 import type { AppContext, Step } from './step.js';
 
 type Mode = 'idle' | 'rim' | 'align' | 'target' | 'adjust';
@@ -446,7 +446,12 @@ export function createMazeStep(context: AppContext): Step {
 
       const holeRadius = Math.max(map.holes.holeRadius_px * view.zoom, 3);
       for (const hole of holeCentres(map)) {
-        drawHole(ctx, at(hole), holeRadius, hole, map.target.holeIndex, selection, map.holes.holeRadius_px > 0);
+        drawHole(ctx, at(hole), holeRadius, hole.holeIndex, {
+          isTarget: hole.holeIndex === map.target.holeIndex,
+          selected: selection?.kind === 'hole' && selection.holeIndex === hole.holeIndex,
+          sized: map.holes.holeRadius_px > 0,
+          labelSuffix: hole.nudged ? '*' : '',
+        });
       }
     }
 
@@ -460,73 +465,6 @@ export function createMazeStep(context: AppContext): Step {
     if (hoverPoint && mode !== 'idle') {
       drawLabel(ctx, MODE_PROMPT[mode], 8, 30, true);
     }
-  }
-
-  function drawHole(
-    ctx: CanvasRenderingContext2D,
-    p: Point,
-    radius: number,
-    hole: HolePosition,
-    targetIndex: number,
-    current: Selection,
-    sized: boolean,
-  ): void {
-    const isTarget = hole.holeIndex === targetIndex;
-    const isSelected = current?.kind === 'hole' && current.holeIndex === hole.holeIndex;
-
-    ctx.strokeStyle = isTarget ? '#9a2417' : '#16191d';
-    ctx.lineWidth = isTarget ? 3 : 1.5;
-    ctx.setLineDash(sized ? [] : [3, 3]);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    if (isTarget) {
-      // Shape, not colour: the target carries a second ring and a "T" label (D26).
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius + 4, 0, Math.PI * 2);
-      ctx.stroke();
-      drawLabel(ctx, `T${hole.holeIndex} target`, p.x + radius + 7, p.y - 8);
-    } else {
-      drawLabel(ctx, hole.nudged ? `${hole.holeIndex}*` : String(hole.holeIndex), p.x + radius + 3, p.y - 8);
-    }
-
-    if (isSelected) {
-      // Corner brackets: distinguishable from the target ring without colour.
-      const s = radius + 7;
-      ctx.strokeStyle = '#0a4d8c';
-      ctx.lineWidth = 2;
-      for (const [sx, sy] of [
-        [-1, -1],
-        [1, -1],
-        [-1, 1],
-        [1, 1],
-      ] as const) {
-        ctx.beginPath();
-        ctx.moveTo(p.x + sx * s, p.y + sy * s - sy * 6);
-        ctx.lineTo(p.x + sx * s, p.y + sy * s);
-        ctx.lineTo(p.x + sx * s - sx * 6, p.y + sy * s);
-        ctx.stroke();
-      }
-    }
-  }
-
-  function drawLabel(
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    x: number,
-    y: number,
-    strong = false,
-  ): void {
-    ctx.font = `${strong ? '600 ' : ''}12px system-ui, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const width = ctx.measureText(text).width;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-    ctx.fillRect(x - 2, y - 1, width + 4, 15);
-    ctx.fillStyle = '#16191d';
-    ctx.fillText(text, x, y);
   }
 
   // ---- controls -------------------------------------------------------------

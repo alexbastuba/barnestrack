@@ -6,10 +6,19 @@
  * and the frame's own timestamp from the sample table — never `frame ÷ fps`
  * (D7).
  */
-import type { Mp4Index } from '../video/mp4-index.js';
 import { button, el, formatDuration, uniqueId } from './dom.js';
 
 const BIG_STEP = 10;
+
+/**
+ * What the scrubber needs from a video: how many frames, and each frame's
+ * own timestamp. An `Mp4Index` provides it; so does a track, so the review
+ * step can scrub a tracked video whose file is not attached.
+ */
+export interface FrameTimebase {
+  frameCount: number;
+  frames: readonly { t_s: number }[];
+}
 
 export interface ScrubberOptions {
   onSeek(frameIndex: number): void;
@@ -18,11 +27,13 @@ export interface ScrubberOptions {
 
 export class Scrubber {
   readonly element: HTMLElement;
+  /** The frame-number field, so a host can move focus to it (D24: `F`). */
+  readonly frameField: HTMLInputElement;
 
   private readonly range: HTMLInputElement;
   private readonly number: HTMLInputElement;
   private readonly readout: HTMLElement;
-  private index: Mp4Index | null = null;
+  private index: FrameTimebase | null = null;
   private frame = 0;
 
   constructor(private readonly options: ScrubberOptions) {
@@ -44,6 +55,7 @@ export class Scrubber {
     this.number.step = '1';
     this.number.value = '0';
     this.number.addEventListener('change', () => this.seek(Number(this.number.value), true));
+    this.frameField = this.number;
 
     this.readout = el('span', { class: 'frame-readout' });
 
@@ -64,7 +76,7 @@ export class Scrubber {
   }
 
   /** Points the scrubber at a video, keeping the frame if it still exists. */
-  setIndex(index: Mp4Index | null): void {
+  setIndex(index: FrameTimebase | null): void {
     this.index = index;
     const last = index === null ? 0 : index.frameCount - 1;
     this.range.max = String(last);
