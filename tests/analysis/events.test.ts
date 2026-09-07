@@ -47,7 +47,7 @@ function run(
   const scripted = scriptTrack(segments, { g, fps: options.fps });
   const frames = applyTrackCorrections(deepFreeze(scripted.frames), corrections).frames;
   const a = buildTrackArrays(frames, g);
-  const pts = eventPoints(a, g, p);
+  const pts = eventPoints(a, g, p, frames);
   const ctx: EventContext = { frames, a, g, p, pts };
   const startFrame = proposeTrialStart(frames, a, corrections).startFrame;
   const auto = detectAutoEvents(ctx, startFrame);
@@ -205,7 +205,7 @@ describe('losses of detection (O4, D19)', () => {
       /blob area fell from \d+ to 200 px² over the 10 positioned frames/,
     );
     expect(entry.evidence).toContain('Persistent');
-    expect(entry.evidence).toContain('the trial ends at the first lost frame');
+    expect(entry.evidence).toContain('the trial ends at the first frame of the run');
     expect(auto.persistentEscapeStartFrame).toBe(segmentStarts[2]);
     expect(auto.endFrame).toBe(segmentStarts[2]);
     expect(auto.endReason).toBe('escape');
@@ -322,6 +322,103 @@ describe('losses of detection (O4, D19)', () => {
       { kind: 'dwell', seconds: 0.5 },
     ]);
     expect(auto.events).toEqual([]);
+  });
+
+  // O4 as revised 2026-09-06: the animal's rear stays visible with its head in a hole, so an entry
+  // is also a run of partial (small_blob / fragmented) detections within the entry radius
+  const partial = (seconds: number, hole = 7, extra: Partial<Segment & { kind: 'dwell' }> = {}): Segment => ({
+    kind: 'dwell',
+    hole,
+    seconds,
+    state: 'low_confidence',
+    reason: 'small_blob',
+    ...extra,
+  });
+
+  it('reads a small-blob run at the target that lasts to the end of the video as a persistent entry', () => {
+    const { auto, segmentStarts, frames } = run([...approachTarget, partial(5)]);
+    expect(kinds(auto.events)).toEqual(['investigation@7', 'escape_entry@7']);
+    const [approach, entry] = auto.events as [EventRecord, EventRecord];
+    expect(entry.startFrame).toBe(segmentStarts[2]);
+    expect(entry.endFrame).toBe(frames.length - 1);
+    expect(approach.endFrame).toBe(segmentStarts[2]! - 1); // the run belongs to the entry, not the dwell
+    expect(entry.evidence).toContain('Seen only as a small or fragmented blob on 150 frames');
+    expect(entry.evidence).toContain('within 1 × hole radius');
+    expect(entry.evidence).toContain('to the end of the video');
+    expect(entry.evidence).toContain('Persistent');
+    expect(entry.minCentroidDistance_cm).toBeCloseTo(1, 6);
+    expect(auto.persistentEscapeStartFrame).toBe(segmentStarts[2]);
+    expect(auto.endReason).toBe('escape');
+    expect(auto.flags).toEqual([]);
+  });
+
+  it('reads a fragmented run the same way, and a mixed run of partial and absent frames as one entry', () => {
+    const fragmented = run([...approachTarget, partial(2, 7, { reason: 'fragmented' })]);
+    expect(kinds(fragmented.auto.events)).toEqual(['investigation@7', 'escape_entry@7']);
+
+    const mixed = run([
+      ...approachTarget,
+      partial(0.5),
+      { kind: 'lost', seconds: 0.5 },
+      partial(0.5),
+    ]);
+    expect(kinds(mixed.auto.events)).toEqual(['investigation@7', 'escape_entry@7']);
+    const entry = mixed.auto.events[1]!;
+    expect(entry.startFrame).toBe(mixed.segmentStarts[2]);
+    expect(entry.endFrame).toBe(mixed.frames.length - 1);
+    expect(entry.evidence).toContain('on 30 frames and not detected at all on 15');
+    expect(mixed.auto.endReason).toBe('escape');
+  });
+
+  it('flags the same partial run at a non-target hole as a physically unlikely investigation', () => {
+    const { auto, segmentStarts } = run([
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      partial(2, 3),
+      { kind: 'dwell', hole: 3, seconds: 0.3 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ]);
+    expect(kinds(auto.events)).toEqual(['investigation@3']);
+    const ev = auto.events[0]!;
+    expect(ev.evidence).toMatch(/^Physically unlikely — review: an entry-shaped run/);
+    expect(ev.startFrame).toBeLessThanOrEqual(segmentStarts[1]!);
+    expect(ev.endFrame).toBeGreaterThanOrEqual(segmentStarts[3]!);
+    expect(auto.flags.map((f) => f.code)).toEqual(['physically_unlikely_entry']);
+    expect(auto.persistentEscapeStartFrame).toBeNull();
+  });
+
+  it('keeps a partial blob outside the entry radius as an ordinary investigation', () => {
+    // 3.5 cm from the centre: inside the 1.5 × investigation radius (3.75 cm), outside 1.0 × (2.5 cm)
+    const { auto } = run([
+      { kind: 'moveToHole', hole: 7, seconds: 0.5, offset_cm: 3.5 },
+      partial(3, 7, { offset_cm: 3.5, nose: null }),
+    ]);
+    expect(kinds(auto.events)).toEqual(['investigation@7']);
+    expect(auto.events[0]!.evidence).not.toContain('Physically unlikely');
+    expect(auto.flags).toEqual([]);
+    expect(auto.endReason).toBe('end_of_video');
+  });
+
+  it('ends a run at a full-size detection elsewhere, so two short partial runs are not one entry', () => {
+    const { auto } = run([
+      ...approachTarget,
+      partial(0.6),
+      { kind: 'moveToCentre', seconds: 0.2 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.2 },
+      partial(0.6),
+    ]);
+    expect(auto.events.every((e) => e.kind === 'investigation')).toBe(true);
+    expect(auto.persistentEscapeStartFrame).toBeNull();
+    expect(auto.flags).toEqual([]);
+  });
+
+  it('leaves a partial run shorter than the entry minimum, or of another low-confidence reason, as dwell', () => {
+    const short = run([...approachTarget, partial(0.5)]);
+    expect(kinds(short.auto.events)).toEqual(['investigation@7']);
+    expect(short.auto.events[0]!.endFrame).toBe(short.frames.length - 1); // the dwell keeps its frames
+    const rim = run([...approachTarget, partial(3, 7, { reason: 'partial_at_rim' })]);
+    expect(kinds(rim.auto.events)).toEqual(['investigation@7']);
+    expect(rim.auto.persistentEscapeStartFrame).toBeNull();
   });
 
   it('takes a user-marked in-escape-box range as an entry from its first frame, persistent by the same rule as any entry', () => {

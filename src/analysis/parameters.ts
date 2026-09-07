@@ -89,9 +89,9 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'holeInvestigation.mergeGap_s':
     'Bouts at the same hole separated by less than this merge into one investigation; a longer gap makes the return a separate event (seconds; O1).',
   'escapeEntry.radiusFactor':
-    'An escape-box entry is a loss of detection whose last-seen event point was within this multiple of the hole radius of the target hole centre (× hole radius; O4).',
+    'An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run (× hole radius; O4).',
   'escapeEntry.minDuration_s':
-    'A loss of detection must last at least this long, with no reappearance away from the hole, to be an entry; the same loss at a non-target hole is an investigation flagged physically unlikely, and a loss this long anywhere else is a tracking failure (seconds; O4).',
+    'A run at the target must last at least this long, from its first to its last frame and with no full-size detection elsewhere during it, to be an entry; the same run at a non-target hole is an investigation flagged physically unlikely, and a loss of detection this long away from any hole is a tracking failure (seconds; O4).',
   'escapeEntry.persistCutoff_s':
     'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds; O4).',
   trialCutoff_s:
@@ -252,6 +252,8 @@ export const MAZE_DEFAULT_DEFINITIONS: Record<keyof typeof MAZE_DEFAULTS, string
 // ---------------------------------------------------------------------------
 
 export const ANALYSIS_MODEL = {
+  /** The tracker reasons that read as "part of the animal is still visible": a frame carrying one of these, positioned within the entry radius of a hole, belongs to an entry run (O4, D48). */
+  entryPartialReasons: ['small_blob', 'fragmented'] as const,
   /** Frames before a loss whose blob areas form the area trend in the loss evidence (O4, D19). */
   blobTrendWindowFrames: 10,
   /** The evidence says the blob area "fell" when the last area is below this fraction of the first (D19). */
@@ -269,6 +271,8 @@ export const ANALYSIS_MODEL = {
 } as const;
 
 export const ANALYSIS_MODEL_DEFINITIONS: Record<keyof typeof ANALYSIS_MODEL, string> = {
+  entryPartialReasons:
+    'The low-confidence detection reasons that mean the animal is only partly visible (its rear at a hole, a body split by a hole shadow); such a frame within the entry radius of a hole is part of an entry run rather than a full-size detection (O4).',
   blobTrendWindowFrames:
     'Number of frames before a loss of detection over which the blob-area trend (shrinking as the animal enters a hole) is described in the event evidence.',
   blobTrendFallRatio:

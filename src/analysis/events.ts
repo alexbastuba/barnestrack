@@ -1,11 +1,13 @@
 /**
  * Event detection (O1, O4, D19, D20): hole investigations from dwell at a
- * hole, and the three readings of a loss of detection — escape-box entry,
- * a physically unlikely "entry" at a non-target hole, or a tracking
- * failure — decided from evidence the user can inspect: where the animal was
- * last seen, how long it was lost, whether and where it reappeared, and how
- * the blob area was trending. Event corrections are applied afterwards and
- * stay pinned through parameter changes.
+ * hole, and the three readings of an *entry run* — a stretch of frames in
+ * which the animal is absent or seen only as a partial blob (its rear at a
+ * hole) at one hole — escape-box entry, a physically unlikely "entry" at a
+ * non-target hole, or a tracking failure — decided from evidence the user can
+ * inspect: where the run sits, how long it lasted, whether and where the
+ * animal was seen full-size again, and how the blob area was trending. Event
+ * corrections are applied afterwards and stay pinned through parameter
+ * changes.
  *
  * Every number here comes from `Parameters`, the geometry or `ANALYSIS_MODEL`.
  */
@@ -21,7 +23,7 @@ import {
   type MazeGeometry,
 } from './geometry.js';
 import { ANALYSIS_MODEL, isRecorded } from './parameters.js';
-import { framePosition, type TrackArrays } from './track-arrays.js';
+import { STATE_CODE, framePosition, type TrackArrays } from './track-arrays.js';
 import { cutoffFrame, resolveTrialEnd, type TrialEndReason } from './trial.js';
 import type { ReviewFlag } from './types.js';
 
@@ -41,9 +43,20 @@ export interface EventPoints {
   nearest: Int16Array;
   /** Distance from the event point to its nearest hole, px (NaN elsewhere). */
   nearestDistance_px: Float64Array;
+  /**
+   * Hole at which this frame is a *partial* detection — a `low_confidence`
+   * frame whose reason is one of `ANALYSIS_MODEL.entryPartialReasons` with its
+   * event point within the entry radius of the hole — else -1. O4, D48.
+   */
+  partialAt: Int16Array;
 }
 
-export function eventPoints(a: TrackArrays, g: MazeGeometry, p: Parameters): EventPoints {
+export function eventPoints(
+  a: TrackArrays,
+  g: MazeGeometry,
+  p: Parameters,
+  frames: readonly TrackFrame[],
+): EventPoints {
   const n = a.length;
   const useNose = new Uint8Array(n);
   const ex = new Float64Array(n).fill(Number.NaN);
@@ -51,6 +64,8 @@ export function eventPoints(a: TrackArrays, g: MazeGeometry, p: Parameters): Eve
   const holeAt = new Int16Array(n).fill(-1);
   const nearest = new Int16Array(n).fill(-1);
   const nearestDistance_px = new Float64Array(n).fill(Number.NaN);
+  const partialAt = new Int16Array(n).fill(-1);
+  const partialReasons: readonly string[] = ANALYSIS_MODEL.entryPartialReasons;
   const cutoff = p.noseConfidenceCutoff;
   for (let i = 0; i < n; i++) {
     if (a.cValid[i] === 0) continue;
@@ -65,8 +80,15 @@ export function eventPoints(a: TrackArrays, g: MazeGeometry, p: Parameters): Eve
     nearest[i] = k;
     nearestDistance_px[i] = d;
     if (d <= g.investigationRadius_px) holeAt[i] = k;
+    if (
+      d <= g.escapeRadius_px &&
+      a.state[i] === STATE_CODE.low_confidence &&
+      partialReasons.includes(frames[i]!.reason)
+    ) {
+      partialAt[i] = k;
+    }
   }
-  return { useNose, ex, ey, holeAt, nearest, nearestDistance_px };
+  return { useNose, ex, ey, holeAt, nearest, nearestDistance_px, partialAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,39 +192,67 @@ function noseSentence(d: SpanDistances): string {
 }
 
 // ---------------------------------------------------------------------------
-// Losses of detection (O4)
+// Entry runs (O4): the animal absent, or seen only as a partial blob at one hole
 // ---------------------------------------------------------------------------
 
-interface Loss {
+interface EntryRun {
   start: number;
   end: number;
   toEnd: boolean;
+  /** First to last frame of the run (the documented duration convention). */
   durationSeconds: number;
-  /** Index of the last positioned frame before the loss, or -1. */
+  /** Index of the last positioned frame before the run, or -1. */
   lastSeen: number;
-  /** Index of the first positioned frame after the loss, or -1. */
+  /** Index of the frame that ended the run — a full-size detection, or a partial blob at another hole — or -1. */
   reappear: number;
-  /** First frame the user marked "in the escape box" inside the loss, or -1. */
+  /** First frame the user marked "in the escape box" inside the run, or -1. */
   inEscapeBoxFrom: number;
+  /** The hole the run's partial detections sit at, or -1 when every frame is absent. */
+  partialHole: number;
+  partialFrames: number;
+  absentFrames: number;
 }
 
-function findLosses(a: TrackArrays, frames: readonly TrackFrame[], from: number): Loss[] {
-  const losses: Loss[] = [];
+/**
+ * Maximal stretches of frames from `from` in which every frame is either
+ * unpositioned or a partial detection at one and the same hole. Any full-size
+ * detection, and a partial blob at a different hole or away from every hole,
+ * ends a run ("no full-size detection elsewhere during the run", O4).
+ */
+function findEntryRuns(
+  a: TrackArrays,
+  frames: readonly TrackFrame[],
+  pts: EventPoints,
+  from: number,
+): EntryRun[] {
+  const runs: EntryRun[] = [];
   let i = from;
   const n = a.length;
   while (i < n) {
-    if (a.cValid[i] === 1) {
+    if (a.cValid[i] === 1 && pts.partialAt[i]! < 0) {
       i++;
       continue;
     }
     const start = i;
     let inEscapeBoxFrom = -1;
-    while (i < n && a.cValid[i] === 0) {
-      if (inEscapeBoxFrom < 0 && frames[i]!.reason === IN_ESCAPE_BOX_REASON) inEscapeBoxFrom = i;
+    let partialHole = -1;
+    let partialFrames = 0;
+    let absentFrames = 0;
+    while (i < n) {
+      if (a.cValid[i] === 0) {
+        absentFrames++;
+        if (inEscapeBoxFrom < 0 && frames[i]!.reason === IN_ESCAPE_BOX_REASON) inEscapeBoxFrom = i;
+        i++;
+        continue;
+      }
+      const hole = pts.partialAt[i]!;
+      if (hole < 0 || (partialHole >= 0 && hole !== partialHole)) break;
+      partialHole = hole;
+      partialFrames++;
       i++;
     }
     const end = i - 1;
-    losses.push({
+    runs.push({
       start,
       end,
       toEnd: end === n - 1,
@@ -210,120 +260,134 @@ function findLosses(a: TrackArrays, frames: readonly TrackFrame[], from: number)
       lastSeen: start > from && a.cValid[start - 1] === 1 ? start - 1 : -1,
       reappear: end + 1 < n ? end + 1 : -1,
       inEscapeBoxFrom,
+      partialHole,
+      partialFrames,
+      absentFrames,
     });
   }
-  return losses;
+  return runs;
 }
 
-type LossOutcome =
+type RunOutcome =
   | { kind: 'escape_entry'; hole: number; persistent: boolean; startFrame: number; byUser: boolean }
   | { kind: 'investigation'; hole: number }
   | { kind: 'tracking_failure'; hole: number | null }
   | { kind: 'none' };
 
-interface ClassifiedLoss {
-  loss: Loss;
-  outcome: LossOutcome;
+interface ClassifiedRun {
+  run: EntryRun;
+  outcome: RunOutcome;
+  /** The hole the run is at (its partial blobs, else the last-seen point within the entry radius), or -1. */
+  hole: number;
   lastSeenHole: number;
   lastSeenDistance_px: number;
   reappearNearSameHole: boolean;
 }
 
-function classifyLoss(
-  loss: Loss,
+function classifyRun(
+  run: EntryRun,
   a: TrackArrays,
   g: MazeGeometry,
   p: Parameters,
   pts: EventPoints,
-): ClassifiedLoss {
-  const lastSeenHole = loss.lastSeen >= 0 ? pts.nearest[loss.lastSeen]! : -1;
+): ClassifiedRun {
+  const lastSeenHole = run.lastSeen >= 0 ? pts.nearest[run.lastSeen]! : -1;
   const lastSeenDistance_px =
-    loss.lastSeen >= 0 ? pts.nearestDistance_px[loss.lastSeen]! : Number.NaN;
+    run.lastSeen >= 0 ? pts.nearestDistance_px[run.lastSeen]! : Number.NaN;
+  // where the run is: at the hole its partial blobs sit at, else where the animal was last seen
+  // if that was within the entry radius of a hole
+  const hole =
+    run.partialHole >= 0
+      ? run.partialHole
+      : run.lastSeen >= 0 && lastSeenDistance_px <= g.escapeRadius_px
+        ? lastSeenHole
+        : -1;
   const reappearNearSameHole =
-    loss.reappear >= 0 &&
-    lastSeenHole >= 0 &&
-    distanceToHole_px(g, pts.ex[loss.reappear]!, pts.ey[loss.reappear]!, lastSeenHole) <=
+    run.reappear >= 0 &&
+    hole >= 0 &&
+    distanceToHole_px(g, pts.ex[run.reappear]!, pts.ey[run.reappear]!, hole) <=
       g.investigationRadius_px;
-  const base = { loss, lastSeenHole, lastSeenDistance_px, reappearNearSameHole };
-  if (loss.inEscapeBoxFrom >= 0) {
+  const base = { run, hole, lastSeenHole, lastSeenDistance_px, reappearNearSameHole };
+  if (run.inEscapeBoxFrom >= 0) {
     // the user says where the animal went in; whether it stayed follows the same O4 rule as any entry
-    const markedDuration = a.t[loss.end]! - a.t[loss.inEscapeBoxFrom]!;
+    const markedDuration = a.t[run.end]! - a.t[run.inEscapeBoxFrom]!;
     return {
       ...base,
       outcome: {
         kind: 'escape_entry',
         hole: g.targetIndex,
-        persistent: loss.toEnd || markedDuration >= p.escapeEntry.persistCutoff_s,
-        startFrame: loss.inEscapeBoxFrom,
+        persistent: run.toEnd || markedDuration >= p.escapeEntry.persistCutoff_s,
+        startFrame: run.inEscapeBoxFrom,
         byUser: true,
       },
     };
   }
-  const longEnough = loss.durationSeconds >= p.escapeEntry.minDuration_s;
-  const entryShaped =
-    loss.lastSeen >= 0 &&
-    lastSeenDistance_px <= g.escapeRadius_px &&
-    longEnough &&
-    (loss.reappear < 0 || reappearNearSameHole);
+  const longEnough = run.durationSeconds >= p.escapeEntry.minDuration_s;
+  const entryShaped = hole >= 0 && longEnough && (run.reappear < 0 || reappearNearSameHole);
   if (entryShaped) {
-    if (lastSeenHole === g.targetIndex) {
-      const persistent = loss.toEnd || loss.durationSeconds >= p.escapeEntry.persistCutoff_s;
+    if (hole === g.targetIndex) {
+      const persistent = run.toEnd || run.durationSeconds >= p.escapeEntry.persistCutoff_s;
       return {
         ...base,
-        outcome: {
-          kind: 'escape_entry',
-          hole: lastSeenHole,
-          persistent,
-          startFrame: loss.start,
-          byUser: false,
-        },
+        outcome: { kind: 'escape_entry', hole, persistent, startFrame: run.start, byUser: false },
       };
     }
-    return { ...base, outcome: { kind: 'investigation', hole: lastSeenHole } };
+    return { ...base, outcome: { kind: 'investigation', hole } };
   }
-  if (longEnough) {
-    const atHole = loss.lastSeen >= 0 && lastSeenDistance_px <= g.investigationRadius_px;
+  // a run the animal was actually lost in (not merely seen small) that is long enough but not
+  // entry-shaped is a tracking failure; a partial-only run stays ordinary dwell
+  if (longEnough && run.absentFrames > 0) {
+    const atHole = run.lastSeen >= 0 && lastSeenDistance_px <= g.investigationRadius_px;
     return { ...base, outcome: { kind: 'tracking_failure', hole: atHole ? lastSeenHole : null } };
   }
   return { ...base, outcome: { kind: 'none' } };
 }
 
-function lossEvidence(
-  c: ClassifiedLoss,
+function runEvidence(
+  c: ClassifiedRun,
   a: TrackArrays,
   frames: readonly TrackFrame[],
   g: MazeGeometry,
   p: Parameters,
   pts: EventPoints,
 ): string {
-  const { loss } = c;
+  const { run } = c;
   const parts: string[] = [];
-  const lostAt = `lost from view at frame ${frames[loss.start]!.frameIndex} (${s2(a.t[loss.start]!)})`;
-  const lasted = loss.toEnd
-    ? `the loss lasted ${s2(loss.durationSeconds)} to the end of the video with no reappearance`
-    : `the loss lasted ${s2(loss.durationSeconds)}`;
-  if (loss.lastSeen >= 0) {
-    const where =
-      c.lastSeenHole >= 0
-        ? `last seen ${cm1(c.lastSeenDistance_px / g.pxPerCm)} from the centre of ${holeName(g, c.lastSeenHole)} (${(c.lastSeenDistance_px / g.holeRadius_px).toFixed(2)} × hole radius; entry radius ${p.escapeEntry.radiusFactor} ×, investigation radius ${p.holeInvestigation.radiusFactor} ×), ${cm1(distanceFromCentre_cm(g, pts.ex[loss.lastSeen]!, pts.ey[loss.lastSeen]!))} from the platform centre`
-        : 'last seen away from every hole';
-    parts.push(`${lostAt}, ${where}; ${lasted}.`);
+  const lasted = run.toEnd
+    ? `the run lasted ${s2(run.durationSeconds)} to the end of the video with no full-size detection afterwards`
+    : `the run lasted ${s2(run.durationSeconds)}`;
+  if (run.partialFrames > 0) {
+    const absent = run.absentFrames > 0 ? ` and not detected at all on ${run.absentFrames}` : '';
+    parts.push(
+      `Seen only as a small or fragmented blob on ${run.partialFrames} frame${run.partialFrames === 1 ? '' : 's'}${absent}, ${frameSpan(a, frames, run.start, run.end)}, within ${p.escapeEntry.radiusFactor} × hole radius (${cm1(g.escapeRadius_px / g.pxPerCm)}) of ${holeName(g, run.partialHole)}; ${lasted}.`,
+    );
   } else {
-    parts.push(`${lostAt} with no positioned frame before it in the trial; ${lasted}.`);
+    const lostAt = `lost from view at frame ${frames[run.start]!.frameIndex} (${s2(a.t[run.start]!)})`;
+    if (run.lastSeen >= 0) {
+      const where =
+        c.lastSeenHole >= 0
+          ? `last seen ${cm1(c.lastSeenDistance_px / g.pxPerCm)} from the centre of ${holeName(g, c.lastSeenHole)} (${(c.lastSeenDistance_px / g.holeRadius_px).toFixed(2)} × hole radius; entry radius ${p.escapeEntry.radiusFactor} ×, investigation radius ${p.holeInvestigation.radiusFactor} ×), ${cm1(distanceFromCentre_cm(g, pts.ex[run.lastSeen]!, pts.ey[run.lastSeen]!))} from the platform centre`
+          : 'last seen away from every hole';
+      parts.push(`${lostAt}, ${where}; ${lasted}.`);
+    } else {
+      parts.push(`${lostAt} with no positioned frame before it in the trial; ${lasted}.`);
+    }
   }
-  if (loss.reappear >= 0) {
-    const r = loss.reappear;
+  if (run.reappear >= 0) {
+    const r = run.reappear;
     const back =
-      c.lastSeenHole >= 0
-        ? `${cm1(distanceToHole_px(g, pts.ex[r]!, pts.ey[r]!, c.lastSeenHole) / g.pxPerCm)} from ${holeName(g, c.lastSeenHole)} (${c.reappearNearSameHole ? 'the same hole' : 'elsewhere'})`
+      c.hole >= 0
+        ? `${cm1(distanceToHole_px(g, pts.ex[r]!, pts.ey[r]!, c.hole) / g.pxPerCm)} from ${holeName(g, c.hole)} (${c.reappearNearSameHole ? 'the same hole' : 'elsewhere'})`
         : `${cm1(pts.nearestDistance_px[r]! / g.pxPerCm)} from its nearest hole ${pts.nearest[r]}`;
     const moved =
-      loss.lastSeen >= 0
-        ? `, ${cm1(Math.hypot(pts.ex[r]! - pts.ex[loss.lastSeen]!, pts.ey[r]! - pts.ey[loss.lastSeen]!) / g.pxPerCm)} from where it was lost`
+      run.lastSeen >= 0
+        ? `, ${cm1(Math.hypot(pts.ex[r]! - pts.ex[run.lastSeen]!, pts.ey[r]! - pts.ey[run.lastSeen]!) / g.pxPerCm)} from where it was last seen full-size`
         : '';
-    parts.push(`Reappeared at frame ${frames[r]!.frameIndex} (${s2(a.t[r]!)}) ${back}${moved}.`);
+    parts.push(
+      `Seen full-size again at frame ${frames[r]!.frameIndex} (${s2(a.t[r]!)}) ${back}${moved}.`,
+    );
   }
-  if (loss.lastSeen >= 0) parts.push(`Before the loss the ${blobTrend(a, loss.lastSeen)}.`);
+  if (run.lastSeen >= 0) parts.push(`Before the run the ${blobTrend(a, run.lastSeen)}.`);
   return parts.join(' ');
 }
 
@@ -335,8 +399,8 @@ interface Bout {
   hole: number;
   start: number;
   end: number;
-  /** Set when the bout is an entry-shaped loss at a non-target hole (O4). */
-  unlikelyLoss: ClassifiedLoss | null;
+  /** Set when the bout is an entry-shaped run at a non-target hole (O4). */
+  unlikelyRun: ClassifiedRun | null;
 }
 
 interface MergedBout extends Bout {
@@ -355,7 +419,7 @@ function findBouts(pts: EventPoints, from: number, to: number): Bout[] {
     }
     const start = i;
     while (i <= to && pts.holeAt[i] === k) i++;
-    bouts.push({ hole: k, start, end: i - 1, unlikelyLoss: null });
+    bouts.push({ hole: k, start, end: i - 1, unlikelyRun: null });
   }
   return bouts;
 }
@@ -376,7 +440,7 @@ function mergeBouts(bouts: Bout[], a: TrackArrays, mergeGap_s: number): MergedBo
         current.largestGap_s = Math.max(current.largestGap_s, a.t[b.start]! - a.t[current.end]!);
         current.end = Math.max(current.end, b.end);
         current.boutCount++;
-        current.unlikelyLoss = current.unlikelyLoss ?? b.unlikelyLoss;
+        current.unlikelyRun = current.unlikelyRun ?? b.unlikelyRun;
       } else {
         current = { ...b, boutCount: 1, largestGap_s: 0 };
         merged.push(current);
@@ -472,10 +536,12 @@ export interface AutoEvents {
 }
 
 /**
- * Losses are classified over [start, end of video] so the trial end can be
- * found; investigations are then detected over [start, end], so one still in
- * progress at a cutoff ends there and says so. A loss event keeps the span of
- * its loss. Only events that begin within the trial are emitted.
+ * Entry runs are classified over [start, end of video] so the trial end can
+ * be found; investigations are then detected over [start, end], so one still
+ * in progress at a cutoff ends there and says so. A run event keeps the span
+ * of its run, and the partial frames inside an entry (or an unlikely entry)
+ * belong to that event, not to a dwell bout of their own. Only events that
+ * begin within the trial are emitted.
  */
 export function detectAutoEvents(
   ctx: EventContext,
@@ -496,8 +562,8 @@ export function detectAutoEvents(
     };
   }
   const cutoff = cutoffFrame(a, startFrame, p.trialCutoff_s);
-  const classified = findLosses(a, frames, startFrame).map((loss) =>
-    classifyLoss(loss, a, g, p, pts),
+  const classified = findEntryRuns(a, frames, pts, startFrame).map((run) =>
+    classifyRun(run, a, g, p, pts),
   );
   let persistentEscapeStartFrame: number | null = null;
   for (const c of classified) {
@@ -510,10 +576,18 @@ export function detectAutoEvents(
   const endFrame = end.endFrame!;
   const events: EventRecord[] = [];
 
-  const bouts = findBouts(pts, startFrame, endFrame);
+  // the partial frames of an entry run are the entry, not dwell: mask them out of the bouts
+  let holeAtForBouts = pts.holeAt;
   for (const c of classified) {
-    if (c.outcome.kind === 'investigation' && c.loss.start <= endFrame) {
-      bouts.push({ hole: c.outcome.hole, start: c.loss.start, end: c.loss.end, unlikelyLoss: c });
+    if (c.outcome.kind !== 'escape_entry' && c.outcome.kind !== 'investigation') continue;
+    if (c.run.partialFrames === 0) continue;
+    if (holeAtForBouts === pts.holeAt) holeAtForBouts = pts.holeAt.slice();
+    holeAtForBouts.fill(-1, c.run.start, c.run.end + 1);
+  }
+  const bouts = findBouts({ ...pts, holeAt: holeAtForBouts }, startFrame, endFrame);
+  for (const c of classified) {
+    if (c.outcome.kind === 'investigation' && c.run.start <= endFrame) {
+      bouts.push({ hole: c.outcome.hole, start: c.run.start, end: c.run.end, unlikelyRun: c });
     }
   }
   for (const b of mergeBouts(bouts, a, p.holeInvestigation.mergeGap_s)) {
@@ -521,13 +595,13 @@ export function detectAutoEvents(
     if (duration < p.holeInvestigation.minDuration_s) continue;
     const d = spanDistances(a, g, pts, b.hole, b.start, b.end);
     const parts: string[] = [];
-    if (b.unlikelyLoss !== null) {
+    if (b.unlikelyRun !== null) {
       parts.push(
-        `Physically unlikely — review: an entry-shaped loss of detection at ${holeName(g, b.hole)}, where there is no escape box; counted as an investigation. ${lossEvidence(b.unlikelyLoss, a, frames, g, p, pts)}`,
+        `Physically unlikely — review: an entry-shaped run (the animal absent or seen only as a small or fragmented blob) at ${holeName(g, b.hole)}, where there is no escape box; counted as an investigation. ${runEvidence(b.unlikelyRun, a, frames, g, p, pts)}`,
       );
     }
     parts.push(
-      `${b.unlikelyLoss === null ? `${holeName(g, b.hole)}.` : ''} Event point within ${p.holeInvestigation.radiusFactor} × hole radius (${cm1(g.investigationRadius_px / g.pxPerCm)}) for ${s2(duration)}, ${frameSpan(a, frames, b.start, b.end)}${b.end === endFrame && endFrame + 1 < a.length && pts.holeAt[endFrame + 1] === b.hole ? ` (still at the hole when the trial ended at ${s2(a.t[endFrame]!)})` : ''}.`.trim(),
+      `${b.unlikelyRun === null ? `${holeName(g, b.hole)}.` : ''} Event point within ${p.holeInvestigation.radiusFactor} × hole radius (${cm1(g.investigationRadius_px / g.pxPerCm)}) for ${s2(duration)}, ${frameSpan(a, frames, b.start, b.end)}${b.end === endFrame && endFrame + 1 < a.length && pts.holeAt[endFrame + 1] === b.hole ? ` (still at the hole when the trial ended at ${s2(a.t[endFrame]!)})` : ''}.`.trim(),
     );
     parts.push(pointUsedSentence(d));
     parts.push(noseSentence(d));
@@ -546,12 +620,12 @@ export function detectAutoEvents(
       parts.join(' '),
     );
     events.push(ev);
-    if (b.unlikelyLoss !== null) {
+    if (b.unlikelyRun !== null) {
       flags.push({
         code: 'physically_unlikely_entry',
         eventId: ev.id,
         frameIndex: ev.startFrame,
-        message: `An entry-shaped loss of detection at ${holeName(g, b.hole)} lasting ${s2(b.unlikelyLoss.loss.durationSeconds)}: there is no escape box there, so this needs a look.`,
+        message: `An entry-shaped run at ${holeName(g, b.hole)} lasting ${s2(b.unlikelyRun.run.durationSeconds)}: there is no escape box there, so this needs a look.`,
       });
     }
   }
@@ -559,26 +633,28 @@ export function detectAutoEvents(
   for (const c of classified) {
     const o = c.outcome;
     if (o.kind === 'none' || o.kind === 'investigation') continue;
-    const start = o.kind === 'escape_entry' ? o.startFrame : c.loss.start;
+    const start = o.kind === 'escape_entry' ? o.startFrame : c.run.start;
     if (start > endFrame) continue;
-    const lastSeen = c.loss.lastSeen;
+    const lastSeen = c.run.lastSeen;
     const hole = o.hole;
+    // the closest approach covers the walk up to the hole and, for a partial run, the run itself
     const spanStart =
       lastSeen >= 0 && hole !== null ? approachStart(pts, lastSeen, hole, startFrame) : -1;
+    const spanEnd = c.run.partialFrames > 0 ? c.run.end : lastSeen;
     const d =
       spanStart >= 0 && hole !== null
-        ? spanDistances(a, g, pts, hole, spanStart, lastSeen)
+        ? spanDistances(a, g, pts, hole, spanStart, spanEnd)
         : { minNose_cm: Number.NaN, minCentroid_cm: Number.NaN, noseFrames: 0, centroidFrames: 0 };
     const pointUsed: NamedPointId =
       lastSeen >= 0 && pts.useNose[lastSeen] === 1 ? 'nose' : 'centroid';
-    const evidence = lossEvidence(c, a, frames, g, p, pts);
+    const evidence = runEvidence(c, a, frames, g, p, pts);
     if (o.kind === 'escape_entry') {
       const head = o.byUser
-        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion${o.persistent ? `; persistent (${c.loss.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}), so the trial ends here.` : `; the marked range lasts less than ${p.escapeEntry.persistCutoff_s} s and the animal is positioned again afterwards, so the trial continues.`}`
-        : `Escape-box entry at the target hole ${hole}: ${evidence} ${o.persistent ? `Persistent (${c.loss.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}): the trial ends at the first lost frame.` : `Not persistent (< ${p.escapeEntry.persistCutoff_s} s and the animal reappeared at the same hole), so the trial continues.`}`;
+        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion${o.persistent ? `; persistent (${c.run.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}), so the trial ends here.` : `; the marked range lasts less than ${p.escapeEntry.persistCutoff_s} s and the animal is positioned again afterwards, so the trial continues.`}`
+        : `Escape-box entry at the target hole ${hole}: ${evidence} ${o.persistent ? `Persistent (${c.run.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}): the trial ends at the first frame of the run.` : `Not persistent (< ${p.escapeEntry.persistCutoff_s} s and the animal was seen full-size again at the same hole), so the trial continues.`}`;
       const tail = spanStart >= 0 ? ` ${noseSentence(d)}` : '';
       events.push(
-        record(ctx, 'escape_entry', hole, start, c.loss.end, d, pointUsed, `${head}${tail}`),
+        record(ctx, 'escape_entry', hole, start, c.run.end, d, pointUsed, `${head}${tail}`),
       );
     } else {
       const where = hole === null ? 'away from every hole' : `at ${holeName(g, hole)}`;
@@ -587,7 +663,7 @@ export function detectAutoEvents(
         'tracking_failure',
         hole,
         start,
-        c.loss.end,
+        c.run.end,
         d,
         pointUsed,
         `Tracking failure ${where}: ${evidence} Not an investigation, an entry or an error; listed for review and in the quality report.${hole !== null ? ' Lost at a hole: review whether this was an entry.' : ''}`,
@@ -598,7 +674,7 @@ export function detectAutoEvents(
           code: 'tracking_failure_at_hole',
           eventId: ev.id,
           frameIndex: ev.startFrame,
-          message: `Tracking was lost for ${s2(c.loss.durationSeconds)} at ${holeName(g, hole)} without the signature of an entry; check whether the animal went in.`,
+          message: `Tracking was lost for ${s2(c.run.durationSeconds)} at ${holeName(g, hole)} without the signature of an entry; check whether the animal went in.`,
         });
       }
     }

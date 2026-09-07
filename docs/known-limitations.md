@@ -88,14 +88,14 @@ session it is found (D39).
   it without complaint, but it is a large thing to email. The file is pretty-printed for
   readability; compact JSON, or a per-frame encoding narrower than one object per frame, would cut it
   substantially and is a contract change, not a formatting one.
-- **An escape-box entry needs a full loss of detection.** O4 reads an entry as a loss of detection
-  whose last-seen event point is within 1.0 × hole radius of the target. In the sample recordings
-  the animal's rear stays visible while its head is in a hole (`small_blob` keeps a positioned
-  centroid), so no entry is detected: test51's last 15 s head-in-hole at hole 19 is an
-  investigation, and every sample trial is `review` under O5. A rear-only centroid also sits about
-  a body length from the hole centre, so even a full disappearance from that pose would fall
-  outside the entry radius and read as a tracking failure at the hole. The radius is O4's default
-  and was not widened (`prototypes/analysis/RESULTS.md`).
+- **A head-in-hole dwell at a non-target hole of a second or more is flagged for review.** Under
+  the revised O4 a run of partial (`small_blob` / `fragmented`) detections within the entry radius
+  of a hole is entry-shaped, and at a non-target hole that is an investigation flagged "physically
+  unlikely". On these clips the animal rests with its head in non-target holes for seconds at a
+  time (test53's last 89 frames at hole 2 under the recorded map), so such trials carry a review
+  flag and `status: review` even when nothing is wrong with the tracking. The flag is honest about
+  what the rule saw; whether a long head-in-hole dwell at a non-target hole should count as
+  entry-shaped at all is an O4 question.
 - **A parameter change can orphan an event correction.** Event corrections address automatic
   events by an id made of kind, hole and start frame, matched exactly or by span (see
   `docs/data-contracts.md` §6). A change that moves an event away from the frame named in the id,

@@ -101,7 +101,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   const a = buildTrackArrays(cleaned.track, g);
 
   const proposal = proposeTrialStart(cleaned.track, a, corrections);
-  const pts = eventPoints(a, g, parameters);
+  const pts = eventPoints(a, g, parameters, cleaned.track);
   const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts };
 
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);

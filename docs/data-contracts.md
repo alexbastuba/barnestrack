@@ -252,9 +252,9 @@ seconds applied to each frame's own timestamp (D7).
 | `holeInvestigation.radiusFactor`       | × hole radius      | 1.5     | An investigation is counted while the event point (nose when its heading confidence clears the cutoff, else centroid) is within this multiple of the hole radius of a hole centre. | O1 |
 | `holeInvestigation.minDuration_s`      | s                  | 0.2     | Time at a hole, first to last frame within the radius, that a bout needs to count as an investigation.                           | O1 |
 | `holeInvestigation.mergeGap_s`         | s                  | 0.5     | Bouts at the same hole separated by less than this merge into one investigation; a longer gap makes the return a separate event. | O1 |
-| `escapeEntry.radiusFactor`             | × hole radius      | 1.0     | An escape-box entry is a loss of detection whose last-seen event point was within this multiple of the hole radius of the target. | O4 |
-| `escapeEntry.minDuration_s`            | s                  | 1.0     | A loss must last at least this long, with no reappearance away from the hole, to be an entry; at a non-target hole it is an investigation flagged physically unlikely; elsewhere it is a tracking failure. | O4 |
-| `escapeEntry.persistCutoff_s`          | s                  | 3       | The trial ends at the first entry lasting at least this long or to the end of the video; total latency is its first lost frame.  | O4 |
+| `escapeEntry.radiusFactor`             | × hole radius      | 1.0     | An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run. | O4 |
+| `escapeEntry.minDuration_s`            | s                  | 1.0     | A run at the target must last at least this long (first to last frame, no full-size detection elsewhere during it) to be an entry; the same run at a non-target hole is an investigation flagged physically unlikely; a loss this long away from any hole is a tracking failure. | O4 |
+| `escapeEntry.persistCutoff_s`          | s                  | 3       | The trial ends at the first entry lasting at least this long or to the end of the video; total latency is the run's first frame.  | O4 |
 | `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review`.          | O5 |
 | `targetQuadrant.holeSpan`              | holes              | 2.5     | The target quadrant reaches this many hole spacings either side of the target hole (2.5 on a 20-hole ring = 90°).               | O6 |
 | `kinematicsSmoothingWindowFrames`      | frames             | 3       | Median filter width applied to centroid positions for path length and speed only; stored track and events use raw positions.    | O9 |
@@ -323,6 +323,18 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   positioned approach frame, the kinematics fractions of an empty trial) is `NaN`, which JSON
   serialises as `null`; consumers treat non-finite and `null` alike (`isRecorded()`) and a CSV
   writer emits an empty cell for either.
+- **Entry runs (O4, revised 2026-09-06).** A frame is *partial* when its `detectionState` is
+  `low_confidence` with a reason in `ANALYSIS_MODEL.entryPartialReasons` (`small_blob`,
+  `fragmented`) and its event point lies within `escapeEntry.radiusFactor × holeRadius` of a hole;
+  an entry run is a maximal stretch of frames that are each unpositioned or partial at one and the
+  same hole, ended by any full-size detection or a partial blob elsewhere. The run's hole is where
+  its partial blobs sit, else where the animal was last seen when that was within the entry
+  radius. A run at the target of at least `escapeEntry.minDuration_s` whose animal is not seen
+  full-size again elsewhere is an escape entry from the run's first frame; the same run at a
+  non-target hole is an investigation flagged physically unlikely; a run with absent frames that
+  is long enough but not entry-shaped is a tracking failure; anything else is ordinary dwell.
+  The partial frames of an entry (or an unlikely entry) belong to that event, not to a dwell bout,
+  so the approach investigation ends where the run begins.
 - **Event ids and correction matching.** Automatic ids are deterministic from content:
   `auto-<kind>-h<holeIndex|x>-f<startFrame>`; user-added events are `user-<correctionId>`. An event
   correction matches its automatic event by exact id first; otherwise by the automatic event of the

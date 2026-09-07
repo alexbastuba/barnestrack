@@ -303,7 +303,7 @@ describe('derive', () => {
     expect(d.metrics.escaped).toBe(true);
     expect(d.metrics.totalLatency_s).toBeCloseTo(entries[0]!.startTime_s - d.trial.startTime_s, 12);
     expect(d.metrics.totalErrors).toBe(3); // holes 3, 5, 6 — all inside the trial
-    expect(entries[0]!.evidence).toContain('the trial ends at the first lost frame');
+    expect(entries[0]!.evidence).toContain('the trial ends at the first frame of the run');
   });
 
   it('never lets an entry retimed before the trial start end the trial, and flags it', () => {
