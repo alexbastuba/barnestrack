@@ -157,10 +157,14 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   // hatched, says "user" and keeps the automatic hole beside it.
   await rows.first().locator('button').click();
   await expect(rows.first()).toHaveClass(/is-selected/);
+  // The click rebuilt the table under the button; the keys must still reach the step without
+  // tabbing back in from the top of the page.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#panel-review .frame-readout')).toContainText(`Frame ${startFrame + 1} of`);
+  await page.keyboard.press('ArrowLeft');
   const holeText = await rows.first().locator('td').nth(0).textContent();
   const hole = Number(holeText);
   const nextHole = (hole + 1) % 20;
-  await focusTimeline(page);
   await page.keyboard.press('h');
   await page.locator('#panel-review select[aria-label="Hole of the selected event"]').selectOption(String(nextHole));
   await expect(status).toContainText(`Event moved from hole ${hole} to hole ${nextHole}`);

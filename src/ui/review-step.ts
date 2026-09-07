@@ -82,7 +82,7 @@ import {
 } from './review-format.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
 import { Scrubber } from './scrubber.js';
-import { frameAtTime } from './timeline-geometry.js';
+import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
 import {
   eventAtFrame,
   flaggedRuns,
@@ -610,7 +610,8 @@ export function createReviewStep(context: AppContext): Step {
   });
   const playButton = button('Play / pause (Space)', () => togglePlay());
 
-  const toolbar = el('div', { class: 'review-tools', attrs: { role: 'toolbar', 'aria-label': 'Correction tools' } }, [
+  // A group, not a toolbar: the arrows step frames here, they do not move between the buttons.
+  const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools' } }, [
     el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
     el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton]),
     el('div', { class: 'tool-group' }, [
@@ -723,10 +724,10 @@ export function createReviewStep(context: AppContext): Step {
         togglePlay();
         break;
       case 'zoom-in':
-        timeline.zoomBy(1.5);
+        timeline.zoomBy(ZOOM_STEP);
         break;
       case 'zoom-out':
-        timeline.zoomBy(1 / 1.5);
+        timeline.zoomBy(1 / ZOOM_STEP);
         break;
       case 'zoom-fit':
         timeline.zoomFit();
@@ -806,8 +807,15 @@ export function createReviewStep(context: AppContext): Step {
     }
   }
 
-  body.addEventListener('keydown', (event) => {
+  // Listened for on the document, not the step: a mirror re-render replaces the button that was
+  // just activated, which drops focus onto the body — outside the step — and a listener on the
+  // step alone would then hear nothing until the user tabbed all the way back in. Keys are
+  // taken from inside the step, or from a stranded body focus while the step is the one shown.
+  const stepIsShown = (): boolean => body.isConnected && body.offsetParent !== null;
+  document.addEventListener('keydown', (event) => {
     const target = event.target as HTMLElement | null;
+    const inside = target !== null && body.contains(target);
+    if (!inside && !(target === document.body && stepIsShown())) return;
     const tag = target?.tagName;
     const editing = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
     if (editing && event.key !== 'Escape') return;
@@ -1036,6 +1044,7 @@ export function createReviewStep(context: AppContext): Step {
             timeline.setSelection(ev.id, null);
             seek(ev.startFrame, true);
             renderEventsTable();
+            timeline.surface.focus(); // the table was rebuilt under this button
           }, { class: 'metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
         ]),
         el('td', { text: ev.holeIndex === null ? '—' : String(ev.holeIndex) }),
@@ -1101,7 +1110,16 @@ export function createReviewStep(context: AppContext): Step {
       const marks = layer ? layer.entries.filter((e) => (e.kind === 'point' && e.frameIndex === f) || (e.kind === 'range' && e.startFrame <= f && f <= e.endFrame) || (e.kind === 'trial_start' && e.frameIndex === f)) : [];
       rows.push(
         el('tr', { class: `${f === playhead ? 'is-target ' : ''}${marks.length > 0 ? 'is-corrected' : ''}`.trim() }, [
-          el('th', { attrs: { scope: 'row' } }, [button(String(f), () => seek(f, true), { class: 'metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } })]),
+          el('th', { attrs: { scope: 'row' } }, [
+            button(
+              String(f),
+              () => {
+                seek(f, true);
+                timeline.surface.focus(); // the rows were rebuilt under this button
+              },
+              { class: 'metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } },
+            ),
+          ]),
           el('td', { text: frame.t_s.toFixed(3) }),
           el('td', { text: STATE_WORDS[frame.detectionState] }),
           el('td', { text: frame.reason }),
@@ -1147,7 +1165,16 @@ export function createReviewStep(context: AppContext): Step {
             ' ',
             orphan ? el('span', { class: 'orphan', text: `no longer matches an automatic event: ${orphan.message}` }) : null,
             ' ',
-            frame !== null ? button('Seek', () => seek(frame, true), { attrs: { 'aria-label': `Seek to frame ${frame}` } }) : null,
+            frame !== null
+              ? button(
+                  'Seek',
+                  () => {
+                    seek(frame, true);
+                    timeline.surface.focus();
+                  },
+                  { attrs: { 'aria-label': `Seek to frame ${frame}` } },
+                )
+              : null,
             ' ',
             button('Revert to automatic', () => {
               const current = currentLayer();
@@ -1157,6 +1184,8 @@ export function createReviewStep(context: AppContext): Step {
               } else {
                 commit(revertCorrection(current, entry.id), `Reverted: ${describeCorrection(entry)}`);
               }
+              // The list was rebuilt under this button; keep the keyboard in the step.
+              timeline.surface.focus();
             }),
           ]);
         }),

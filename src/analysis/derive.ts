@@ -155,13 +155,18 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     endReason: autoEvents.endReason,
   });
 
+  // A flag raised on an automatic event goes with the event: once the user has deleted it, the
+  // flag has nothing to point at, and a trial must be able to reach "ok" after review (D20).
+  const liveEventIds = new Set(correctedEvents.events.map((ev) => ev.id));
+  const flagFollowsEvent = (f: ReviewFlag): boolean =>
+    f.code === 'physically_unlikely_entry' || f.code === 'tracking_failure_at_hole';
   const reviewFlags: ReviewFlag[] = [
     ...corrected.flags,
     ...proposal.flags,
     ...autoEvents.flags,
     ...correctedEvents.flags,
     ...endFlags,
-  ];
+  ].filter((f) => !(flagFollowsEvent(f) && f.eventId !== undefined && !liveEventIds.has(f.eventId)));
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
   // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
   // stamped on this analysis would then name a configuration that never ran, so say so.

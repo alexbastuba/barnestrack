@@ -96,10 +96,9 @@ export function seekFrameFor(seek: MetricSeek, analysis: DerivedAnalysis): numbe
       return analysis.trial.endFrame;
     case 'firstTarget':
       return firstTargetEvent(analysis.events)?.startFrame ?? null;
-    case 'escape': {
-      const entry = analysis.events.find((e) => e.kind === 'escape_entry');
-      return entry?.startFrame ?? null;
-    }
+    case 'escape':
+      // The entry that ended the trial, not the first entry-shaped run at the target.
+      return analysis.trial.endReason === 'escape' ? analysis.trial.endFrame : null;
     case 'firstError': {
       const error = analysis.events.find((e) => e.kind === 'investigation' && !e.isTarget);
       return error?.startFrame ?? null;

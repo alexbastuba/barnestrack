@@ -31,7 +31,7 @@ export type ParameterDefinitionLookup = (path: string) => string | undefined;
 /** Units of the leaves the configuration module describes only as a group, or with a note. */
 const UNIT_OVERRIDES: Record<string, string> = {
   'tracking.threshold.mode': '',
-  'tracking.threshold.manualValue': '0–255',
+  'tracking.threshold.manualValue': '1–255',
   'tracking.expectedBlobArea_cm2': 'cm² (blank = learn from the video)',
 };
 

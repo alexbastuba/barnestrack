@@ -90,7 +90,7 @@ export const REVIEW_KEYS: readonly KeyBinding[] = [
   { keys: [' '], shift: false, when: 'always', action: 'play-pause', legend: 'Space', description: 'Play or pause at normal speed' },
   { keys: ['+', '='], shift: false, when: 'always', action: 'zoom-in', legend: '+', description: 'Zoom the timeline in around the playhead' },
   { keys: ['+'], shift: true, when: 'always', action: 'zoom-in', legend: 'Shift + =', description: 'Zoom the timeline in around the playhead' },
-  { keys: ['-', '_'], shift: false, when: 'always', action: 'zoom-out', legend: '−', description: 'Zoom the timeline out' },
+  { keys: ['-'], shift: false, when: 'always', action: 'zoom-out', legend: '−', description: 'Zoom the timeline out' },
   { keys: ['0'], shift: false, when: 'always', action: 'zoom-fit', legend: '0', description: 'Show the whole clip' },
   { keys: ['n'], shift: false, when: 'always', action: 'tool-nose', legend: 'N', description: 'Arm the nose: click the frame or use the arrows to place it' },
   { keys: ['c'], shift: false, when: 'always', action: 'tool-centroid', legend: 'C', description: 'Arm the centroid: click the frame or use the arrows to place it' },

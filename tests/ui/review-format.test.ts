@@ -112,7 +112,10 @@ describe('seekFrameFor', () => {
     const target = analysis.events.find((e) => e.isTarget)!;
     expect(seekFrameFor('firstTarget', analysis)).toBe(target.startFrame);
     const entry = analysis.events.find((e) => e.kind === 'escape_entry')!;
-    expect(seekFrameFor('escape', analysis)).toBe(entry.startFrame);
+    // The frame that defines total latency: the trial's end, which is this entry's first frame.
+    expect(analysis.trial.endReason).toBe('escape');
+    expect(seekFrameFor('escape', analysis)).toBe(analysis.trial.endFrame);
+    expect(analysis.trial.endFrame).toBe(entry.startFrame);
     expect(seekFrameFor('trialEnd', analysis)).toBe(analysis.trial.endFrame);
     expect(seekFrameFor(null, analysis)).toBeNull();
   });

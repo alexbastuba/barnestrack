@@ -506,6 +506,40 @@ describe('derive', () => {
     expect(d.metrics.primaryErrors).toBe(derive(input).metrics.primaryErrors);
   });
 
+  it('drops the review flag of a flagged event the user deleted, so the trial can reach ok (D20)', () => {
+    // A two-second head-in-hole run at a non-target hole (flagged physically unlikely), then a
+    // clean escape at the target.
+    const script: Segment[] = [
+      { kind: 'empty', seconds: 1 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 2, state: 'low_confidence', reason: 'small_blob' },
+      { kind: 'dwell', hole: 3, seconds: 0.3 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5, area: [500, 150] },
+      { kind: 'lost', seconds: 3.5 },
+    ];
+    const before = derive(inputFor(script).input);
+    const flag = before.reviewFlags.find((f) => f.code === 'physically_unlikely_entry');
+    expect(flag?.eventId).toBeDefined();
+    expect(before.metrics.escaped).toBe(true);
+    expect(before.metrics.status).toBe('review');
+
+    const deletion: CorrectionEntry = {
+      kind: 'event',
+      id: 'del-1',
+      timestamp: '2026-09-07T10:00:00.000Z',
+      source: 'user',
+      action: 'delete',
+      eventId: flag!.eventId!,
+    };
+    const after = derive(inputFor(script, { corrections: [deletion] }).input);
+    expect(after.events.map((e) => e.id)).not.toContain(flag!.eventId);
+    expect(after.reviewFlags.map((f) => f.code)).not.toContain('physically_unlikely_entry');
+    expect(after.metrics.status).toBe('ok');
+  });
+
   it('handles an empty track and a never-tracked track without throwing', () => {
     const empty = derive({
       ...inputFor([{ kind: 'dwell', seconds: 0.1 }]).input,
