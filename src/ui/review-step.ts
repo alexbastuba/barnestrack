@@ -149,7 +149,7 @@ export function createReviewStep(context: AppContext): Step {
   let playing: { raf: number; wallStart: number; timeStart: number } | null = null;
   let lastEpoch = store.epoch;
   let lastVideoId: VideoId | null = null;
-  let lastAttached = false;
+  let lastTimebaseSource: unknown = null;
 
   const body = el('div', { class: 'review-step' });
 
@@ -227,6 +227,7 @@ export function createReviewStep(context: AppContext): Step {
       analysis = null;
       model = null;
       cacheKey = null;
+      console.error('BarnesTrack: the analysis could not be computed', error);
       context.announce(`The analysis could not be computed: ${(error as Error).message}`);
     } finally {
       deriving = false;
@@ -515,6 +516,14 @@ export function createReviewStep(context: AppContext): Step {
   const scrubber = new Scrubber({
     onSeek: (frameIndex) => onPlayhead(frameIndex),
     announce: context.announce,
+  });
+  // `F` puts the caret in the frame field; Enter or Escape hands the keyboard back to the
+  // timeline so the single-key actions work again without reaching for the mouse.
+  scrubber.frameField.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    event.preventDefault();
+    if (event.key === 'Enter') scrubber.seek(Number(scrubber.frameField.value), true);
+    timeline.surface.focus();
   });
 
   function seek(frame: number, announce: boolean): void {
@@ -898,7 +907,7 @@ export function createReviewStep(context: AppContext): Step {
     if (store.epoch !== lastEpoch) {
       lastEpoch = store.epoch;
       lastVideoId = null;
-      lastAttached = false;
+      lastTimebaseSource = null;
       selectedVideoId = null;
       selectedEventId = null;
       selectedEdge = null;
@@ -916,10 +925,14 @@ export function createReviewStep(context: AppContext): Step {
     ensureAnalysis();
 
     const isAttached = video !== null && store.isAttached(video.id);
-    if (video && (video.id !== lastVideoId || isAttached !== lastAttached)) {
+    // The scrubber runs on the file's frame table when the video is attached and on the
+    // track otherwise; either can arrive after the video did (a restore emits more than
+    // once), so the timebase source is part of the key, not just the video.
+    const attachment = video ? store.attachmentFor(video.id) : undefined;
+    const timebaseSource: unknown = attachment?.index ?? (analysis ? 'track' : null);
+    if (video && (video.id !== lastVideoId || timebaseSource !== lastTimebaseSource)) {
       lastVideoId = video.id;
-      lastAttached = isAttached;
-      const attachment = store.attachmentFor(video.id);
+      lastTimebaseSource = timebaseSource;
       if (attachment) {
         scrubber.setIndex(attachment.index);
         canvasView.setVideoSize(attachment.index.width, attachment.index.height);
@@ -1159,9 +1172,11 @@ export function createReviewStep(context: AppContext): Step {
           ? el('span', { class: 'metric-plain', text })
           : button(text, () => seek(frame, true), { class: 'metric-value', attrs: { 'aria-label': `${row.label} ${text}: seek to frame ${frame}` } });
       list.append(
-        el('dt', {}, [el('span', { text: row.label }), ' ', disclosure(`Definition (${def.decision})`, [el('p', { text: def.text })])]),
+        el('dt', { text: row.label }),
         el('dd', {}, [
           value,
+          ' ',
+          disclosure(`Definition (${def.decision})`, [el('p', { text: def.text })]),
           row.key === 'status' && a.reviewFlags.length > 0
             ? el('ul', { class: 'notes' }, a.reviewFlags.map((flag) => el('li', {}, [
                 el('span', { text: flag.message }),

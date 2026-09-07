@@ -1151,10 +1151,34 @@ label {
   min-width: 0;
 }
 
-.metric-list details,
-.review-panel .field details {
+/* Definitions sit beside their value or control as a small disclosure, not a boxed block. */
+.metric-list .disclosure,
+.review-panel .field .disclosure {
   display: inline-block;
+  margin: 0;
+  padding: 0 0.375rem;
+  vertical-align: middle;
   font-weight: 400;
+}
+
+.metric-list .disclosure summary,
+.review-panel .field .disclosure summary {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.metric-list .disclosure[open],
+.review-panel .field .disclosure[open] {
+  display: block;
+  margin: 0.25rem 0;
+  padding: 0.25rem 0.5rem;
+}
+
+.metric-list .disclosure p,
+.review-panel .field .disclosure p {
+  margin: 0.25rem 0 0;
+  max-width: 60ch;
 }
 
 /* A value that seeks: styled as a link-like button so it reads as one, and keeps its focus ring. */
