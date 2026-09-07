@@ -213,6 +213,26 @@ describe('the mounted figures section', () => {
     expect(card.querySelectorAll('table tbody tr').length).toBeGreaterThan(0);
   });
 
+  it('does not redraw when nothing the figures read has changed', () => {
+    const session = syntheticSession();
+    const figures = createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {
+      onAnnounce: announce,
+      onGoToTrack: goToTrack,
+    });
+    const drawn = figures.lastDrawMs;
+
+    // The store emits on every autosave completion too, so the step re-renders
+    // with the same session; redrawing eight canvases for that is pure waste.
+    figures.update({ session, videoId: session.videos[0]!.id });
+    expect(figures.lastDrawMs).toBe(drawn);
+
+    // Looking at another video does redraw: the trial named on the canvas moves.
+    const label = (): string => container.querySelector('canvas')!.getAttribute('aria-label')!;
+    const before = label();
+    figures.update({ session, videoId: session.videos[1]!.id });
+    expect(label()).not.toBe(before);
+  });
+
   it('takes its listeners with it when destroyed', () => {
     const session = syntheticSession();
     const figures = createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {

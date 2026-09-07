@@ -113,6 +113,22 @@ export function createReviewFigures(
   let options: FigureOptions = {};
   let exportScale = EXPORT_SCALES[0]!;
   let drawMs = 0;
+  /**
+   * What the last redraw was drawn from, compared by identity. The store emits
+   * on every autosave completion as well as on every edit, and the step
+   * re-renders on each, so without this the eight canvases would be redrawn
+   * half a second after every change for nothing. The store replaces these
+   * objects wholesale rather than mutating them, which is what makes `===`
+   * the right test — the same trick `ensureAnalysis` uses for its derive.
+   */
+  let drawnFrom: {
+    analyses: unknown;
+    videos: unknown;
+    parameters: unknown;
+    mazeMap: unknown;
+    videoId: string | null;
+    options: FigureOptions;
+  } | null = null;
 
   const root = el('section', { id: 'review-figures', class: 'review-figures' });
   const heading = el('h3', { id: 'review-figures-heading', text: 'Figures' });
@@ -123,7 +139,7 @@ export function createReviewFigures(
   colormapSelect.value = COLORMAP_NAMES[0]!;
   colormapSelect.addEventListener('change', () => {
     options = { ...options, colormap: colormapSelect.value as ColormapName };
-    draw();
+    drawIfStale();
     callbacks.onAnnounce(`Figures drawn on the ${colormapSelect.value} colour map. A figure option, not a parameter: no number changed.`);
   });
 
@@ -141,7 +157,7 @@ export function createReviewFigures(
       return;
     }
     options = { ...options, heatmapCellSize_cm: value };
-    draw();
+    drawIfStale();
     callbacks.onAnnounce(`Occupancy heatmap binned at ${value} cm. A figure option, not a parameter: no number changed.`);
   });
 
@@ -228,6 +244,32 @@ export function createReviewFigures(
    * have fixed logical sizes, so the only thing a resize can change is the
    * device pixel ratio (a window moved to another display).
    */
+  /** Redraws only if something the figures read has actually changed. */
+  function drawIfStale(): void {
+    const session = current.session;
+    const next = {
+      analyses: session.analyses,
+      videos: session.videos,
+      parameters: session.parameters,
+      mazeMap: session.mazeMap,
+      videoId: current.videoId,
+      options,
+    };
+    if (
+      drawnFrom &&
+      drawnFrom.analyses === next.analyses &&
+      drawnFrom.videos === next.videos &&
+      drawnFrom.parameters === next.parameters &&
+      drawnFrom.mazeMap === next.mazeMap &&
+      drawnFrom.videoId === next.videoId &&
+      drawnFrom.options === next.options
+    ) {
+      return;
+    }
+    drawnFrom = next;
+    draw();
+  }
+
   function draw(): void {
     const started = performance.now();
     const ratio = previewRatio(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
@@ -318,7 +360,7 @@ export function createReviewFigures(
   if (typeof window !== 'undefined') window.addEventListener('resize', onResize);
 
   renderMissing();
-  draw();
+  drawIfStale();
 
   return {
     get lastDrawMs() {
@@ -327,7 +369,7 @@ export function createReviewFigures(
     update(next: ReviewFiguresProps): void {
       current = next;
       renderMissing();
-      draw();
+      drawIfStale();
     },
     destroy(): void {
       if (resizeTimer !== null) clearTimeout(resizeTimer);
