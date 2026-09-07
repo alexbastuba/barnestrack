@@ -249,7 +249,7 @@ export function createMetricsCard(
 ): Component<MetricsCardProps> {
   let current = props;
 
-  const root = el('section', { class: 'review-panel metrics-card' });
+  const root = el('section', { class: 'metrics-card' });
   const headingId = uniqueId('metrics-heading');
   root.setAttribute('aria-labelledby', headingId);
   root.append(

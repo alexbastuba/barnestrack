@@ -102,7 +102,7 @@ export function createQualityPanel(
   const scale = options.scale ?? 2;
   const getContext = options.getContext ?? ((canvas: HTMLCanvasElement) => canvas.getContext('2d'));
 
-  const root = el('section', { class: 'review-panel quality-panel' });
+  const root = el('section', { class: 'quality-panel' });
   const headingId = uniqueId('quality-heading');
   root.setAttribute('aria-labelledby', headingId);
   root.append(

@@ -42,7 +42,7 @@ export function createEventList(
   /** The ids currently in the list, in the order they are rendered. */
   let order: string[] = [];
 
-  const root = el('section', { class: 'review-panel event-panel' });
+  const root = el('section', { class: 'event-panel' });
   const headingId = uniqueId('events-heading');
   root.setAttribute('aria-labelledby', headingId);
   root.append(

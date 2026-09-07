@@ -197,7 +197,7 @@ export function createParametersPanel(
   const paths = parameterPaths(working);
   const rows: Row[] = [];
 
-  const root = el('section', { class: 'review-panel parameters-panel' });
+  const root = el('section', { class: 'parameters-panel' });
   const headingId = uniqueId('parameters-heading');
   root.setAttribute('aria-labelledby', headingId);
   root.append(

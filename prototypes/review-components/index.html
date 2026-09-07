@@ -20,6 +20,11 @@
        * The harness stacks panels in a column where the Review step lays them
        * out in a grid with its own gap, so the spacing belongs here rather than
        * on `.review-panel` in the app sheet.
+       *
+       * The four hosts carry `.review-panel` because chunk 7b moved the box off
+       * the component roots and onto the Review step's mount points: the
+       * components are content now, and the harness has to provide the same
+       * box for the app sheet's descendant rules to match what the step shows.
        */
       .review-panel + .review-panel {
         margin-top: 0.75rem;
@@ -115,14 +120,14 @@
 
     <div class="columns">
       <div>
-        <div id="parameters"></div>
+        <div id="parameters" class="review-panel"></div>
         <h2>Callback log</h2>
         <pre id="log" role="log" aria-label="Component callbacks, newest last"></pre>
       </div>
       <div>
-        <div id="metrics"></div>
-        <div id="quality"></div>
-        <div id="events"></div>
+        <div id="metrics" class="review-panel"></div>
+        <div id="quality" class="review-panel"></div>
+        <div id="events" class="review-panel"></div>
       </div>
     </div>
 

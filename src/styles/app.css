@@ -1125,6 +1125,27 @@ label {
   grid-column: 1 / -1;
 }
 
+/*
+ * The mount points are the boxes; chunk 7a's components are content inside them
+ * (chunk 7b). The events mount point is also where the event list's height comes
+ * from — the flex chain lets the panel heading stay put while the list scrolls.
+ */
+#review-events {
+  display: flex;
+  flex-direction: column;
+  max-height: 34rem;
+}
+
+#review-events .event-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#review-events .event-list {
+  flex: 1 1 auto;
+}
+
 .review-panel h3 {
   margin: 0 0 0.5rem;
   font-size: 1rem;
@@ -1388,6 +1409,12 @@ button.metric-value:hover:not(:disabled) {
 
 /* --- event list ---------------------------------------------------------- */
 
+/*
+ * The list scrolls, but how tall it may be is the mounting layout's business,
+ * not the component's (chunk 7b): beside chunk 6's timeline a fixed 32rem cap
+ * made the widest panel the tallest thing on the step. `#review-events` below
+ * sets the bound; the dev harness, which has no step layout, gets no cap.
+ */
 .event-list {
   list-style: none;
   margin: 0;
@@ -1395,7 +1422,7 @@ button.metric-value:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 32rem;
+  min-height: 0;
   overflow-y: auto;
 }
 

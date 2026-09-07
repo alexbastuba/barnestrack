@@ -883,11 +883,17 @@ export function createReviewStep(context: AppContext): Step {
     ]),
   ]);
 
-  // mount points for chunk 7b's panels; what is inside them now is this step's minimum
-  const parametersPanel = el('section', { id: 'review-parameters', class: 'review-panel', attrs: { 'data-panel': 'parameters', 'aria-labelledby': 'review-parameters-heading' } });
-  const metricsPanel = el('section', { id: 'review-metrics', class: 'review-panel', attrs: { 'data-panel': 'metrics', 'aria-labelledby': 'review-metrics-heading' } });
-  const eventsPanel = el('section', { id: 'review-events', class: 'review-panel review-panel-wide', attrs: { 'data-panel': 'events', 'aria-labelledby': 'review-events-heading' } });
-  const qualityPanel = el('section', { id: 'review-quality', class: 'review-panel', attrs: { 'data-panel': 'quality', 'aria-labelledby': 'review-quality-heading' } });
+  /*
+   * The mount points for chunk 7a's four components. They are the boxes and
+   * nothing else: each component root is itself a `<section aria-labelledby>`
+   * carrying its own `<h3>`, so the region and its name come from the component
+   * and these are plain `<div>`s with no `aria-labelledby` of their own. A
+   * `<section>` here would be a second, unnamed region wrapping a named one.
+   */
+  const parametersPanel = el('div', { id: 'review-parameters', class: 'review-panel', attrs: { 'data-panel': 'parameters' } });
+  const metricsPanel = el('div', { id: 'review-metrics', class: 'review-panel', attrs: { 'data-panel': 'metrics' } });
+  const eventsPanel = el('div', { id: 'review-events', class: 'review-panel review-panel-wide', attrs: { 'data-panel': 'events' } });
+  const qualityPanel = el('div', { id: 'review-quality', class: 'review-panel', attrs: { 'data-panel': 'quality' } });
 
   const framesBody = el('tbody');
   const framesSummary = el('p', { class: 'mirror-summary' });
