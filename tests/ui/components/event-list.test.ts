@@ -10,7 +10,7 @@
  * `EventRecord` that has never been through the analysis engine.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReviewFlag } from '../../../src/analysis/types.js';
+import type { ReviewFlag, ReviewFlagCode } from '../../../src/analysis/types.js';
 import type { EventRecord } from '../../../src/contracts/events.js';
 import {
   createEventCard,
@@ -20,6 +20,7 @@ import {
   shadowClauses,
 } from '../../../src/ui/components/event-card.js';
 import { createEventList } from '../../../src/ui/components/event-list.js';
+import { formatCm, NOT_RECORDED } from '../../../src/ui/components/format.js';
 import { fixture } from './fixture.js';
 
 const base = fixture('video-test50', { corrections: [] });
@@ -79,7 +80,7 @@ describe('an event card', () => {
     expect(text).toContain(`frame ${event.startFrame.toLocaleString()}`);
     expect(text).toContain(`frame ${event.endFrame.toLocaleString()}`);
     expect(text).toContain(event.durationSeconds.toFixed(2));
-    expect(text).toContain(event.minNoseDistance_cm.toFixed(2));
+    expect(text).toContain(formatCm(event.minNoseDistance_cm));
     expect(text).toContain(event.minCentroidDistance_cm.toFixed(2));
   });
 
@@ -87,6 +88,18 @@ describe('an event card', () => {
     const event = base.analysis.events[0]!;
     const { button } = mountCard(event);
     expect(button.textContent).toContain(event.pointUsed);
+  });
+
+  it('writes an em dash for a nose distance the event never had (D55)', () => {
+    // `minNoseDistance_cm` is null when the nose was never usable during the
+    // event (O16, D55). The card must not print "null", and must not print a
+    // confident 0.00 cm either — that would read as the nose touching the hole.
+    const event: EventRecord = { ...base.analysis.events[0]!, minNoseDistance_cm: null };
+    const { button } = mountCard(event);
+    const text = button.textContent ?? '';
+    expect(text).toContain(`Min nose distance: ${NOT_RECORDED}`);
+    expect(text).not.toContain('null');
+    expect(text).not.toContain('Min nose distance: 0.00 cm');
   });
 
   it('marks the target hole with a word, not only a colour', () => {
@@ -128,7 +141,7 @@ describe('an event card', () => {
 
     const name = button.textContent ?? '';
     expect(name).toContain(event.evidence);
-    expect(name).toContain(event.minNoseDistance_cm.toFixed(2));
+    expect(name).toContain(formatCm(event.minNoseDistance_cm));
     expect(name).toContain('physically unlikely');
   });
 
@@ -232,13 +245,20 @@ describe('a review flag on an event', () => {
     expect(text).not.toContain('physically unlikely');
   });
 
-  it('names every flag code that can reach a card', () => {
-    const codes: ReviewFlag['code'][] = [
-      'physically_unlikely_entry',
-      'tracking_failure_at_hole',
-      'orphaned_correction',
-      'correction_out_of_range',
-    ];
+  it('names every flag code there is', () => {
+    // Driven off `ReviewFlagCode` rather than a hand-written list: chunk 6 added
+    // `stale_auto_layer` and a list here would have gone on passing while the
+    // card rendered a badge with no text. A code added later fails `tsc` in
+    // this literal as well as in `FLAG_LABELS`.
+    const every: Record<ReviewFlagCode, true> = {
+      physically_unlikely_entry: true,
+      tracking_failure_at_hole: true,
+      oversized_in_trial: true,
+      orphaned_correction: true,
+      correction_out_of_range: true,
+      stale_auto_layer: true,
+    };
+    const codes = Object.keys(every) as ReviewFlagCode[];
     for (const code of codes) {
       expect(flagLabel(code).length, `${code} has no label`).toBeGreaterThan(0);
     }

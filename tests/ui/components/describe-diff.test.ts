@@ -20,7 +20,7 @@ import {
   ANALYSIS_PARAMETER_BOUNDS,
   type SliderParameterPath,
 } from '../../../src/ui/components/analysis-parameter-bounds.js';
-import { derivedPair, fixture } from './fixture.js';
+import { derivedPair, fixture, VIDEO_IDS } from './fixture.js';
 
 /** A minimal analysis-shaped value: only the fields the badge reads. */
 function analysisWith(overrides: {
@@ -28,6 +28,7 @@ function analysisWith(overrides: {
   metrics?: Partial<DerivedAnalysis['metrics']>;
   filledFrames?: number;
   tier?: DerivedAnalysis['quality']['tier'];
+  runnerUp?: DerivedAnalysis['strategy']['runnerUp'];
   duplicateTimestampCount?: number;
   droppedFrameGapCount?: number;
 }): DerivedAnalysis {
@@ -63,6 +64,12 @@ function analysisWith(overrides: {
       ...overrides.metrics,
     },
     cleaning: { filledFrames: overrides.filledFrames ?? 0 },
+    // The classification block, beside the class on `metrics`: the card prints
+    // the runner-up too, so the badge compares it.
+    strategy: {
+      strategy: overrides.metrics?.strategy ?? 'spatial',
+      runnerUp: overrides.runnerUp ?? 'random',
+    },
     quality: {
       tier: overrides.tier ?? 'GOOD',
       // Required by the contract, so the stub carries it rather than letting
@@ -232,6 +239,61 @@ describe('describeDiff', () => {
     const sentence = describeDiff(analysisWith({ tier: 'GOOD' }), analysisWith({ tier: 'POOR' }));
     expect(sentence).toContain('quality tier GOOD → POOR');
   });
+
+  it('reports a runner-up that moved while the class stood', () => {
+    // The card prints the runner-up beside the class, and the O7 thresholds can
+    // move one without the other.
+    const sentence = describeDiff(
+      analysisWith({ runnerUp: 'random' }),
+      analysisWith({ runnerUp: 'serial' }),
+    );
+    expect(sentence).toContain('strategy unchanged');
+    expect(sentence).toContain('runner-up random → serial');
+  });
+
+  it('says nothing about the runner-up when it did not move', () => {
+    const sentence = describeDiff(
+      analysisWith({ metrics: { primaryErrors: 1 } }),
+      analysisWith({ metrics: { primaryErrors: 2 } }),
+    );
+    expect(sentence).not.toContain('runner-up');
+  });
+
+  it('treats two nulls as one value, the same as two NaNs (D55)', () => {
+    const a = analysisWith({ metrics: { meanSpeed_cmPerS: null } });
+    const b = analysisWith({ metrics: { meanSpeed_cmPerS: null } });
+    expect(describeDiff(a, b)).toBe(NO_CHANGE);
+  });
+
+  it('says a measure became computable, in words rather than an em dash', () => {
+    // `—` is right in a table beside its label; in a sentence "— → 12.30 cm/s"
+    // does not say what happened.
+    const sentence = describeDiff(
+      analysisWith({ metrics: { meanSpeed_cmPerS: null } }),
+      analysisWith({ metrics: { meanSpeed_cmPerS: 12.3 } }),
+    );
+    expect(sentence).toContain('mean speed not computable → 12.30 cm/s');
+    expect(sentence).not.toContain('— →');
+  });
+
+  it('says a measure stopped being computable, the same way round', () => {
+    const sentence = describeDiff(
+      analysisWith({ metrics: { meanSpeed_cmPerS: 12.3 } }),
+      analysisWith({ metrics: { meanSpeed_cmPerS: null } }),
+    );
+    expect(sentence).toContain('mean speed 12.30 cm/s → not computable');
+  });
+
+  it('reports a trial start that moved, which the metrics card prints', () => {
+    // `escapeEntry.persistCutoff_s` can move the trial start and nothing else,
+    // so a badge that never compared it would read "No change." beside a card
+    // showing a different trial.
+    const sentence = describeDiff(
+      analysisWith({ metrics: { trialStart_s: 4 } }),
+      analysisWith({ metrics: { trialStart_s: 9.5 } }),
+    );
+    expect(sentence).toContain('trial start 4.00 s → 9.50 s');
+  });
 });
 
 describe('describeDiff over a real re-derivation', () => {
@@ -325,45 +387,66 @@ describe('the badge is never silent about a number the panels print', () => {
 
   it('speaks for every editable parameter that moves a displayed number', () => {
     const paths = Object.keys(ANALYSIS_PARAMETER_BOUNDS) as SliderParameterPath[];
-    expect(paths).toHaveLength(15);
+    // 15 from chunk 7a plus the seven numeric thresholds D55 moved into
+    // `Parameters`. A new parameter with no bound cannot reach this list, which
+    // is why `ANALYSIS_PARAMETER_BOUNDS` is a total `Record`.
+    expect(paths).toHaveLength(22);
 
     const silent: string[] = [];
     const noisy: string[] = [];
     let checked = 0;
 
-    for (const path of paths) {
-      const bound = ANALYSIS_PARAMETER_BOUNDS[path];
-      for (const value of [bound.min, (bound.min + bound.max) / 2, bound.max]) {
-        let pair;
-        try {
-          pair = derivedPair('video-test53', (p) => {
-            const next = structuredClone(p);
-            setAt(next, path, value);
-            return next;
-          });
-        } catch {
-          continue; // the panel refuses these before they ever reach derive()
+    // All three videos: a threshold that moves nothing on one clip may move a
+    // great deal on another, and a sweep of one video reports coverage it does
+    // not have.
+    for (const videoId of VIDEO_IDS) {
+      for (const path of paths) {
+        const bound = ANALYSIS_PARAMETER_BOUNDS[path];
+        for (const value of [bound.min, (bound.min + bound.max) / 2, bound.max]) {
+          let pair;
+          try {
+            pair = derivedPair(videoId, (p) => {
+              const next = structuredClone(p);
+              setAt(next, path, value);
+              return next;
+            });
+          } catch {
+            continue; // the panel refuses these before they ever reach derive()
+          }
+          checked += 1;
+          const moved = shown(pair.before) !== shown(pair.after);
+          const spoke = describeDiff(pair.before, pair.after) !== NO_CHANGE;
+          if (moved && !spoke) silent.push(`${videoId} ${path} = ${value}`);
+          if (!moved && spoke) noisy.push(`${videoId} ${path} = ${value}`);
         }
-        checked += 1;
-        const moved = shown(pair.before) !== shown(pair.after);
-        const spoke = describeDiff(pair.before, pair.after) !== NO_CHANGE;
-        if (moved && !spoke) silent.push(`${path} = ${value}`);
-        if (!moved && spoke) noisy.push(`${path} = ${value}`);
       }
     }
 
-    expect(checked).toBeGreaterThan(30);
+    expect(checked).toBeGreaterThan(150);
     expect(silent, 'the badge said "No change." while a displayed number moved').toEqual([]);
     expect(noisy, 'the badge reported a change nothing displayed').toEqual([]);
   });
 
-  it('covers the switch as well as the sliders', () => {
-    const { before, after } = derivedPair('video-test53', (p) => ({
-      ...p,
-      gapFilling: { ...p.gapFilling, enabled: false },
-    }));
-    if (shown(before) !== shown(after)) {
-      expect(describeDiff(before, after)).not.toBe(NO_CHANGE);
+  it('covers the two switches as well as the sliders', () => {
+    // The bounds table is numeric by construction, so the booleans are swept
+    // here: `gapFilling.enabled` and, since D55, `trialCensoring.censorToCutoff`.
+    const switches: { path: string; values: boolean[] }[] = [
+      { path: 'gapFilling.enabled', values: [true, false] },
+      { path: 'trialCensoring.censorToCutoff', values: [true, false] },
+    ];
+    for (const videoId of VIDEO_IDS) {
+      for (const { path, values } of switches) {
+        for (const value of values) {
+          const { before, after } = derivedPair(videoId, (p) => {
+            const next = structuredClone(p);
+            setAt(next, path, value);
+            return next;
+          });
+          if (shown(before) !== shown(after)) {
+            expect(describeDiff(before, after), `${videoId} ${path} = ${value}`).not.toBe(NO_CHANGE);
+          }
+        }
+      }
     }
   });
 });

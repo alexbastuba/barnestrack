@@ -13,10 +13,15 @@ import {
   DEFAULT_PARAMETERS,
   PARAMETER_DECISIONS,
   PARAMETER_DEFINITIONS,
+  parameterAt,
   parameterPaths,
   validateParameters,
 } from '../../../src/analysis/parameters.js';
 import type { Parameters } from '../../../src/contracts/parameters.js';
+import {
+  ANALYSIS_PARAMETER_BOUNDS,
+  hasSlider,
+} from '../../../src/ui/components/analysis-parameter-bounds.js';
 import {
   CHANGE_DEBOUNCE_MS,
   createParametersPanel,
@@ -66,7 +71,8 @@ describe('every parameter is on screen with its definition', () => {
   it('renders a row for every leaf of Parameters, walked rather than listed', () => {
     mount();
     const paths = parameterPaths(parameters);
-    expect(paths.length).toBe(31);
+    // 24 analysis leaves (16 plus D55's eight) and 15 tracking ones.
+    expect(paths.length).toBe(39);
 
     const text = container.textContent ?? '';
     for (const path of paths) {
@@ -96,6 +102,104 @@ describe('every parameter is on screen with its definition', () => {
     expect(slider.value).toBe('180');
     expect(number.value).toBe('180');
     expect(slider.getAttribute('aria-label')).toBe('Trial cutoff slider');
+  });
+});
+
+describe('the thresholds D55 moved into Parameters', () => {
+  /**
+   * The eight paths that were un-hashed `AnalysisOptions` before D55. They are
+   * listed here rather than derived so that the test states what it is about;
+   * the first assertion checks the list against the contract, so it cannot
+   * drift into naming a path that no longer exists.
+   */
+  const D55_PATHS = [
+    'trialCensoring.censorToCutoff',
+    'strategy.spatialMaxErrors',
+    'strategy.spatialMaxHoleDistance',
+    'strategy.spatialMaxCentreCrossings',
+    'strategy.serialMinRun',
+    'strategy.centreZoneRadiusFraction',
+    'quality.goodMinPositionedFraction',
+    'quality.poorMaxPositionedFraction',
+  ] as const;
+
+  const TOGGLE = 'trialCensoring.censorToCutoff';
+
+  /** A copy of `parameters` with one leaf replaced, for trying a value out. */
+  function withValueAt(path: string, value: number): Parameters {
+    const next = structuredClone(parameters);
+    const keys = path.split('.');
+    let node = next as unknown as Record<string, unknown>;
+    for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+    node[keys[keys.length - 1]!] = value;
+    return next;
+  }
+
+  it('are all still leaves of the contract', () => {
+    const paths = new Set<string>(parameterPaths(parameters));
+    for (const path of D55_PATHS) expect(paths.has(path), `${path} is gone`).toBe(true);
+  });
+
+  it('has a slider range for every numeric one, and none for the switch', () => {
+    for (const path of D55_PATHS) {
+      expect(hasSlider(path), `${path}`).toBe(path !== TOGGLE);
+    }
+  });
+
+  it('renders an editable control for each, not a read-only row', () => {
+    mount();
+    for (const path of D55_PATHS) {
+      const input = numberFor(path);
+      expect(input.disabled, `${path} is disabled`).toBe(false);
+      expect(input.readOnly, `${path} is read-only`).toBe(false);
+      expect(input.type, `${path} has the wrong control`).toBe(
+        path === TOGGLE ? 'checkbox' : 'number',
+      );
+      expect(input.closest('.param-row')!.classList.contains('is-readonly')).toBe(false);
+    }
+  });
+
+  it('emits a valid Parameters carrying the new value, for every one of them', async () => {
+    for (const path of D55_PATHS) {
+      container.replaceChildren();
+      const { onParametersChange } = mount();
+      const input = numberFor(path);
+
+      const before = parameterAt(parameters, path);
+      let expected: number | boolean;
+      if (path === TOGGLE) {
+        expected = !(before as boolean);
+        input.checked = expected;
+        input.dispatchEvent(new Event('change'));
+      } else {
+        const bound = ANALYSIS_PARAMETER_BOUNDS[path];
+        // A value inside the slider's range, different from the one already
+        // there so a panel that silently kept the default would fail here, and
+        // one the whole set still validates with: the two quality thresholds
+        // constrain each other, so an endpoint of one of them is legitimately
+        // refused and the panel is right to emit nothing for it.
+        const candidate = [bound.min, (bound.min + bound.max) / 2, bound.max].find(
+          (value) => value !== before && validateParameters(withValueAt(path, value)).length === 0,
+        );
+        expect(candidate, `no reachable value for ${path}`).toBeDefined();
+        expected = candidate!;
+        input.value = String(expected);
+        input.dispatchEvent(new Event('input'));
+      }
+      await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+
+      expect(onParametersChange, `${path} emitted nothing`).toHaveBeenCalledTimes(1);
+      const emitted = onParametersChange.mock.calls[0]![0] as Parameters;
+      expect(validateParameters(emitted), `${path} emitted an invalid set`).toEqual([]);
+      expect(parameterAt(emitted, path), `${path} did not carry its new value`).toBe(expected);
+    }
+  });
+
+  it('no longer lists them as model options that are not hashed', () => {
+    mount();
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('Model options');
+    expect(text).not.toContain('not hashed, not exported');
   });
 });
 
@@ -336,17 +440,6 @@ describe('the diff badge', () => {
   it('says there is nothing to compare with on a first analysis', () => {
     mount();
     expect(container.querySelector('.diff-badge')!.textContent).toBe('No analysis yet.');
-  });
-});
-
-describe('the D55 divergence', () => {
-  it('lists the analysis options and states that they are not hashed or exported', () => {
-    mount();
-    const text = container.textContent ?? '';
-    expect(text).toContain('Model options — not hashed, not exported (D55)');
-    expect(text).toContain('Spatial max errors');
-    expect(text).toContain('Good min positioned fraction');
-    expect(text).toContain('not covered by the parameters hash');
   });
 });
 

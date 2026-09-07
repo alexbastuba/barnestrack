@@ -290,6 +290,16 @@ export function describeDiff(
       ? 'strategy unchanged'
       : `strategy ${formatChange(a.strategy, b.strategy)}`,
   );
+  // The runner-up is printed beside the class on the metrics card, and the
+  // strategy thresholds (O7) can move it while the winner stands — the sweep
+  // finds five such cases across the three fixtures. It is only mentioned when
+  // it moves, because unlike the class it is not a judgement the badge would be
+  // making a claim about by staying quiet.
+  if (previous.strategy.runnerUp !== next.strategy.runnerUp) {
+    clauses.push(
+      `runner-up ${formatChange(previous.strategy.runnerUp, next.strategy.runnerUp)}`,
+    );
+  }
   clauses.push(
     a.status === b.status ? 'status unchanged' : `status ${formatChange(a.status, b.status)}`,
   );
