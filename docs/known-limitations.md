@@ -287,11 +287,16 @@ session it is found (D39).
   (test51 / test53 / test50); only 82 / 127 / 1637 frames exceed 8 cm/s. Below walking speed the
   centroid's direction of motion is jitter (the head dipping into a hole shifts the blob), which is
   why the velocity cue for the nose applies only from 8 cm/s.
-- **No escape-box entry is detectable in the three clips.** test50 circles the rim and never
-  enters a hole (53 investigations, target reached at 12.7 s, cutoff at 180 s); test51 ends with its
-  head in hole 19 (top right) and test53 in hole 2 (about four o'clock on the right; the tracker
-  results said "3 o'clock" by eye), both with the rear visible. Under O4 none of these is an entry
-  (see Defects), so all three trials are `review`.
+- **No escape-box entry occurs in the three clips under the recorded map.** test50 circles the rim
+  and never enters a hole (53 investigations, target reached at 12.7 s, cutoff at 180 s); test51
+  ends with its head in hole 19 (top right) and test53 in hole 2 (about four o'clock on the right),
+  both with the rear visible, and neither hole is the recorded target (hole 7, a placeholder from
+  the chunk-3 handoff — there is no ground truth for which hole held the escape box). Under the
+  revised O4 (a run of partial detections counts) test53's head-in-hole run would be a persistent
+  entry with the target at hole 2 (frames 833–904, 2.37 s), while test51's run at hole 19 is
+  15 frames at 14.985 fps = 0.93 s first-to-last, under the 1.0 s minimum, and stays an
+  investigation whichever hole is the target (`prototypes/analysis/RESULTS.md`). So all three trials
+  are `review`.
 - **Trial starts land where the contact sheets say.** Frame 150 for test50 and test53 (the animal
   appears at the rim after an empty platform) and frame 75 for test51 (the first frame after the
   cylinder is lifted). No `oversized_blob` frame exists in any clip, so the O5 clause "after the
