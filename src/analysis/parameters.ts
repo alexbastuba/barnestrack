@@ -12,6 +12,7 @@
  * constants live in `ANALYSIS_MODEL`, everything else is a `Parameters` field
  * and therefore part of `parametersHash` (D55).
  */
+import type { TrialMetrics } from '../contracts/metrics.js';
 import type { Parameters, TrackingParameters } from '../contracts/parameters.js';
 import { sha256Hex } from '../video/sha256.js';
 import { DEFAULT_TRACKING_PARAMETERS, TRACKING_PARAMETER_DEFINITIONS } from './tracker/params.js';
@@ -224,6 +225,52 @@ export function parameterAt(parameters: Parameters, path: ParameterPath): unknow
   }
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// The per-trial metrics: one sentence each, with the decision it comes from,
+// shown beside the value in the review step and the metrics card (D19, D23).
+// ---------------------------------------------------------------------------
+
+export type MetricKey = keyof TrialMetrics;
+
+export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
+  trialStart_s:
+    'When the trial started: the first confident, mouse-sized detection inside the platform after the last oversized-foreground frame, or the frame the user chose; every latency is measured from here, never from frame 0 (seconds; O5).',
+  primaryLatency_s:
+    'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds; O3).',
+  totalLatency_s:
+    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on (seconds; O4).',
+  primaryErrors:
+    'Investigations of non-target holes before the first target event, repeat visits included (count; O2).',
+  totalErrors:
+    'Investigations of non-target holes over the whole trial, repeat visits included; an investigation of the target hole is never an error (count; O2).',
+  pathLength_cm:
+    'Distance travelled by the body centroid over positioned frames within the trial, gaps excluded (cm; O9).',
+  pathLengthSmoothed_cm:
+    'The same path after the median filter of the smoothing window; the mean speed uses this one (cm; O9).',
+  meanSpeed_cmPerS:
+    'Smoothed path length divided by the tracked time within the trial, excluding time after the escape; blank with no tracked time (cm/s; O9).',
+  targetQuadrantTime_s:
+    'Time the centroid spent inside the sector centred on the target hole (seconds; O6).',
+  strategy:
+    'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose (spatial, serial or random; O7).',
+  strategySource:
+    'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—; D23).',
+  escaped: 'Whether a persistent escape-box entry ended the trial (yes/no; O4).',
+  status:
+    'ok when the animal escaped and nothing needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed (—; O5).',
+  trackedFraction:
+    'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier (fraction; D30).',
+  correctionCount: 'Number of corrections in this video’s corrections layer (count; D25).',
+};
+
+/** The decision each metric definition cites, for the definitions disclosure. */
+export const METRIC_DECISIONS: Record<MetricKey, string> = Object.fromEntries(
+  (Object.keys(METRIC_DEFINITIONS) as MetricKey[]).map((key) => {
+    const match = /\b([OD]\d+)\)\.?$/.exec(METRIC_DEFINITIONS[key]);
+    return [key, match?.[1] ?? ''];
+  }),
+) as Record<MetricKey, string>;
 
 // ---------------------------------------------------------------------------
 // O8 · maze geometry defaults, used by `src/maze/ring.ts` and the maze step.
