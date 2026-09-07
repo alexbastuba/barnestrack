@@ -168,6 +168,26 @@ within …`
   heavier border and the `✎ user` badge, and is unmistakable between the two plain `auto` cards
   above and below it.
 
+## Re-check after the D55 reconciliation (chunk 7b-1)
+
+Chrome 152 on macOS 15.5, viewport 1295 × 802 CSS px, 2026-09-07,
+`http://localhost:5173/prototypes/review-components/`. No console errors.
+
+- **All four panels mount and the eight D55 thresholds are editable.** The blocks read
+  `Trial censoring (O5)`, `Search strategy (O7)` and `Quality tier (D30)`, "Model options — not
+  hashed, not exported" is gone, and the page loads two stylesheets — the app sheet and the harness
+  page's own chrome — rather than three. Clicking **Censor to cutoff** on test50, whose trial is cut
+  off, gave `total latency none → 180.00 s; strategy unchanged; status unchanged; quality tier
+unchanged.`, a `derive()` in 23.4 ms and the announcement "Censor to cutoff turned on."
+- **The strategy and quality thresholds move what they are supposed to move, and the badge says so.**
+  **Serial min run** 3 → 10 read `strategy serial → random; runner-up random → serial; …` — the
+  runner-up clause added in this chunk, firing on the case the widened sweep found. **Good min
+  positioned fraction** 0.9 → 1 read `quality tier GOOD → REVIEW` and the badge changed to
+  `▲ REVIEW`. **Poor max positioned fraction** 1 against a GOOD threshold of 0.9 was refused:
+  `1 parameter out of range; nothing has been recomputed. quality.poorMaxPositionedFraction must not
+exceed quality.goodMinPositionedFraction, got 1 and 0.9`, the row marked `is-invalid`, the typed `1`
+  kept, and no `onParametersChange` or `derive()` in the log.
+
 ## Not checked here
 
 - Real browser page zoom at 200 % (emulated by container width, as above).
