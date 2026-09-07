@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { firstTargetEvent } from '../../../src/analysis/metrics.js';
+import { PARAMETER_DEFINITIONS } from '../../../src/analysis/parameters.js';
 import type { CorrectionEntry } from '../../../src/contracts/session.js';
 import {
   createMetricsCard,
@@ -94,6 +95,24 @@ describe('the rows a trial has', () => {
         `${name} has no definition`,
       ).toBe('Definition');
     }
+  });
+
+  it('gives each row its own definition, not a neighbouring threshold’s', () => {
+    mount();
+    const definitionOf = (name: string): string =>
+      row(name).querySelector('details')!.textContent ?? '';
+
+    // The trial-start row used to show the trial-*cutoff* definition: a wrong
+    // definition is worse than a missing one.
+    const start = definitionOf('Trial start');
+    expect(start).not.toContain(PARAMETER_DEFINITIONS.trialCutoff_s);
+    expect(start).toContain('oversized-foreground');
+    expect(start).toContain('O5');
+
+    // These two keep the threshold that shapes them, but only after their own
+    // definition, never instead of it.
+    expect(definitionOf('Path length (smoothed)')).toContain('median-filtered centroid positions');
+    expect(definitionOf('Target quadrant time')).toContain('Time inside the target quadrant');
   });
 
   it('shows the raw and the smoothed path length separately (D31)', () => {
@@ -265,9 +284,26 @@ describe('the strategy block (D23)', () => {
     mount();
     const revert = [...container.querySelectorAll('button')].find(
       (b) => b.textContent === 'Revert to automatic',
-    );
-    expect(revert).toBeUndefined();
+    )!;
+    // Present but hidden, so it is out of the tab order and off the screen;
+    // the button itself persists so a half-typed reason beside it survives.
+    expect(revert.hidden).toBe(true);
     expect(container.querySelector('.strategy-block .badge')!.textContent).toBe('auto');
+  });
+
+  it('keeps a half-typed reason and the focus across an update (D37)', () => {
+    const { card } = mount();
+    const reason = container.querySelector<HTMLTextAreaElement>('.strategy-reason')!;
+    reason.value = 'Half a thought about the adjacent run';
+    reason.focus();
+
+    // A parameter change re-renders this card without touching the strategy.
+    card.update({ analysis: noEscape.analysis, parameters: noEscape.parameters });
+
+    expect(container.querySelector<HTMLTextAreaElement>('.strategy-reason')!.value).toBe(
+      'Half a thought about the adjacent run',
+    );
+    expect(document.activeElement).toBe(reason);
   });
 
   it('marks an overridden class as the user’s and offers a revert (D26)', () => {
@@ -308,6 +344,21 @@ describe('metricRows', () => {
   it('finds the ending escape for a trial that escaped, and none for one that did not', () => {
     expect(endingEscape(escaped.analysis, escaped.parameters)).not.toBeNull();
     expect(endingEscape(noEscape.analysis, noEscape.parameters)).toBeNull();
+  });
+
+  it('ignores an entry outside the trial window, as derive() does', () => {
+    // derive() refuses to end a trial on an entry starting before the trial
+    // start and flags it instead. Without the same test, "Total latency" would
+    // seek to an event that did not produce the number beside it.
+    const entry = endingEscape(escaped.analysis, escaped.parameters)!;
+    const shifted = {
+      ...escaped.analysis,
+      trial: { ...escaped.analysis.trial, startFrame: escaped.analysis.cleanedTrack.length - 1 },
+    };
+    expect(entry.startFrame).toBeLessThan(
+      escaped.analysis.cleanedTrack[shifted.trial.startFrame!]!.frameIndex,
+    );
+    expect(endingEscape(shifted, escaped.parameters)).toBeNull();
   });
 });
 

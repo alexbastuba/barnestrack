@@ -44,7 +44,7 @@ import {
 import type { DerivedAnalysis } from '../../analysis/derive.js';
 import type { Parameters } from '../../contracts/parameters.js';
 import { clampToBound } from '../../session/tracking-parameter-bounds.js';
-import { append, button, disclosure, el, replaceChildren, uniqueId } from '../dom.js';
+import { append, button, disclosure, el, uniqueId } from '../dom.js';
 import { ANALYSIS_PARAMETER_BOUNDS, hasSlider } from './analysis-parameter-bounds.js';
 import { describeDiff } from './describe-diff.js';
 import { formatParameterValue } from './format.js';
@@ -147,12 +147,36 @@ function setAt(parameters: Parameters, path: ParameterPath, value: unknown): voi
   target[keys[keys.length - 1]!] = value;
 }
 
+/**
+ * Paint one row's validation state. The message is linked to the control with
+ * `aria-describedby` and the control marked `aria-invalid`, so a user tabbing
+ * back to the field is told it is the bad one rather than having to find it in
+ * the summary at the top (D37).
+ */
+function markRow(row: Row, messages: readonly string[]): void {
+  const bad = messages.length > 0;
+  row.error.textContent = messages.join(' ');
+  row.error.hidden = !bad;
+  row.element.classList.toggle('is-invalid', bad);
+  for (const control of row.element.querySelectorAll('input, select, textarea')) {
+    if (bad) {
+      control.setAttribute('aria-invalid', 'true');
+      control.setAttribute('aria-describedby', row.error.id);
+    } else {
+      control.removeAttribute('aria-invalid');
+      control.removeAttribute('aria-describedby');
+    }
+  }
+}
+
 interface Row {
   path: ParameterPath;
   element: HTMLElement;
   error: HTMLElement;
   /** Writes the current working value into the controls. */
   sync(): void;
+  /** Whether the user is in one of this row's controls right now. */
+  hasFocus(): boolean;
 }
 
 export function createParametersPanel(
@@ -191,12 +215,7 @@ export function createParametersPanel(
     const problems = validateParameters(working);
     const byPath = problemsByPath(problems, paths);
 
-    for (const row of rows) {
-      const messages = byPath.get(row.path) ?? [];
-      row.error.textContent = messages.join(' ');
-      row.error.hidden = messages.length === 0;
-      row.element.classList.toggle('is-invalid', messages.length > 0);
-    }
+    for (const row of rows) markRow(row, byPath.get(row.path) ?? []);
 
     if (problems.length > 0) {
       summary.textContent = `${problems.length} parameter${problems.length === 1 ? '' : 's'} out of range; nothing has been recomputed. ${problems.join('; ')}`;
@@ -239,7 +258,11 @@ export function createParametersPanel(
     slider.setAttribute('aria-label', `${label} slider`);
     slider.setAttribute('aria-describedby', numberInput.id);
 
-    const error = el('p', { class: 'error param-error', attrs: { hidden: true } });
+    const error = el('p', {
+      id: uniqueId('param-error'),
+      class: 'error param-error',
+      attrs: { hidden: true },
+    });
     const definition = disclosure('Definition', [
       el('p', { text: PARAMETER_DEFINITIONS[path] }),
       el('p', {
@@ -297,6 +320,7 @@ export function createParametersPanel(
         if (typeof value !== 'number') return;
         write(value);
       },
+      hasFocus: () => document.activeElement === numberInput || document.activeElement === slider,
     };
   }
 
@@ -305,7 +329,11 @@ export function createParametersPanel(
     const label = labelForPath(path);
     const input = el('input', { id: uniqueId('param'), class: 'param-checkbox' });
     input.type = 'checkbox';
-    const error = el('p', { class: 'error param-error', attrs: { hidden: true } });
+    const error = el('p', {
+      id: uniqueId('param-error'),
+      class: 'error param-error',
+      attrs: { hidden: true },
+    });
 
     input.addEventListener('change', () => {
       setAt(working, path, input.checked);
@@ -333,15 +361,21 @@ export function createParametersPanel(
       element,
       error,
       sync() {
+        if (document.activeElement === input) return;
         input.checked = parameterAt(working, path) === true;
       },
+      hasFocus: () => document.activeElement === input,
     };
   }
 
   /** A tracking parameter: shown in full, edited on the Track step. */
   function readOnlyRow(path: ParameterPath): Row {
     const value = el('span', { class: 'param-readonly-value' });
-    const error = el('p', { class: 'error param-error', attrs: { hidden: true } });
+    const error = el('p', {
+      id: uniqueId('param-error'),
+      class: 'error param-error',
+      attrs: { hidden: true },
+    });
     const element = el('div', { class: 'param-row is-readonly' }, [
       el('div', { class: 'param-controls' }, [
         el('span', { class: 'label-like', text: labelForPath(path) }),
@@ -365,6 +399,8 @@ export function createParametersPanel(
       sync() {
         value.textContent = formatParameterValue(parameterAt(working, path));
       },
+      // Nothing in a read-only row can hold focus.
+      hasFocus: () => false,
     };
   }
 
@@ -465,26 +501,31 @@ export function createParametersPanel(
   /** Paint any problem the incoming parameters already have, without emitting. */
   function commitInitialValidation(): void {
     const byPath = problemsByPath(validateParameters(working), paths);
-    for (const row of rows) {
-      const messages = byPath.get(row.path) ?? [];
-      row.error.textContent = messages.join(' ');
-      row.error.hidden = messages.length === 0;
-      row.element.classList.toggle('is-invalid', messages.length > 0);
-    }
+    for (const row of rows) markRow(row, byPath.get(row.path) ?? []);
   }
 
   return {
     update(nextProps) {
       current = nextProps;
-      // A field the user is typing in is never overwritten underneath them.
+      // Incoming parameters replace the working set — except for a row the user
+      // currently has focus in. `write()` already refuses to repaint a focused
+      // control, so overwriting its working value here would leave the panel
+      // showing one number and emitting another: the user's 240 on screen, the
+      // props' 180 in the next commit. The displayed value is the working value
+      // for exactly the row being edited, and the props win everywhere else.
+      const focused = rows.find((row) => row.hasFocus());
+      const keep = focused ? structuredClone(parameterAt(working, focused.path)) : undefined;
       working = clone(nextProps.parameters);
+      if (focused && keep !== undefined) setAt(working, focused.path, keep);
       render();
       commitInitialValidation();
     },
     destroy() {
       if (timer !== null) clearTimeout(timer);
       timer = null;
-      replaceChildren(container, []);
+      // Only this panel's own nodes: the container may hold a heading, or a
+      // second panel, that this component did not create (see `Component`).
+      root.remove();
     },
   };
 }

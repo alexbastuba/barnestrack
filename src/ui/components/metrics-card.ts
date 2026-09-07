@@ -62,16 +62,30 @@ const END_REASON_WORDS: Record<string, string> = {
   no_start: 'no trial start could be found',
 };
 
-/** The escape entry that ended the trial, or null when none did (O4). */
+/**
+ * The escape entry that ended the trial, or null when none did (O4).
+ *
+ * This has to agree with `derive()`, which does not simply take the earliest
+ * persistent entry: an entry starting before the trial start cannot end the
+ * trial and is flagged instead (`src/analysis/derive.ts`, `correction_out_of_range`).
+ * Without the same window test a corrected entry placed before the start would
+ * make "Total latency" seek to an event that did not produce the number beside
+ * it.
+ */
 export function endingEscape(
   analysis: DerivedAnalysis,
   parameters: Parameters,
 ): EventRecord | null {
   const track = analysis.cleanedTrack;
   const lastFrameIndex = track[track.length - 1]?.frameIndex ?? -1;
+  const startFrame = positionToFrame(track, analysis.trial.startFrame);
+  const endFrame = positionToFrame(track, analysis.trial.endFrame);
+
   let best: EventRecord | null = null;
   for (const event of analysis.events) {
     if (!isPersistentEscape(event, lastFrameIndex, parameters)) continue;
+    if (startFrame !== null && event.startFrame < startFrame) continue;
+    if (endFrame !== null && event.startFrame > endFrame) continue;
     if (best === null || event.startFrame < best.startFrame) best = event;
   }
   return best;
@@ -82,7 +96,10 @@ interface MetricSpec {
   value: string;
   /** Where this number was decided, or null when it has no single frame. */
   frame: FrameIndex | null;
+  /** What this measure is. Always the metric's own definition, never a parameter's. */
   definition: string;
+  /** The threshold that shapes it, when one does, as a second paragraph. */
+  also?: string;
   note?: string;
 }
 
@@ -106,7 +123,8 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       name: 'Trial start',
       value: formatTimeAndFrame(metrics.trialStart_s, startFrame),
       frame: startFrame,
-      definition: PARAMETER_DEFINITIONS.trialCutoff_s,
+      definition:
+        'The first frame tracked confidently, mouse-sized and inside the platform, after every oversized-foreground frame that precedes it — the start cylinder or the experimenter\u2019s hand. No acclimation delay is subtracted, and the proposal can be moved by hand (O5).',
       note: trial.startSource === 'corrected' ? 'set by hand' : 'proposed automatically (O5)',
     },
     {
@@ -154,7 +172,9 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       name: 'Path length (smoothed)',
       value: formatCm(metrics.pathLengthSmoothed_cm),
       frame: startFrame,
-      definition: PARAMETER_DEFINITIONS.kinematicsSmoothingWindowFrames,
+      definition:
+        'The same sum over the median-filtered centroid positions, which is the path length the mean speed is computed from (O9).',
+      also: PARAMETER_DEFINITIONS.kinematicsSmoothingWindowFrames,
     },
     {
       name: 'Mean speed',
@@ -167,7 +187,9 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       name: 'Target quadrant time',
       value: formatSeconds(metrics.targetQuadrantTime_s),
       frame: startFrame,
-      definition: PARAMETER_DEFINITIONS['targetQuadrant.holeSpan'],
+      definition:
+        'Time inside the target quadrant during the trial, summed over the frames whose centroid lies in the sector (O6).',
+      also: PARAMETER_DEFINITIONS['targetQuadrant.holeSpan'],
       note: `${formatPercent(kinematics.targetQuadrantFraction)} of the tracked time`,
     },
     {
@@ -222,7 +244,11 @@ export function createMetricsCard(
   );
 
   const rowsHost = el('div', { class: 'metric-rows' });
-  const strategyHost = el('div', { class: 'strategy-block' });
+  // The strategy block has two regions: `strategyDetail` is rewritten on every
+  // render, `strategyControls` is appended once and never moved — moving a
+  // subtree blurs whatever inside it had focus, which is the whole point.
+  const strategyDetail = el('div', { class: 'strategy-detail' });
+  const strategyHost = el('div', { class: 'strategy-block' }, [strategyDetail]);
   root.append(rowsHost, strategyHost);
   container.append(root);
 
@@ -254,11 +280,69 @@ export function createMetricsCard(
           el('span', { class: 'metric-name', text: spec.name }),
           seekButton(spec),
           spec.note && el('span', { class: 'metric-note', text: spec.note }),
-          disclosure('Definition', [el('p', { text: spec.definition })]),
+          disclosure('Definition', [
+            el('p', { text: spec.definition }),
+            spec.also && el('p', { class: 'metric-note', text: spec.also }),
+          ]),
         ]),
       ),
     );
   }
+
+  /*
+   * The override controls are built once, not on every render. A parameter
+   * change re-renders this card, and rebuilding the textarea would throw away
+   * a reason the user was part-way through writing and take their focus with
+   * it — the same hazard the event list guards against (D37).
+   */
+  const select = el('select', { id: uniqueId('strategy-choice'), class: 'number-input' });
+  for (const option of STRATEGIES) {
+    select.append(el('option', { text: option, attrs: { value: option } }));
+  }
+  const reason = el('textarea', { id: uniqueId('strategy-reason'), class: 'strategy-reason' });
+  reason.rows = 2;
+  reason.placeholder = 'Why this class, in your own words';
+
+  const problem = el('p', { class: 'error', attrs: { role: 'alert', hidden: true } });
+
+  const apply = button('Override the classification', () => {
+    const text = reason.value.trim();
+    if (text === '') {
+      // D23 stores the reason with the correction; an override with no reason
+      // would be a silent disagreement with the rule engine.
+      problem.textContent = 'Say why you are overriding the classification before applying it.';
+      problem.hidden = false;
+      reason.focus();
+      return;
+    }
+    problem.hidden = true;
+    callbacks.onOverride(select.value as SearchStrategy, text);
+    callbacks.onAnnounce?.(`Strategy overridden to ${select.value}.`);
+  });
+
+  const revert = button('Revert to automatic', () => {
+    const id = current.strategyOverrideId;
+    if (id === null || id === undefined) return;
+    callbacks.onRevert(id);
+    callbacks.onAnnounce?.(
+      `Override removed; the automatic classification ${current.analysis.strategy.autoStrategy} applies again.`,
+    );
+  });
+
+  const overrideControls = el('div', { class: 'strategy-override' }, [
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Class', attrs: { for: select.id } }),
+      select,
+    ]),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Reason (required)', attrs: { for: reason.id } }),
+      reason,
+    ]),
+    apply,
+    revert,
+  ]);
+
+  strategyHost.append(problem, overrideControls);
 
   function renderStrategy(): void {
     const { strategy } = current.analysis;
@@ -280,44 +364,7 @@ export function createMetricsCard(
       ['Investigation sequence', features.sequence.join(' → ') || 'none'],
     ];
 
-    const select = el('select', { id: uniqueId('strategy-choice'), class: 'number-input' });
-    for (const option of STRATEGIES) {
-      const node = el('option', { text: option, attrs: { value: option } });
-      if (option === strategy.strategy) node.selected = true;
-      select.append(node);
-    }
-    const reason = el('textarea', { id: uniqueId('strategy-reason'), class: 'strategy-reason' });
-    reason.rows = 2;
-    reason.placeholder = 'Why this class, in your own words';
-
-    const problem = el('p', { class: 'error', attrs: { role: 'alert', hidden: true } });
-
-    const apply = button('Override the classification', () => {
-      const text = reason.value.trim();
-      if (text === '') {
-        // D23 stores the reason with the correction; an override with no reason
-        // would be a silent disagreement with the rule engine.
-        problem.textContent = 'Say why you are overriding the classification before applying it.';
-        problem.hidden = false;
-        reason.focus();
-        return;
-      }
-      problem.hidden = true;
-      callbacks.onOverride(select.value as SearchStrategy, text);
-      callbacks.onAnnounce?.(`Strategy overridden to ${select.value}.`);
-    });
-
-    const revert =
-      corrected && current.strategyOverrideId
-        ? button('Revert to automatic', () => {
-            callbacks.onRevert(current.strategyOverrideId!);
-            callbacks.onAnnounce?.(
-              `Override removed; the automatic classification ${strategy.autoStrategy} applies again.`,
-            );
-          })
-        : null;
-
-    replaceChildren(strategyHost, [
+    replaceChildren(strategyDetail, [
       el('h4', { text: 'Search strategy' }),
       el('p', { class: 'metric-row' }, [
         el('span', { class: 'metric-name', text: 'Class' }),
@@ -375,20 +422,12 @@ export function createMetricsCard(
         el('p', { text: ANALYSIS_OPTION_DEFINITIONS['strategy.spatialMaxErrors'] }),
         el('p', { text: ANALYSIS_OPTION_DEFINITIONS['strategy.serialMinRun'] }),
       ]),
-      problem,
-      el('div', { class: 'strategy-override' }, [
-        el('div', { class: 'field' }, [
-          el('label', { text: 'Class', attrs: { for: select.id } }),
-          select,
-        ]),
-        el('div', { class: 'field' }, [
-          el('label', { text: 'Reason (required)', attrs: { for: reason.id } }),
-          reason,
-        ]),
-        apply,
-        revert,
-      ]),
     ]);
+
+    // The select follows the current class only while the user is not in it.
+    if (document.activeElement !== select) select.value = strategy.strategy;
+    // Revert is offered only while an override is actually in force.
+    revert.hidden = !(corrected && current.strategyOverrideId);
   }
 
   function render(): void {

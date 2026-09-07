@@ -200,6 +200,29 @@ describe('the gap list', () => {
   });
 });
 
+describe('the nose-confidence distribution (D30)', () => {
+  it('shows every bin with its count and share, as a table not a colour bar', () => {
+    mount();
+    const bins = f.analysis.quality.noseConfidenceHistogram;
+    expect(bins.length).toBeGreaterThan(0);
+
+    const summary = [...container.querySelectorAll('summary')].find(
+      (n) => n.textContent === 'Nose-heading confidence distribution',
+    );
+    expect(summary).toBeDefined();
+
+    const table = summary!.closest('details')!.querySelector('table')!;
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(bins.length);
+    expect([...table.querySelectorAll('thead th')].map((n) => n.textContent)).toEqual([
+      'Confidence',
+      'Frames',
+      'Share',
+    ]);
+    const total = bins.reduce((sum, bin) => sum + bin.count, 0);
+    expect(table.textContent).toContain(total > 0 ? String(bins[0]!.count) : '0');
+  });
+});
+
 describe('calibration and provenance', () => {
   it('shows the platform diameter, the scale, the anomalies and both hashes', () => {
     mount();

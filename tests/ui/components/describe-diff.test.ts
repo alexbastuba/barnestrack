@@ -183,6 +183,28 @@ describe('describeDiff over a real re-derivation', () => {
     expect(sentence).toContain('strategy serial → random');
   });
 
+  it('reports the quadrant time, which only the quadrant span moves', () => {
+    // Widening the sector changes nothing but the quadrant time. A badge that
+    // watched only the counts would read "No change." while the metrics card
+    // beside it showed the number more than double.
+    const { before, after } = derivedPair('video-test50', (p) => ({
+      ...p,
+      targetQuadrant: { holeSpan: 9.5 },
+    }));
+    expect(after.metrics.targetQuadrantTime_s).toBeGreaterThan(before.metrics.targetQuadrantTime_s);
+    expect(describeDiff(before, after)).toContain('target quadrant time 78.21 s → 178.37 s');
+  });
+
+  it('reports the smoothed path and the mean speed, which only the filter width moves', () => {
+    const { before, after } = derivedPair('video-test50', (p) => ({
+      ...p,
+      kinematicsSmoothingWindowFrames: 31,
+    }));
+    const sentence = describeDiff(before, after);
+    expect(sentence).toContain('smoothed path length 391.30 cm → 254.94 cm');
+    expect(sentence).toContain('mean speed 2.19 cm/s → 1.43 cm/s');
+  });
+
   it('says nothing changed when the same parameters are derived twice', () => {
     const { before, after } = derivedPair('video-test51', (p) => p);
     expect(describeDiff(before, after)).toBe(NO_CHANGE);

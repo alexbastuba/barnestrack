@@ -15,6 +15,7 @@ import type { EventRecord } from '../../../src/contracts/events.js';
 import {
   createEventCard,
   eventSummary,
+  flagLabel,
   flagsForEvent,
   shadowClauses,
 } from '../../../src/ui/components/event-card.js';
@@ -89,9 +90,11 @@ describe('an event card', () => {
   });
 
   it('marks the target hole with a word, not only a colour', () => {
+    // test50 reaches the target, so this is a real assertion rather than a
+    // conditional that would pass silently if the fixture stopped doing so.
     const event = base.analysis.events.find((e) => e.isTarget);
-    if (!event) return; // test50 reaches the target; guard keeps the test honest if it stops.
-    const { button } = mountCard(event);
+    expect(event, 'the test50 fixture no longer reaches the target hole').toBeDefined();
+    const { button } = mountCard(event!);
     expect(button.querySelector('.badge-target')!.textContent).toBe('target');
   });
 
@@ -109,11 +112,35 @@ describe('an event card', () => {
     expect(button.hasAttribute('tabindex')).toBe(false);
   });
 
-  it('carries a spoken summary for a screen reader', () => {
+  it('reads its own contents to a screen reader, evidence included', () => {
+    // No aria-label: one would replace the button's contents as its accessible
+    // name and hide the evidence, the distances and any review flag — exactly
+    // what D19 and D26 require it to say.
+    const event = base.analysis.events.find((e) => e.evidence.length > 0)!;
+    const { button } = mountCard(event, [
+      {
+        code: 'physically_unlikely_entry',
+        eventId: event.id,
+        message: 'A loss of this length at a non-target hole is not an escape (O4).',
+      },
+    ]);
+    expect(button.hasAttribute('aria-label')).toBe(false);
+
+    const name = button.textContent ?? '';
+    expect(name).toContain(event.evidence);
+    expect(name).toContain(event.minNoseDistance_cm.toFixed(2));
+    expect(name).toContain('physically unlikely');
+  });
+
+  it('holds only phrasing content, which is all a <button> may contain', () => {
+    const { button } = mountCard(base.analysis.events[0]!);
+    expect(button.querySelectorAll('p, div, dl, ul, li, table')).toHaveLength(0);
+  });
+
+  it('still offers a one-line summary for a caller that needs one', () => {
     const event = base.analysis.events[0]!;
-    const { button } = mountCard(event);
-    expect(button.getAttribute('aria-label')).toBe(eventSummary(event));
-    expect(button.getAttribute('aria-label')).toContain('automatic');
+    expect(eventSummary(event)).toContain('automatic');
+    expect(eventSummary(event)).toContain(`hole ${event.holeIndex}`);
   });
 });
 
@@ -132,7 +159,7 @@ describe('a corrected event (D26)', () => {
     const { button } = mountCard(event);
     expect(button.classList.contains('is-corrected')).toBe(true);
     expect(button.querySelector('.badge-user')!.textContent).toBe('user');
-    expect(button.getAttribute('aria-label')).toContain('corrected by a user');
+    expect(eventSummary(event)).toContain('corrected by a user');
   });
 
   it('writes out the automatic value the correction replaced', () => {
@@ -175,6 +202,37 @@ describe('a review flag on an event', () => {
     const event = base.analysis.events[1]!;
     const { button } = mountCard(event, [{ ...flag, eventId: 'some-other-event' }]);
     expect(button.querySelector('.event-flag')).toBeNull();
+  });
+
+  it('calls a lost-tracking flag what it is, not "physically unlikely"', () => {
+    // The four codes that can name an event mean different things. Labelling a
+    // tracking failure "physically unlikely" would tell the user the animal did
+    // something impossible when the tracker had merely lost it.
+    const event = base.analysis.events[1]!;
+    const { button } = mountCard(event, [
+      {
+        code: 'tracking_failure_at_hole',
+        eventId: event.id,
+        message: 'Tracking was lost for 2.30 s at hole 7 without the signature of an entry.',
+      },
+    ]);
+    const text = button.querySelector('.event-flag')!.textContent ?? '';
+    expect(text).toContain('lost at a hole');
+    expect(text).not.toContain('physically unlikely');
+  });
+
+  it('names every flag code that can reach a card', () => {
+    const codes: ReviewFlag['code'][] = [
+      'physically_unlikely_entry',
+      'tracking_failure_at_hole',
+      'orphaned_correction',
+      'correction_out_of_range',
+    ];
+    for (const code of codes) {
+      expect(flagLabel(code).length, `${code} has no label`).toBeGreaterThan(0);
+    }
+    // Each is distinct, so two different findings never read the same.
+    expect(new Set(codes.map(flagLabel)).size).toBe(codes.length);
   });
 
   it('selects flags by event id', () => {

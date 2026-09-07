@@ -213,6 +213,12 @@
   font-weight: 700;
 }
 
+/*
+ * The card is a <button>, which may hold phrasing content only, so these are
+ * spans made to behave as blocks rather than <p>/<dl>. The button's own text is
+ * then its accessible name, and a screen reader reads the evidence, both
+ * distances and any review flag along with it (D19, D26, D37).
+ */
 .event-facts {
   display: flex;
   flex-wrap: wrap;
@@ -220,17 +226,28 @@
   font-size: 0.8125rem;
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
-  margin: 0.25rem 0 0;
+  margin-top: 0.25rem;
+}
+
+.event-fact-term::after {
+  content: ':';
+}
+
+.event-fact-value {
+  font-weight: 600;
+  margin-left: 0.1875rem;
 }
 
 .event-evidence {
+  display: block;
   font-size: 0.875rem;
-  margin: 0.375rem 0 0;
+  margin-top: 0.375rem;
 }
 
 .event-shadow {
+  display: block;
   font-size: 0.8125rem;
-  margin: 0.25rem 0 0;
+  margin-top: 0.25rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -263,8 +280,9 @@
 }
 
 .event-flag {
+  display: block;
   font-size: 0.8125rem;
-  margin: 0.375rem 0 0;
+  margin-top: 0.375rem;
   border-left: 4px solid var(--warn-line);
   background: var(--warn-bg);
   padding: 0.25rem 0.5rem;
@@ -321,7 +339,7 @@ button.metric-value:hover {
   margin-top: var(--gap);
 }
 
-.strategy-block > h4 {
+.strategy-block h4 {
   margin: 0 0 0.375rem;
   font-size: 1rem;
 }

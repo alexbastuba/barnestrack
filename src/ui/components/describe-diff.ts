@@ -19,7 +19,14 @@
 import type { DerivedAnalysis } from '../../analysis/derive.js';
 import type { EventKind, EventRecord } from '../../contracts/events.js';
 import { isRecorded } from '../../analysis/parameters.js';
-import { formatChange, formatDelta, formatSeconds, pluralise } from './format.js';
+import {
+  formatChange,
+  formatCm,
+  formatDelta,
+  formatSeconds,
+  formatSpeed,
+  pluralise,
+} from './format.js';
 
 /** What the badge says when the two analyses are the same in every way it looks at. */
 export const NO_CHANGE = 'No change.';
@@ -86,6 +93,31 @@ function latency(value: number | null): string {
 }
 
 /**
+ * How close two recomputed floats have to be to count as the same number.
+ * Below the precision the card prints them at, so the badge can never say a
+ * value moved when the two displayed values are identical, nor stay silent
+ * when they differ on screen.
+ */
+const MEASURE_TOLERANCE = 5e-3;
+
+function changed(before: number, after: number): boolean {
+  if (!isRecorded(before) || !isRecorded(after)) return before !== after;
+  return Math.abs(before - after) > MEASURE_TOLERANCE;
+}
+
+/** The continuous per-trial measures, with the unit each is written in. */
+const MEASURES: readonly {
+  key: 'pathLength_cm' | 'pathLengthSmoothed_cm' | 'meanSpeed_cmPerS' | 'targetQuadrantTime_s';
+  name: string;
+  format(value: number): string;
+}[] = [
+  { key: 'pathLength_cm', name: 'path length', format: formatCm },
+  { key: 'pathLengthSmoothed_cm', name: 'smoothed path length', format: formatCm },
+  { key: 'meanSpeed_cmPerS', name: 'mean speed', format: formatSpeed },
+  { key: 'targetQuadrantTime_s', name: 'target quadrant time', format: formatSeconds },
+];
+
+/**
  * The badge sentence for a re-derivation. `previous` is null the first time an
  * analysis is shown, when there is nothing to compare against.
  */
@@ -125,6 +157,18 @@ export function describeDiff(
   if (a.escaped !== b.escaped) {
     clauses.push(`escaped ${formatChange(a.escaped ? 'yes' : 'no', b.escaped ? 'yes' : 'no')}`);
   }
+  // The continuous measures. They are floats recomputed from scratch, so they
+  // are compared with a tolerance rather than by identity — but they must be
+  // compared: `targetQuadrant.holeSpan` and `kinematicsSmoothingWindowFrames`
+  // move only these, and a badge that ignored them would read "No change."
+  // while the card beside it showed the quadrant time doubling.
+  for (const measure of MEASURES) {
+    const before = a[measure.key];
+    const after = b[measure.key];
+    if (!changed(before, after)) continue;
+    clauses.push(`${measure.name} ${formatChange(measure.format(before), measure.format(after))}`);
+  }
+
   if (previous.cleaning.filledFrames !== next.cleaning.filledFrames) {
     clauses.push(
       `filled frames ${formatChange(

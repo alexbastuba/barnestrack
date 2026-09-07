@@ -37,6 +37,9 @@ const FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex]
 function focusable(root: ParentNode): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((node) => {
     if ((node as HTMLInputElement).disabled) return false;
+    // A hidden control is not in the tab order, and happy-dom still reports a
+    // tabIndex for one, so it has to be excluded explicitly.
+    if (node.hidden || node.closest('[hidden]') !== null) return false;
     if (node.tagName === 'SUMMARY') return node.getAttribute('tabindex') !== '-1';
     return node.tabIndex !== -1;
   });
@@ -224,6 +227,22 @@ describe('the quality panel tab order', () => {
     const { quality } = mountAll();
     for (const node of quality.querySelectorAll('.seek-cell')) {
       expect(node.getAttribute('aria-label')).toMatch(/Go to frame \d+/);
+    }
+  });
+});
+
+describe('every panel brings its own styles', () => {
+  it('imports the component stylesheet from each module that renders', async () => {
+    // A consumer importing `createEventList` directly, rather than through the
+    // barrel, must still get `.event-card.is-corrected`'s hatch — which is the
+    // shape half of the D26 marking.
+    const { readFileSync } = await import('node:fs');
+    const modules = ['parameters-panel', 'event-list', 'metrics-card', 'quality-panel'];
+    for (const name of modules) {
+      const source = readFileSync(`src/ui/components/${name}.ts`, 'utf-8');
+      expect(source, `${name}.ts does not import its styles`).toContain(
+        "import './review-components.css'",
+      );
     }
   });
 });

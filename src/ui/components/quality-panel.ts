@@ -265,6 +265,49 @@ export function createQualityPanel(
     ]);
   }
 
+  /**
+   * The nose-heading-confidence distribution D30 asks for. Bars would carry the
+   * shape in colour alone, so it is a table: the bin, its share, and a run of
+   * blocks whose length is the share — readable in grayscale and by a screen
+   * reader (D26, D37).
+   */
+  function renderHistogram(): HTMLElement {
+    const bins = current.analysis.quality.noseConfidenceHistogram;
+    const total = bins.reduce((sum, bin) => sum + bin.count, 0);
+    return disclosure('Nose-heading confidence distribution', [
+      el('p', {
+        class: 'metric-note',
+        text: `How confident the tracker was about which end of the body is the nose, over the ${formatCount(total)} frames of the trial window. Events use the nose only above the cutoff (O16).`,
+      }),
+      el('div', { class: 'table-scroll' }, [
+        el('table', { class: 'mirror-table' }, [
+          el('caption', { text: 'Nose-heading confidence' }),
+          el('thead', {}, [
+            el('tr', {}, [
+              el('th', { text: 'Confidence', attrs: { scope: 'col' } }),
+              el('th', { text: 'Frames', attrs: { scope: 'col' } }),
+              el('th', { text: 'Share', attrs: { scope: 'col' } }),
+            ]),
+          ]),
+          el(
+            'tbody',
+            {},
+            bins.map((bin) =>
+              el('tr', {}, [
+                el('th', {
+                  text: `${bin.min.toFixed(1)}–${bin.max.toFixed(1)}`,
+                  attrs: { scope: 'row' },
+                }),
+                el('td', { text: formatCount(bin.count) }),
+                el('td', { text: formatPercent(total === 0 ? Number.NaN : bin.count / total) }),
+              ]),
+            ),
+          ),
+        ]),
+      ]),
+    ]);
+  }
+
   function renderGaps(): void {
     const { gaps } = current.analysis.quality;
     const track = current.analysis.cleanedTrack;
@@ -342,6 +385,7 @@ export function createQualityPanel(
         figure('Dropped-frame gaps', formatCount(anomalies.droppedFrameGapCount)),
         figure('Timebase drift', formatSeconds(anomalies.driftSeconds, 3)),
       ]),
+      renderHistogram(),
       disclosure('Hashes', [
         el('p', { class: 'metric-note', text: `Parameters hash: ${parametersHash}` }),
         el('p', { class: 'metric-note', text: `Tracking hash: ${trackingParametersHash}` }),

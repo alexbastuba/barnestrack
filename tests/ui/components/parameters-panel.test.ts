@@ -196,6 +196,25 @@ describe('refusing an invalid value', () => {
     );
   });
 
+  it('marks the offending control for a screen reader, not only the summary', async () => {
+    mount();
+    const input = numberFor('kinematics.dropGapFactor');
+    input.value = '0.1';
+    input.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS * 5);
+
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(container.querySelector(`#${describedBy}`)!.textContent).toContain('a factor above 1');
+
+    // And the marking is removed once the value is legal again.
+    input.value = '1.5';
+    input.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+    expect(input.hasAttribute('aria-invalid')).toBe(false);
+  });
+
   it('keeps what the user typed rather than snapping the field back', async () => {
     mount();
     const input = numberFor('trialCutoff_s');
@@ -223,6 +242,44 @@ describe('refusing an invalid value', () => {
     input.dispatchEvent(new Event('input'));
     await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS * 5);
     expect(onParametersChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('update() while the user is editing', () => {
+  it('never shows one value and emits another', async () => {
+    // The harness updates all four panels on every re-derive, so an update can
+    // land between a keystroke and the debounce. Overwriting the working value
+    // of the focused row would leave the field showing 240 and the next commit
+    // emitting 180.
+    const { panel, onParametersChange } = mount();
+    const input = numberFor('trialCutoff_s');
+    input.focus();
+    input.value = '240';
+    input.dispatchEvent(new Event('input'));
+
+    panel.update({ parameters });
+    expect(input.value).toBe('240');
+
+    // Touch another row; whatever is emitted must match what is on screen.
+    const other = numberFor('noseConfidenceCutoff');
+    other.value = '0.7';
+    other.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+
+    const emitted = onParametersChange.mock.calls.at(-1)![0] as Parameters;
+    expect(emitted.trialCutoff_s).toBe(Number(input.value));
+  });
+
+  it('takes the incoming value for every row the user is not in', () => {
+    const { panel } = mount();
+    const focused = numberFor('trialCutoff_s');
+    focused.focus();
+    focused.value = '240';
+    focused.dispatchEvent(new Event('input'));
+
+    panel.update({ parameters: { ...parameters, noseConfidenceCutoff: 0.9 } });
+    expect(numberFor('noseConfidenceCutoff').value).toBe('0.9');
+    expect(focused.value).toBe('240');
   });
 });
 
@@ -327,6 +384,15 @@ describe('lifecycle', () => {
     expect(container.querySelector('.parameters-panel')).not.toBeNull();
     panel.destroy();
     expect(container.querySelector('.parameters-panel')).toBeNull();
+  });
+
+  it('removes only its own nodes, never a sibling it did not create', () => {
+    const sibling = document.createElement('p');
+    sibling.id = 'not-mine';
+    container.append(sibling);
+    const { panel } = mount();
+    panel.destroy();
+    expect(container.querySelector('#not-mine')).toBe(sibling);
   });
 
   it('does not emit a change queued before destroy', async () => {

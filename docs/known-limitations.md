@@ -66,11 +66,11 @@ session it is found (D39).
   least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
   to flag.
 - **Edited tracking parameters are not in the session file.** D51 stamps `SessionFile.parameters` at
-  the first _analysis_ run, not the first tracking run, so until the analysis engine lands there is
+  the first *analysis* run, not the first tracking run, so until the analysis engine lands there is
   nowhere in the contract for a tracking threshold the user changed to live. It is kept in the
   browser's autosave record instead, beside the maze draft and the click count: it survives a reload
   but a session file saved, reset and loaded again comes back at the defaults. The automatic layer's
-  `parametersHash` still records _which_ parameters produced it, so a mismatch is detectable even
+  `parametersHash` still records *which* parameters produced it, so a mismatch is detectable even
   though the values themselves are not yet in the file. Closes when chunk 5 stamps `parameters`.
 - **A reload during a tracking pass loses the pass, silently.** No run state is persisted, so a video
   whose pass was interrupted by a reload comes back simply "not tracked" rather than saying that a
@@ -110,7 +110,7 @@ session it is found (D39).
   A trial with no investigation and no target visit satisfies the spatial rule vacuously (the
   reasoning says so; the status carries the warning). And because the rules consider investigations
   before the first target visit only, test50 — which walks the ring hole by hole for two minutes
-  _after_ its first target visit at 12.7 s — classifies as spatial from two errors at hole 5.
+  *after* its first target visit at 12.7 s — classifies as spatial from two errors at hole 5.
   Whether post-target behaviour should enter the classification is an O7 question.
 - **Adjacent runs are direction-agnostic and may end at the target visit.** The serial rule's
   "run of adjacent-hole investigations" counts a step of one hole in either direction, so
@@ -165,7 +165,7 @@ session it is found (D39).
   know that the event count in `events.csv` is not the length of `derived.events`.
 - **A cohort of more than six animals cannot be read from the learning curve's key in print.**
   `src/viz/learning-curve.ts` gives each animal a marker shape from a list of six and a dash
-  pattern from a list of four, and in the print theme every series is black. The _lines_ stay
+  pattern from a list of four, and in the print theme every series is black. The *lines* stay
   distinguishable past six animals because shape and dash cycle out of step, but the legend swatch
   carries only the shape, so animals 0 and 6 get the same key entry. At a 9 px swatch a dash
   pattern is not legible, so the fix is a longer glyph list or a swatch drawn as a short line
@@ -273,7 +273,7 @@ session it is found (D39).
 - **Tied timestamps are not in decode order.** Within the tied pairs, the decoder emits the two
   frames in the bitstream's picture-order-count (POC) order, which differs from their order in the
   sample table for 68 / 7 / 5 pairs (test50 / test51 / test53, measured with `ffmpeg -bsf:v
-trace_headers`). BarnesTrack therefore orders ties by POC, read from each sample's first slice
+  trace_headers`). BarnesTrack therefore orders ties by POC, read from each sample's first slice
   header (D45), so that "frame N" means the same picture in the sequential tracking pass, in the
   scrubber, and in ffprobe's output order. A plain sort by timestamp then decode order makes the
   decoder's output non-monotone at the first such pair (frame 174/175 of test50), which the
