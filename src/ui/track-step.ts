@@ -27,7 +27,7 @@ import {
   MANUAL_THRESHOLD_BOUND,
   TRACKING_PARAMETER_BOUNDS,
   clampToBound,
-} from '../session/tracking-parameter-bounds.js';
+} from '../analysis/tracker/params.js';
 import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
 import { describeFrameRanges, formatFrameRanges, parseFrameRanges } from './frame-ranges.js';
 import type { AppContext, Step } from './step.js';
@@ -464,7 +464,7 @@ interface ParameterPanel {
 /**
  * Numeric tracking parameters, in the order the pass uses them. The label is
  * this file's business; the admissible range is not — it decides the value
- * that gets hashed, so it lives in `tracking-parameter-bounds.ts`.
+ * that gets hashed, so it lives with the defaults in `src/analysis/tracker/params.ts`.
  */
 type NumberFieldKey = Exclude<
   keyof TrackingParameters,

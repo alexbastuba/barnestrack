@@ -3,18 +3,18 @@
  *
  * `clampToBound` decides the value a pass actually runs with and therefore the
  * value that goes into `parametersHash` (D51), so its rounding rule is pinned
- * here — chunk 5 has to be able to fold this file into `params.ts` without
- * silently changing a hash.
+ * here. The bounds were written in `src/session/` by chunk 4 and folded into
+ * the tracker's configuration module by chunk 6 without changing a value.
  */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
-import type { TrackingParameters } from '../../src/contracts/parameters.js';
 import {
+  DEFAULT_TRACKING_PARAMETERS,
   MANUAL_THRESHOLD_BOUND,
   TRACKING_PARAMETER_BOUNDS,
   clampToBound,
   type ParameterBound,
-} from '../../src/session/tracking-parameter-bounds.js';
+} from '../../../src/analysis/tracker/params.js';
+import type { TrackingParameters } from '../../../src/contracts/parameters.js';
 
 const COUNT = TRACKING_PARAMETER_BOUNDS.backgroundSampleCount;
 const AREA = TRACKING_PARAMETER_BOUNDS.minBlobArea_cm2;
