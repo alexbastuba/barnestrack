@@ -134,74 +134,85 @@ const announce = (message: string): void => {
   say(message);
 };
 
-let panels: { destroy(): void }[] = [];
+/**
+ * The panels are created once and fed with `update()` afterwards — never torn
+ * down and rebuilt. That is not a micro-optimisation: a recompute fires while
+ * the user is still holding a slider, and a panel rebuilt underneath them would
+ * take the focus and the drag with it. This is the half of the component
+ * contract chunk 7b has to use, so the harness has to use it too.
+ */
+const trial0 = stateFor(videoId);
+
+const parametersPanel = createParametersPanel(
+  parametersHost,
+  { parameters: trial0.parameters, previous: trial0.previous, next: trial0.analysis },
+  {
+    onParametersChange(next) {
+      record('onParametersChange(…)');
+      recompute(videoId, { parameters: next });
+    },
+    onAnnounce: announce,
+  },
+);
+
+const metricsCard = createMetricsCard(
+  metricsHost,
+  {
+    analysis: trial0.analysis,
+    parameters: trial0.parameters,
+    strategyOverrideId: overrideId(videoId),
+  },
+  {
+    onSeek: seek,
+    onAnnounce: announce,
+    onOverride(strategy: SearchStrategy, reason: string) {
+      record(`onOverride(${strategy}, "${reason}")`);
+      const entry: CorrectionEntry = {
+        id: `harness-strategy-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        source: 'user',
+        kind: 'strategy_override',
+        strategy,
+        reason,
+      };
+      // Additive: the automatic classification is never overwritten (D9).
+      recompute(videoId, { corrections: [...stateFor(videoId).corrections, entry] });
+    },
+    onRevert(id: string) {
+      record(`onRevert(${id})`);
+      recompute(videoId, {
+        corrections: stateFor(videoId).corrections.filter((entry) => entry.id !== id),
+      });
+    },
+  },
+);
+
+const qualityPanel = createQualityPanel(
+  qualityHost,
+  { session, videoId, analysis: trial0.analysis },
+  { onSeek: seek, onAnnounce: announce },
+);
+
+const eventList = createEventList(
+  eventsHost,
+  { events: trial0.analysis.events, flags: trial0.analysis.reviewFlags },
+  { onSeek: seek, onAnnounce: announce },
+);
 
 function render(): void {
-  for (const panel of panels) panel.destroy();
-  parametersHost.replaceChildren();
-  eventsHost.replaceChildren();
-  metricsHost.replaceChildren();
-  qualityHost.replaceChildren();
-
   const trial = stateFor(videoId);
-
-  panels = [
-    createParametersPanel(
-      parametersHost,
-      { parameters: trial.parameters, previous: trial.previous, next: trial.analysis },
-      {
-        onParametersChange(next) {
-          record('onParametersChange(…)');
-          recompute(videoId, { parameters: next });
-        },
-        onAnnounce: announce,
-      },
-    ),
-
-    createMetricsCard(
-      metricsHost,
-      {
-        analysis: trial.analysis,
-        parameters: trial.parameters,
-        strategyOverrideId: overrideId(videoId),
-      },
-      {
-        onSeek: seek,
-        onAnnounce: announce,
-        onOverride(strategy: SearchStrategy, reason: string) {
-          record(`onOverride(${strategy}, "${reason}")`);
-          const entry: CorrectionEntry = {
-            id: `harness-strategy-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            source: 'user',
-            kind: 'strategy_override',
-            strategy,
-            reason,
-          };
-          // Additive: the automatic classification is never overwritten (D9).
-          recompute(videoId, { corrections: [...stateFor(videoId).corrections, entry] });
-        },
-        onRevert(id: string) {
-          record(`onRevert(${id})`);
-          recompute(videoId, {
-            corrections: stateFor(videoId).corrections.filter((entry) => entry.id !== id),
-          });
-        },
-      },
-    ),
-
-    createQualityPanel(
-      qualityHost,
-      { session, videoId, analysis: trial.analysis },
-      { onSeek: seek, onAnnounce: announce },
-    ),
-
-    createEventList(
-      eventsHost,
-      { events: trial.analysis.events, flags: trial.analysis.reviewFlags },
-      { onSeek: seek, onAnnounce: announce },
-    ),
-  ];
+  parametersPanel.update({
+    parameters: trial.parameters,
+    previous: trial.previous,
+    next: trial.analysis,
+  });
+  metricsCard.update({
+    analysis: trial.analysis,
+    parameters: trial.parameters,
+    strategyOverrideId: overrideId(videoId),
+  });
+  qualityPanel.update({ session, videoId, analysis: trial.analysis });
+  eventList.update({ events: trial.analysis.events, flags: trial.analysis.reviewFlags });
 }
 
 for (const video of session.videos) {

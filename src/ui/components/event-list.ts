@@ -39,6 +39,8 @@ export function createEventList(
   let current = props;
   const shown = new Set<EventKind>(KINDS);
   const cards = new Map<string, ReturnType<typeof createEventCard>>();
+  /** The ids currently in the list, in the order they are rendered. */
+  let order: string[] = [];
 
   const root = el('section', { class: 'review-panel event-panel' });
   const headingId = uniqueId('events-heading');
@@ -95,21 +97,32 @@ export function createEventList(
     counts.textContent = countLine();
 
     const events = visible();
-    const wanted = new Set(events.map((event) => event.id));
+    const wanted = events.map((event) => event.id);
+    const wantedSet = new Set(wanted);
+
     for (const [id, card] of cards) {
-      if (!wanted.has(id)) {
+      if (!wantedSet.has(id)) {
         card.destroy();
         cards.delete(id);
       }
     }
 
-    // Rebuilt in order rather than diffed in place: an event list is tens of
-    // rows, and the order is the trial's own (start frame, then kind).
-    replaceChildren(list, []);
-    for (const event of events) {
-      const existing = cards.get(event.id);
-      if (existing) existing.destroy();
-      cards.set(event.id, createEventCard(list, { event, flags: current.flags }, callbacks));
+    // Cards that survive are updated in place rather than rebuilt. A parameter
+    // change re-renders this list, and rebuilding a card the user is standing
+    // on would take their focus with it (D37) — so the DOM is only rewritten
+    // when the set or the order of events actually changed.
+    const sameOrder = order.length === wanted.length && order.every((id, i) => id === wanted[i]);
+
+    if (sameOrder) {
+      for (const event of events) cards.get(event.id)!.update({ event, flags: current.flags });
+    } else {
+      replaceChildren(list, []);
+      for (const event of events) {
+        const existing = cards.get(event.id);
+        if (existing) existing.destroy();
+        cards.set(event.id, createEventCard(list, { event, flags: current.flags }, callbacks));
+      }
+      order = wanted;
     }
 
     const nothing = events.length === 0;

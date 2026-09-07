@@ -266,6 +266,30 @@ describe('the event list', () => {
     expect(container.querySelector('.event-count')!.textContent).toContain('3 investigations');
   });
 
+  it('keeps the focused card when an update leaves the event set unchanged', () => {
+    const { list } = mountList();
+    const card = container.querySelector<HTMLButtonElement>('.event-card')!;
+    card.focus();
+    expect(document.activeElement).toBe(card);
+
+    // A strategy override re-derives without changing any event; rebuilding the
+    // list here would take the user's focus with it (D37).
+    list.update({ events: base.analysis.events, flags: [] });
+
+    expect(document.activeElement).toBe(card);
+    expect(container.querySelector('.event-card')).toBe(card);
+  });
+
+  it('still rebuilds when the events actually changed', () => {
+    const { list } = mountList();
+    const card = container.querySelector<HTMLButtonElement>('.event-card')!;
+    list.update({ events: base.analysis.events.slice(1), flags: [] });
+    expect(container.querySelector('.event-card')).not.toBe(card);
+    expect(container.querySelectorAll('ul.event-list > li')).toHaveLength(
+      base.analysis.events.length - 1,
+    );
+  });
+
   it('removes itself on destroy', () => {
     const { list } = mountList();
     list.destroy();
