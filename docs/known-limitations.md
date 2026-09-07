@@ -65,13 +65,12 @@ session it is found (D39).
   holes near the far platform edge are seen obliquely as small crescents). A baked-in animal of at
   least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
   to flag.
-- **Edited tracking parameters are not in the session file.** D51 stamps `SessionFile.parameters` at
-  the first *analysis* run, not the first tracking run, so until the analysis engine lands there is
-  nowhere in the contract for a tracking threshold the user changed to live. It is kept in the
-  browser's autosave record instead, beside the maze draft and the click count: it survives a reload
-  but a session file saved, reset and loaded again comes back at the defaults. The automatic layer's
-  `parametersHash` still records *which* parameters produced it, so a mismatch is detectable even
-  though the values themselves are not yet in the file. Closes when chunk 5 stamps `parameters`.
+- **Parameters edited before the first analysis are not in the session file.** D51 stamps
+  `SessionFile.parameters` at the first analysis run, so a threshold changed before any video has
+  been analysed lives in the browser's autosave record, beside the maze draft and the click count:
+  it survives a reload, but a session file saved, reset and loaded again before any analysis comes
+  back at the defaults. Once a video has been analysed every edit goes into the file. The
+  automatic layer's `parametersHash` records which tracking parameters produced it either way.
 - **A reload during a tracking pass loses the pass, silently.** No run state is persisted, so a video
   whose pass was interrupted by a reload comes back simply "not tracked" rather than saying that a
   run was interrupted. The guarantee that matters holds — the automatic layer is written once, at the
@@ -89,14 +88,36 @@ session it is found (D39).
   it without complaint, but it is a large thing to email. The file is pretty-printed for
   readability; compact JSON, or a per-frame encoding narrower than one object per frame, would cut it
   substantially and is a contract change, not a formatting one.
-- **An escape-box entry needs a full loss of detection.** O4 reads an entry as a loss of detection
-  whose last-seen event point is within 1.0 × hole radius of the target. In the sample recordings
-  the animal's rear stays visible while its head is in a hole (`small_blob` keeps a positioned
-  centroid), so no entry is detected: test51's last 15 s head-in-hole at hole 19 is an
-  investigation, and every sample trial is `review` under O5. A rear-only centroid also sits about
-  a body length from the hole centre, so even a full disappearance from that pose would fall
-  outside the entry radius and read as a tracking failure at the hole. The radius is O4's default
-  and was not widened (`prototypes/analysis/RESULTS.md`).
+- **A head-in-hole dwell at a non-target hole of a second or more is flagged for review.** Under
+  the revised O4 a run of partial (`small_blob` / `fragmented`) detections within the entry radius
+  of a hole is entry-shaped, and at a non-target hole that is an investigation flagged "physically
+  unlikely". On these clips the animal rests with its head in non-target holes for seconds at a
+  time (test53's last 89 frames at hole 2 under the recorded map), so such trials carry a review
+  flag and `status: review` even when nothing is wrong with the tracking. The flag is honest about
+  what the rule saw; whether a long head-in-hole dwell at a non-target hole should count as
+  entry-shaped at all is an O4 question. The same rule reads a hand-marked "not visible" range of
+  a second or more beside a non-target hole as entry-shaped too (test51, frames 300–320 inside the
+  hole-12 visit): the visit stays one flagged investigation rather than splitting at the gap.
+- **The review step addresses frames by position, not by sample-table index.** The playhead is a
+  position in the track and is written as a correction's `frameIndex`; event bars and seek targets
+  use `EventRecord.startFrame`, a frame index, on the same axis. The two agree for every track the
+  tracker produces (one frame per sample), and `timelineModel` refuses a track where they differ
+  rather than misaddress it, but an imported track (D42) whose indices are not positions will need
+  the conversion the analysis layer already has (`framePosition`) at the UI boundary.
+- **Play shows the second frame of a tied-timestamp pair.** `Space` maps wall-clock time to the
+  last frame at or before that time, so where two frames share a presentation timestamp (D45: all
+  three sample videos have such pairs) the first of the pair is never displayed during play. The
+  arrows and the frame field still address both frames; nothing measured depends on it.
+- **The nose-judged event fraction counts every event, not only those inside the trial window.**
+  `noseJudgedEventFraction` divides over all investigations and entries in the event list, while
+  the other D54 numbers are trial-windowed. No path produces an event outside the trial today
+  (user-added events are clipped to it), so the number cannot differ yet; if an annotation-only
+  event outside the window is ever kept, this fraction should exclude it.
+- **The hole select's type-ahead relabels on every keystroke.** Typing `13` into the "Hole" select
+  changes it to hole 1 and then to hole 13, and each change is applied; the two coalesce into one
+  correction entry, but the recompute runs twice and the announcement reads "moved from hole 1 to
+  hole 13". Picking the option with the arrows or the mouse avoids it. A fix would apply on blur or
+  after a short pause.
 - **A parameter change can orphan an event correction.** Event corrections address automatic
   events by an id made of kind, hole and start frame, matched exactly or by span (see
   `docs/data-contracts.md` §6). A change that moves an event away from the frame named in the id,
@@ -106,32 +127,17 @@ session it is found (D39).
 - **Repeat visits split at the merge-gap boundary.** Bouts at the same hole 0.53 s apart are two
   investigations under the 0.5 s default (test51, hole 12): the repeat-visit count is sensitive to
   the merge gap near its own value. The gap is a visible O1 parameter.
-- **The O7 placeholder classifies an empty search as spatial, and looks only at the search phase.**
-  A trial with no investigation and no target visit satisfies the spatial rule vacuously (the
-  reasoning says so; the status carries the warning). And because the rules consider investigations
-  before the first target visit only, test50 — which walks the ring hole by hole for two minutes
-  *after* its first target visit at 12.7 s — classifies as spatial from two errors at hole 5.
-  Whether post-target behaviour should enter the classification is an O7 question.
-- **Adjacent runs are direction-agnostic and may end at the target visit.** The serial rule's
-  "run of adjacent-hole investigations" counts a step of one hole in either direction, so
-  12→13→12→11 is a run of four (a same-direction reading would make it three), and the target
-  visit may be the run's last element, so 9→8→7 with target 7 is a run of three where O7's
-  "precedes the target visit" could be read as two. Both readings are stated in the serial rule's
-  definition text; which one O7 means is a decision for `docs/decisions.md`.
-- **Thresholds outside the contract are not in the parameters hash.** The O5 censoring switch,
-  the five O7 rule numbers and the two D30 tier thresholds live in `DEFAULT_ANALYSIS_OPTIONS`
-  (`trialCensoring.censorToCutoff`, `strategy.spatialMaxErrors`, `strategy.spatialMaxHoleDistance`,
-  `strategy.spatialMaxCentreCrossings`, `strategy.serialMinRun`, `strategy.centreZoneRadiusFraction`,
-  `quality.goodMinPositionedFraction`, `quality.poorMaxPositionedFraction`) because `Parameters` has
-  no field for them; they are neither hashed into `parametersHash` nor stamped on exports. Two
-  derived layers or exports can therefore carry the same `parameters_hash` and disagree on
-  `strategy`, `total_latency_s` or the quality tier if these were changed between them. Until the
-  fields join the contract, the defaults are the only values in use and the tool version identifies
-  them.
-- **Some derived numbers cannot be null in the contract.** `TrialMetrics.trialStart_s` and
-  `meanSpeed_cmPerS`, and `EventRecord.minNoseDistance_cm` (when the nose was never usable during
-  an event, a common case on these clips) are `NaN`, which JSON writes as `null`; consumers must
-  treat non-finite and null alike and a CSV writer must emit an empty cell.
+- **The O7 placeholder classifies an empty search as spatial.** A trial with no investigation and
+  no target visit satisfies the spatial rule's three limits vacuously (the reasoning says so; the
+  status carries the warning). The scope of the rules is settled — the search phase, trial start
+  to the first target visit — so test50, which walks the ring hole by hole for two minutes *after*
+  its first target visit at 12.7 s, classifies from the two errors before it; post-target
+  behaviour is by O7 not part of the classification.
+- **A few derived numbers still carry `NaN` rather than `null`.** D55 made `trialStart_s`,
+  `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable; `minCentroidDistance_cm` (a loss with no
+  positioned approach frame) and the kinematics fractions of an empty trial are still typed as
+  plain `number` and hold `NaN`, which JSON writes as `null`. Consumers treat non-finite and null
+  alike (`isRecorded()`) and the CSV writer emits an empty cell for either.
 - **Cleaning counts and the strategy reasoning are not persisted.** `n_filled_frames`, the outlier
   indices, the unfilled-gap reasons, the trial bounds, the strategy features and reasoning and the
   review flags live on the result of `derive()` and not in the session's `DerivedLayer`; they are
@@ -170,6 +176,15 @@ session it is found (D39).
   carries only the shape, so animals 0 and 6 get the same key entry. At a 9 px swatch a dash
   pattern is not legible, so the fix is a longer glyph list or a swatch drawn as a short line
   segment rather than a marker (D26, D32).
+- **An unanalysed video is dropped from cohort figures and exports without an on-screen count.**
+  `VideoAnalysis.derived` is null until a video is analysed (D52), so `trialSource` now returns null
+  for such a video and `analysedVideos` skips it: it contributes no point to the learning curve or
+  group comparison, and no row to `trials.csv`, `events.csv` or `quality.csv`. That is the right
+  behaviour — a row of zeroes would be a fabricated trial (D16) — but the omission is silent, so a
+  cohort of ten videos of which three were never analysed shows seven points with nothing saying the
+  other three are missing. Surfacing it belongs to whichever step mounts those figures: it should say
+  "3 of 10 videos are not analysed yet" beside the figure and the export button. Found while
+  repairing the `e7ad7fe` merge (chunk 7a).
 - **The cohort skill's column lists are a hand-kept copy of the export headers.**
   `skills/barnestrack-cohort/SKILL.md` quotes the three CSV header lines verbatim so a reader can
   diff them against a real export, but nothing binds the two: the header lines were generated
@@ -186,6 +201,67 @@ session it is found (D39).
 
 ## Excluded scope
 
+- **No undo/redo; repeated edits of one item coalesce.** Every correction is a separate entry
+  with its own "Revert to automatic", but there is no undo stack: nudging a point six times leaves
+  one entry at the final position (the original id, the latest timestamp), and reverting it
+  restores the automatic value, not the previous nudge. The same holds for repeated edits of one
+  event, the trial start and the strategy override. Undo/redo is out of scope for this version.
+- **The review step's threshold fields are provisional.** Six thresholds (hole investigation,
+  escape entry, nose confidence cutoff) are editable on the step; the rest are on the export's
+  parameters sheet and change only through a loaded session file until the parameters panel
+  (chunk 7b) replaces the fields. The `#review-parameters`, `#review-events`, `#review-metrics`
+  and `#review-quality` sections are its mount points.
+
+- **The maze step's mirror table scrolls without keyboard access.** `axe-core` reports
+  `scrollable-region-focusable` (serious) against `.table-scroll` in `src/ui/maze-step.ts:873`: the
+  DOM table that mirrors the canvas for screen-reader users (D37) sits in an overflow container
+  that no keyboard user can scroll, because the container is not in the tab order and holds no
+  focusable child once the table is longer than the box. A pointer user can scroll it and a
+  keyboard user cannot, which inverts the point of having the table at all. The fix is one line —
+  `tabindex="0"` plus a `role="group"` and an accessible name on the container — but it lands in
+  `src/ui/`, outside chunk 9b's boundary, so the browser smoke test allows it by step, rule and matched node
+  (`Maze:scrollable-region-focusable:.table-scroll` in `tests/browser/app-smoke.spec.ts`) and fails on
+  anything new, including a second offending node under the same rule. Delete that entry when the container is fixed. Three `region` findings ("All page content
+  should be contained by landmarks", against `.stepper`, on Videos, Maze and Track) are moderate
+  and below the failing threshold; they are listed on every run.
+
+## Excluded scope
+
+- **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at
+  `public/examples/example-cohort.barnestrack.json.gz` is generated by
+  `scripts/build-example-bundle.ts` from `tests/fixtures/synthetic-analysis.ts`, so its latencies,
+  errors, paths and strategies are plausible fiction over the three real clips' frame counts and
+  frame rates. The demo take on Monday replaces `sourceSession()` with the real outputs; the loader
+  validates shape only and never reads a number, so the swap needs no code change. The
+  *fingerprints* are real and measured, because the fetch button verifies a download against them
+  (D33).
+- **The example cohort's per-frame `reason` strings are prose, not the documented enumeration.**
+  `docs/data-contracts.md` §2 says `reason` is one of eight fixed strings (`single_blob`,
+  `proximity_to_previous`, `no_foreground`, `multiple_blobs`, `oversized_blob`, `partial_at_rim`,
+  `small_blob`, `fragmented`), which is what lets the quality report cluster failures (D8). The
+  synthetic fixture writes sentences instead — "single mouse-sized component inside the platform
+  mask", "blob smaller than half the expected body area (small_blob)" — and this chunk publishes
+  that fixture as an artifact under `public/`. No mapping is invented here, because guessing which
+  enum member a sentence meant would be a fabrication of exactly the kind D16 forbids; the real
+  tracker emits the enum, so Monday's take resolves it. Until then, anything that groups the
+  example cohort by `reason` sees eight distinct sentences rather than the eight names.
+- **The bundle is `.json.gz`, not plain `.json`.** 11.1 MiB of pretty-printed JSON for three
+  videos, and `.claude/hooks/pre-commit-guard.sh` refuses any staged blob over 2 MB; gzip brings it
+  to 502,426 B. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
+  a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
+  body — works too.
+- **The demo's new controls are unstyled.** `src/styles/` is outside chunk 9b's boundary, so no
+  rules exist for them yet; chunk 9c styles them when it mounts the panel. The complete set
+  `mountExampleCohortPanel` emits is eight classes: `.example-cohort` (the panel root),
+  `.example-load` and `.example-fetch` (the two buttons), `.example-fetch-row` (the fetch button
+  with its hint), `.example-banner`, `.example-provenance`, `.example-progress` (download progress,
+  outside any live region) and `.example-status` (the outcome line). It also reuses four classes
+  that already have rules and need none: `.confirm`, `.confirm-text` and `.danger` from the shell's
+  reset confirmation, and `.hint`.
+- **Only `test53.mp4` can be fetched.** The button downloads the smallest clip (496,723 bytes);
+  test50 and test51 have to be dropped by hand from a local copy of the sample-data repository.
+  Fetching 3 MB of video on a click is not something to do without asking, and one attached clip is
+  enough to demonstrate frame-level work (D2, D33).
 - **Input format.** MP4 with H.264 (AVC) video only (D4, O13). Other containers/codecs are listed
   in the UI with the reason, never silently dropped, and with a re-encode hint:
 
@@ -307,11 +383,16 @@ session it is found (D39).
   (test51 / test53 / test50); only 82 / 127 / 1637 frames exceed 8 cm/s. Below walking speed the
   centroid's direction of motion is jitter (the head dipping into a hole shifts the blob), which is
   why the velocity cue for the nose applies only from 8 cm/s.
-- **No escape-box entry is detectable in the three clips.** test50 circles the rim and never
-  enters a hole (53 investigations, target reached at 12.7 s, cutoff at 180 s); test51 ends with its
-  head in hole 19 (top right) and test53 in hole 2 (about four o'clock on the right; the tracker
-  results said "3 o'clock" by eye), both with the rear visible. Under O4 none of these is an entry
-  (see Defects), so all three trials are `review`.
+- **No escape-box entry occurs in the three clips under the recorded map.** test50 circles the rim
+  and never enters a hole (53 investigations, target reached at 12.7 s, cutoff at 180 s); test51
+  ends with its head in hole 19 (top right) and test53 in hole 2 (about four o'clock on the right),
+  both with the rear visible, and neither hole is the recorded target (hole 7, a placeholder from
+  the chunk-3 handoff — there is no ground truth for which hole held the escape box). Under the
+  revised O4 (a run of partial detections counts) test53's head-in-hole run would be a persistent
+  entry with the target at hole 2 (frames 833–904, 2.37 s), while test51's run at hole 19 is
+  15 frames at 14.985 fps = 0.93 s first-to-last, under the 1.0 s minimum, and stays an
+  investigation whichever hole is the target (`prototypes/analysis/RESULTS.md`). So all three trials
+  are `review`.
 - **Trial starts land where the contact sheets say.** Frame 150 for test50 and test53 (the animal
   appears at the rim after an empty platform) and frame 75 for test51 (the first frame after the
   cylinder is lifted). No `oversized_blob` frame exists in any clip, so the O5 clause "after the
