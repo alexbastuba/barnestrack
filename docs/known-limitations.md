@@ -170,6 +170,20 @@ session it is found (D39).
   carries only the shape, so animals 0 and 6 get the same key entry. At a 9 px swatch a dash
   pattern is not legible, so the fix is a longer glyph list or a swatch drawn as a short line
   segment rather than a marker (D26, D32).
+- **The cohort skill's column lists are a hand-kept copy of the export headers.**
+  `skills/barnestrack-cohort/SKILL.md` quotes the three CSV header lines verbatim so a reader can
+  diff them against a real export, but nothing binds the two: the header lines were generated
+  through `src/export/` and pasted, and a change to `src/export/columns.ts` will not fail any test
+  because of the stale copy. The counts as written are 35, 23 and 17 columns. A fix is a test in
+  `tests/export/` asserting that each `csvHeaderRow` appears in the skill file.
+- **`THIRD_PARTY_NOTICES.md` now under-claims relative to D38.** D38 lists the row model and
+  paint-style editing operations of `talmolab/vibes/event-annotator` among the borrowed patterns,
+  but no file carries an `event-annotator` attribution header — the event list that would use it
+  has not been built. The notices file therefore moves it to "ideas only, no code", so that every
+  borrowing it claims is confirmed by `grep -rn "Adapted from talmolab/vibes" src/`. Either D38
+  needs an amendment or the header needs to appear when the event list lands; until then the
+  decision record and the notices file disagree, in the safe direction.
+
 
 ## Excluded scope
 
