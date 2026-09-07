@@ -252,10 +252,27 @@ application can make: it is issued by `fetchSampleClip()` in that file, only fro
 test53.mp4 (≈ 0.5 MB) from the sample-data repository" button on the Videos step, only after the
 user presses it, and the downloaded bytes are verified against the session's own fingerprint before
 anything is attached. The second is `SAMPLE_DATA_URL` in `src/demo/example-cohort.ts`, which is not
-requested at all: it is the `href` of the link the banner renders for the reader to follow. Nothing
-else in the build is a URL, and nothing else in the build issues a request. The page also declares
-its own icon as a data URI in `index.html`, so a walkthrough's network panel no longer shows even
-the stray `/favicon.ico` the browser asks for when none is declared.
+requested at all: it is the `href` of the link the banner renders for the reader to follow. The page
+also declares its own icon as a data URI in `index.html`, so a walkthrough's network panel no longer
+shows even the stray `/favicon.ico` the browser asks for when none is declared.
+
+**One same-origin request is not in that list, because it is not a URL-shaped string.**
+`EXAMPLE_BUNDLE_PATH` in `src/demo/example-cohort.ts:31` is the relative path
+`examples/example-cohort.barnestrack.json.gz`, resolved against `document.baseURI` and fetched by
+`fetchExampleSession()` when the "Load example cohort" button is pressed — 502,688 B from the page's
+own build. Measured against `vite preview` of a fresh `dist/`, the complete request list for a page
+load followed by that one click is:
+
+```
+GET /                                                  (the page)
+GET /assets/index-<hash>.js
+GET /assets/index-<hash>.css
+GET /examples/example-cohort.barnestrack.json.gz       (on the button press)
+```
+
+Nothing on load beyond the page's own three files, and nothing at all that leaves the origin until
+the fetch button is pressed. Grepping `dist/` for `https?://` cannot show this one, so a walkthrough
+that only greps the bundle will under-report it; the network tab is the check that sees everything.
 
 **The manual pass**, in Google Chrome on macOS against `npm run preview` of the built `dist/` on
 port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean profile.
@@ -282,7 +299,8 @@ port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean prof
   "file attached", the fetch row hides itself, and the live region reads "test53.mp4 verified and
   attached — frames and corrections are available." `performance.getEntriesByType('resource')`
   filtered to cross-origin entries is empty before the click and afterwards holds exactly the one
-  `raw.githubusercontent.com` URL above — no favicon request, no font, nothing else.
+  `raw.githubusercontent.com` URL above — no favicon request, no font, nothing else. The unfiltered
+  list additionally holds the page's own three files and the example bundle, and nothing else.
 - **Reload.** The autosave brings the cohort back with the video detached, and the banner, the
   provenance line and the fetch row are all showing again, from exactly one `.example-cohort`. This
   is the case the panel got wrong when it was first mounted; see the remount in

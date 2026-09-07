@@ -262,7 +262,8 @@ session it is found (D39).
   example cohort by `reason` sees eight distinct sentences rather than the eight names.
 - **The bundle is `.json.gz`, not plain `.json`.** 11.1 MiB of pretty-printed JSON for three
   videos, and `.claude/hooks/pre-commit-guard.sh` refuses any staged blob over 2 MB; gzip brings it
-  to 502,426 B. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
+  to about 502 kB (502,688 B as committed; the exact figure moves whenever the bundle is
+  regenerated). The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
   a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
   body — works too.
 - **Only `test53.mp4` can be fetched.** The button downloads the smallest clip (496,723 bytes);
@@ -317,11 +318,15 @@ session it is found (D39).
   IndexedDB and re-open it automatically, but that would put copies of a lab's video data in the
   browser profile without the user asking, so it is not done.
 
-- **Figures are drawn on a plain platform disc, not the video frame.** `FigureOpts.background`
-  accepts a still and `drawPlatform` clips it to the disc, but nothing produces that still yet: D33
-  calls for one derived still per video so every result renders without a video attached, and that
-  belongs with the demo-state work. Until then a trajectory is read against the numbered hole ring
-  rather than against the arena the animal was actually in.
+- **Figures are drawn on a plain platform disc, not the video frame, and the stills that would fix
+  it ship unused.** `FigureOpts.background` accepts a still and `drawPlatform` clips it to the disc.
+  Chunk 9b produced the stills D33 calls for — `public/examples/test50.jpg`, `test51.jpg`,
+  `test53.jpg`, one per sample video — and `exampleStillUrl()` in `src/demo/example-cohort.ts`
+  resolves them, but nothing in `src/` calls it: `grep -rn "exampleStillUrl" src/ tests/` finds the
+  definition and one test, and no renderer. So the three images are shipped in the build and never
+  drawn, and D33's "every result renders without a video attached" is met for the numbers and not
+  for the arena — a trajectory is still read against the numbered hole ring rather than against the
+  platform the animal was actually on. Wiring it up belongs with whichever step mounts the figures.
 
 ## Findings about the sample data
 

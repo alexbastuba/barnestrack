@@ -32,8 +32,9 @@ The work is four steps, and the page says the same thing at the top of each one:
 4. **Review & Export** — "Check every event against the frames it came from, correct what the
    tracker got wrong, and read the metrics. Every correction is stored beside the automatic values
    and everything is recomputed from both." A timeline of the trial with every correction on it, the
-   thresholds with a live recompute of what changing one does, the evidence behind each event, the
-   metrics and the quality report. The figures and the export bundle land in a later release.
+   evidence behind each event, a metrics card and a quality summary. Six of the thresholds are
+   editable there with a live recompute of what changing one does; the full parameters panel, the
+   figures and the export bundle land in a later release.
 
 Three things shape everything else:
 
@@ -284,10 +285,10 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   usually stands alone. Events therefore record which point they were judged on, the quality
   report states the fraction judged on the nose, and the interface labels the nose experimental.
 - **The example cohort's numbers are illustrative, not a real tracking run.** The bundle behind
-  **Load example cohort** carries the three sample videos' real fingerprints, durations and derived
-  stills, but its latencies, errors, paths and strategies are generated from a synthetic fixture, so
-  the demo renders every view without asking anyone to download a video. The panel says so on screen
-  next to the numbers. Attach a real file — drop it, or press the fetch button — and every number is
+  **Load example cohort** carries the three sample videos' real fingerprints and durations, but its
+  latencies, errors, paths and strategies are generated from a synthetic fixture, so the demo renders
+  every view without asking anyone to download a video. The panel says so on screen next to the
+  numbers. Attach a real file — drop it, or press the fetch button — and every number is
   recomputed from the frames.
 
 ## Data handling and cost
@@ -296,15 +297,24 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
 disk by the browser and decoded in the tab; tracking, analysis, figures and exports all run
 locally; the session file and the CSVs are written straight to the downloads folder. There is no
 server to send anything to, no account, no telemetry, and no third party in the path — there is not
-even a font or a CDN script to fetch. No URL in the built bundle is ever fetched by the page
-itself. The URL-shaped strings in it are XML namespace identifiers — the SVG namespace passed to
-`createElementNS`, and exceljs's OOXML namespaces once the XLSX export is in the bundle — plus the
-sample-data repository URLs in `src/demo/`: the clip URL that the user-initiated fetch button
-downloads, which is the one deliberate exception, and the repository link the provenance line
-renders as an `<a href>` for the reader to follow. Nothing else ever makes a request, and that is
-checkable rather than promised — open the network tab and work through a whole cohort. This matters
-because behavioural recordings sit under an animal-use protocol and plenty of institutional data
-cannot leave the building; a tool that cannot phone home does not need to be trusted not to.
+even a font or a CDN script to fetch. Loading the page and working through a whole cohort of your
+own videos issues no request at all beyond the page's own HTML, JavaScript and CSS. Exactly two
+requests exist, and both need a button press:
+
+- **Load example cohort** fetches `examples/example-cohort.barnestrack.json.gz` (about 500 kB) from
+  the page's own build — same origin, the same static deployment the page was served from, nothing
+  leaving it.
+- **Fetch test53.mp4** downloads that one clip from the public sample-data repository. This is the
+  single outbound request BarnesTrack can make, it is named on the button, and it exists so the demo
+  has a real video to scrub.
+
+The other URL-shaped strings in the built bundle are never fetched: XML namespace identifiers — the
+SVG namespace passed to `createElementNS`, and exceljs's OOXML namespaces once the XLSX export is in
+the bundle — and the sample-data repository link the provenance line renders as an `<a href>` for a
+reader to follow. That is checkable rather than promised: open the network tab and work through a
+whole cohort. This matters because behavioural recordings sit under an animal-use protocol and
+plenty of institutional data cannot leave the building; a tool that cannot phone home does not need
+to be trusted not to.
 
 **Keys and cost: there are none.** No API key to obtain, so there is nothing to degrade to when one
 is missing — the demo path and the full path are the same path. A run costs nothing because the
