@@ -26,6 +26,19 @@ BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
   is planted through `window.__barnestrackStore`, which `main.ts` exposes under `import.meta.env.DEV`
   only and the production build strips — the correction UI that would make one lands in a later
   chunk.
+- `app-smoke.spec.ts` (chunk 9b) — the demo state (D33), plus an `axe-core` scan. It starts its own
+  servers rather than using the config's, because `playwright.config.ts` is shared with the specs
+  above. Two halves. Against `npm run dev` on port 5175 it drives the loader module through
+  `import('/src/demo/example-cohort.ts')` and the dev-only `__barnestrackStore`: three videos with
+  results and no file attached, idempotency, survival across a reload, and Reset. Against
+  `npm run preview` of the built `dist/` on port 4175 it runs the whole flow through the shipped UI
+  — load, review, retune a threshold, export the bundle, reload — which **skips** until chunks 6
+  and 9c land the Review step and mount the "Load example cohort" button; the skip message names
+  the missing mount. The axe scan covers every step that renders (Videos, Maze, Track) and fails on
+  `serious`/`critical` only; one recorded defect is allowed by name (see
+  `docs/known-limitations.md`) so a new violation still fails. It makes no network request: the
+  fetch verifier is covered offline in `tests/demo/fetch-sample-clip.test.ts`, and the one live
+  check there is opt-in through `BARNESTRACK_NET_TEST=1` (D2).
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 
