@@ -170,6 +170,15 @@ session it is found (D39).
   carries only the shape, so animals 0 and 6 get the same key entry. At a 9 px swatch a dash
   pattern is not legible, so the fix is a longer glyph list or a swatch drawn as a short line
   segment rather than a marker (D26, D32).
+- **An unanalysed video is dropped from cohort figures and exports without an on-screen count.**
+  `VideoAnalysis.derived` is null until a video is analysed (D52), so `trialSource` now returns null
+  for such a video and `analysedVideos` skips it: it contributes no point to the learning curve or
+  group comparison, and no row to `trials.csv`, `events.csv` or `quality.csv`. That is the right
+  behaviour — a row of zeroes would be a fabricated trial (D16) — but the omission is silent, so a
+  cohort of ten videos of which three were never analysed shows seven points with nothing saying the
+  other three are missing. Surfacing it belongs to whichever step mounts those figures: it should say
+  "3 of 10 videos are not analysed yet" beside the figure and the export button. Found while
+  repairing the `e7ad7fe` merge (chunk 7a).
 
 ## Excluded scope
 

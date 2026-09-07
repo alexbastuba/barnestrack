@@ -68,8 +68,14 @@ function addReadme(
   toolVersion: string,
   now: Date,
 ): void {
+  // Only analysed videos have a parameters hash (D52); an unanalysed one
+  // contributes no hash rather than an empty entry in the readme's list.
   const hashes = [
-    ...new Set(Object.values(session.analyses).map((a) => a.derived.quality.parametersHash)),
+    ...new Set(
+      Object.values(session.analyses)
+        .map((a) => a.derived?.quality.parametersHash)
+        .filter((hash): hash is string => hash !== undefined),
+    ),
   ];
   const lines: [string, string][] = [
     ['BarnesTrack export', session.name],

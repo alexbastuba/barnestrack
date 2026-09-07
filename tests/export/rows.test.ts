@@ -77,7 +77,7 @@ describe('trialRows', () => {
 
 describe('eventRows', () => {
   const rows = eventRows(session);
-  const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived.events);
+  const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived!.events);
 
   it('drops tracking failures: they belong to the quality report, never an event (O4)', () => {
     const failures = events.filter((event) => event.kind === 'tracking_failure');

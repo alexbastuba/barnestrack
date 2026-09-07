@@ -4,7 +4,12 @@
  * map put through the video's own transform (D10, D49) — never recomputed.
  */
 import type { MazeMapFile } from '../contracts/mazeMap.js';
-import type { SessionFile, VideoAnalysis, VideoDescriptor } from '../contracts/session.js';
+import type {
+  DerivedLayer,
+  SessionFile,
+  VideoAnalysis,
+  VideoDescriptor,
+} from '../contracts/session.js';
 import type { TrackFrame } from '../contracts/track.js';
 import type { HolePosition } from '../maze/ring.js';
 import { holeCentres, pxPerCm } from '../maze/ring.js';
@@ -12,9 +17,20 @@ import { transformMap } from '../maze/similarity.js';
 import type { Point } from '../maze/types.js';
 import type { FigureData } from './types.js';
 
+/**
+ * A tracked video that has also been analysed. `VideoAnalysis.derived` is null
+ * until the first analysis run computes it (D52), so every figure input is
+ * narrowed to this once, here, rather than each figure asserting it.
+ */
+export type AnalysedVideo = VideoAnalysis & { derived: DerivedLayer };
+
+export function isAnalysed(analysis: VideoAnalysis): analysis is AnalysedVideo {
+  return analysis.derived !== null;
+}
+
 export interface TrialSource {
   descriptor: VideoDescriptor;
-  analysis: VideoAnalysis;
+  analysis: AnalysedVideo;
   /** The shared maze map expressed in this video's pixels. */
   map: MazeMapFile;
   holes: HolePosition[];
@@ -27,7 +43,9 @@ export function trialSource(data: FigureData): TrialSource | null {
   if (!session.mazeMap) return null;
   const descriptor = session.videos.find((video) => video.id === videoId);
   const analysis = session.analyses[videoId];
-  if (!descriptor || !analysis) return null;
+  // A tracked but unanalysed video has no derived layer (D52). It is not a
+  // figure with zeroes in it: it is no figure, and `trialUnavailable` says so.
+  if (!descriptor || !analysis || !isAnalysed(analysis)) return null;
   const map = transformMap(
     session.mazeMap,
     descriptor.mazeTransform,
@@ -74,6 +92,9 @@ export interface PathPoint extends Point {
 /** Valid centroid positions of the cleaned track, in this video's pixels. */
 export function centroidPath(analysis: VideoAnalysis): PathPoint[] {
   const out: PathPoint[] = [];
+  // No derived layer means no cleaned track to walk (D52): an empty path, which
+  // every caller already draws as "nothing to show", not a path through zero.
+  if (!isAnalysed(analysis)) return out;
   for (const frame of analysis.derived.cleanedTrack) {
     if (!frame.centroid.valid) continue;
     out.push({
