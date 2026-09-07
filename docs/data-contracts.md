@@ -362,7 +362,8 @@ anywhere; array order preserved, because order is part of the value; `undefined`
 exactly as `JSON.stringify` omits them; numbers written as `JSON.stringify` writes them. Two layers
 whose hashes match were produced by the same parameters, so a hash that differed by a byte between
 two implementations would silently invalidate stored work — there is therefore one implementation,
-`src/session/parameters-hash.ts`, and everything else imports it rather than deriving its own.
+`hashParameters` / `hashTrackingParameters` in `src/analysis/parameters.ts`, and everything else
+(the tracking queue, the session store, the exports) imports it rather than deriving its own.
 
 Which value is hashed depends on the layer: the `auto` layer is keyed by the hash of
 `parameters.tracking` alone, since nothing outside the tracking block changes a tracking run; the

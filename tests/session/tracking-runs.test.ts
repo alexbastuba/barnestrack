@@ -9,11 +9,11 @@
  * un-trackable.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { hashTrackingParameters } from '../../src/analysis/parameters.js';
 import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
 import type { MazeMapFile } from '../../src/contracts/mazeMap.js';
 import type { AutoLayer } from '../../src/contracts/session.js';
 import type { TrackFrame } from '../../src/contracts/track.js';
-import { hashTrackingParameters } from '../../src/session/parameters-hash.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { TrackingRunner, type RunState } from '../../src/session/tracking-runs.js';

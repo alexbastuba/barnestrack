@@ -1,15 +1,14 @@
 /**
  * The parameters hash (D51). Two implementations that disagree by a byte
  * would silently invalidate every stored layer, so the canonicalisation is
- * pinned here: keys sorted, no whitespace, array order preserved.
+ * pinned here: keys sorted, no whitespace, array order preserved. There is
+ * one implementation, in the analysis configuration module; the session layer
+ * imports it (chunk 6 removed the session-side copy).
  */
 import { describe, expect, it } from 'vitest';
+import { canonicalJson, hashTrackingParameters } from '../../src/analysis/parameters.js';
 import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
 import type { TrackingParameters } from '../../src/contracts/parameters.js';
-import {
-  canonicalJson,
-  hashTrackingParameters,
-} from '../../src/session/parameters-hash.js';
 
 describe('canonicalJson', () => {
   it('sorts object keys and emits no whitespace', () => {

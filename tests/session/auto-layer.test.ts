@@ -7,11 +7,11 @@
  * tool.
  */
 import { describe, expect, it } from 'vitest';
+import { hashTrackingParameters } from '../../src/analysis/parameters.js';
 import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
 import type { AutoLayer, CorrectionEntry, SessionFile } from '../../src/contracts/session.js';
 import type { TrackFrame } from '../../src/contracts/track.js';
 import { parseSessionDocument, serializeSessionFile } from '../../src/session/session-file.js';
-import { hashTrackingParameters } from '../../src/session/parameters-hash.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { TOOL_VERSION, fingerprint, fullSession } from './fixtures.js';

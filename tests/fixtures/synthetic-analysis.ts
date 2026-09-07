@@ -7,13 +7,16 @@
  * export tests, the figure tests and the gallery page all see byte-identical
  * data.
  *
- * This is a *fixture*, not a source of truth. The analysis engine (chunk 5)
- * owns the real parameter defaults, the real event detection and the real
- * metric definitions. The values here are written from the option defaults in
- * `docs/decisions.md` (O1, O4–O6, O9–O11, O16, O17) so that the exports and the
- * figures have something plausible to render before that engine lands.
+ * This is a *fixture*, not a source of truth. The analysis engine owns the real
+ * parameter defaults (imported here so the fixture can never drift from them),
+ * the real event detection and the real metric definitions; the events,
+ * metrics and quality values here are scripted to look plausible, not derived.
  */
-import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
+import {
+  DEFAULT_PARAMETERS,
+  hashParameters,
+  hashTrackingParameters,
+} from '../../src/analysis/parameters.js';
 import type { EventRecord } from '../../src/contracts/events.js';
 import type { MazeMapFile, PlatformCircle } from '../../src/contracts/mazeMap.js';
 import { MAZE_MAP_SCHEMA_VERSION } from '../../src/contracts/mazeMap.js';
@@ -41,14 +44,12 @@ import type { Point } from '../../src/maze/types.js';
 /** A build-time version string of the shape D12 specifies. */
 export const FIXTURE_TOOL_VERSION = 'barnestrack v0.1.0 (5e11c0a)';
 
-/**
- * Stand-ins for the SHA-256 layer keys of D51. Chunk 5 computes the real ones;
- * the exports only ever copy them, so a fixed hex string is enough here.
- */
-export const FIXTURE_TRACKING_HASH =
-  '9f2b1c77a4d05e3186c0b4fa27d9e5c318a740bb6d2ef91c05a3486e7d1f2b40';
-export const FIXTURE_PARAMETERS_HASH =
-  '1d7e4a02c9b53f8871ae60d4cc2f19b7530ae8146fd92b7c0e35a91846cbd7f2';
+/** The engine's own defaults (D20, D51): the fixture is analysed "as shipped". */
+export const FIXTURE_PARAMETERS: Parameters = DEFAULT_PARAMETERS;
+
+/** The real D51 layer keys of those defaults, from the one hasher. */
+export const FIXTURE_TRACKING_HASH = hashTrackingParameters(FIXTURE_PARAMETERS.tracking);
+export const FIXTURE_PARAMETERS_HASH = hashParameters(FIXTURE_PARAMETERS);
 
 export const PLATFORM_DIAMETER_CM = 92;
 export const HOLE_DIAMETER_CM = 5;
@@ -84,20 +85,6 @@ export const FIXTURE_MAZE_MAP: MazeMapFile = {
   target: { holeIndex: TARGET_HOLE },
   calibration: { platformDiameter_cm: PLATFORM_DIAMETER_CM },
   createdFrom: 'test50',
-};
-
-/** The option defaults of `docs/decisions.md`, until chunk 5 owns them. */
-export const FIXTURE_PARAMETERS: Parameters = {
-  holeInvestigation: { radiusFactor: 1.5, minDuration_s: 0.2, mergeGap_s: 0.5 },
-  escapeEntry: { radiusFactor: 1.0, minDuration_s: 1.0, persistCutoff_s: 3 },
-  trialCutoff_s: 180,
-  targetQuadrant: { holeSpan: 2.5 },
-  kinematicsSmoothingWindowFrames: 3,
-  gapFilling: { enabled: true, maxDuration_s: 0.1 },
-  kinematics: { speedWindowFrames: 2, duplicateTimestampFactor: 0.25, dropGapFactor: 1.5 },
-  noseConfidenceCutoff: 0.5,
-  outlierVelocityThreshold_cmPerS: 150,
-  tracking: DEFAULT_TRACKING_PARAMETERS,
 };
 
 /**

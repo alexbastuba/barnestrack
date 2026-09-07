@@ -24,7 +24,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from '../video/worker-protocol.js';
-import { hashTrackingParameters } from './parameters-hash.js';
+import { hashTrackingParameters } from '../analysis/parameters.js';
 import type { SessionStore } from './session-store.js';
 import type { VideoId } from './stored.js';
 
