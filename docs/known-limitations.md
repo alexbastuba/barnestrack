@@ -105,18 +105,12 @@ session it is found (D39).
 - **Repeat visits split at the merge-gap boundary.** Bouts at the same hole 0.53 s apart are two
   investigations under the 0.5 s default (test51, hole 12): the repeat-visit count is sensitive to
   the merge gap near its own value. The gap is a visible O1 parameter.
-- **The O7 placeholder classifies an empty search as spatial, and looks only at the search phase.**
-  A trial with no investigation and no target visit satisfies the spatial rule vacuously (the
-  reasoning says so; the status carries the warning). And because the rules consider investigations
-  before the first target visit only, test50 — which walks the ring hole by hole for two minutes
-  *after* its first target visit at 12.7 s — classifies as spatial from two errors at hole 5.
-  Whether post-target behaviour should enter the classification is an O7 question.
-- **Adjacent runs are direction-agnostic and may end at the target visit.** The serial rule's
-  "run of adjacent-hole investigations" counts a step of one hole in either direction, so
-  12→13→12→11 is a run of four (a same-direction reading would make it three), and the target
-  visit may be the run's last element, so 9→8→7 with target 7 is a run of three where O7's
-  "precedes the target visit" could be read as two. Both readings are stated in the serial rule's
-  definition text; which one O7 means is a decision for `docs/decisions.md`.
+- **The O7 placeholder classifies an empty search as spatial.** A trial with no investigation and
+  no target visit satisfies the spatial rule's three limits vacuously (the reasoning says so; the
+  status carries the warning). The scope of the rules is settled — the search phase, trial start
+  to the first target visit — so test50, which walks the ring hole by hole for two minutes *after*
+  its first target visit at 12.7 s, classifies from the two errors before it; post-target
+  behaviour is by O7 not part of the classification.
 - **A few derived numbers still carry `NaN` rather than `null`.** D55 made `trialStart_s`,
   `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable; `minCentroidDistance_cm` (a loss with no
   positioned approach frame) and the kinematics fractions of an empty trial are still typed as

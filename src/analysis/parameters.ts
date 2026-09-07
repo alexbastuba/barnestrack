@@ -117,13 +117,13 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'trialCensoring.censorToCutoff':
     'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
   'strategy.spatialMaxErrors':
-    'Spatial search: at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
+    'Spatial search: reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
   'strategy.spatialMaxHoleDistance':
     'Spatial search: every error hole lies within this many holes of the target around the ring (holes; O7).',
   'strategy.spatialMaxCentreCrossings':
     'Spatial search: at most this many entries into the centre zone before the target (count; O7).',
   'strategy.serialMinRun':
-    'Serial search: a run of at least this many investigations of adjacent holes, in either direction and with no centre crossing during the run, before or ending at the target visit (count; O7).',
+    'Serial search: a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before or ending at the target visit (count; O7).',
   'strategy.centreZoneRadiusFraction':
     'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
   'quality.goodMinPositionedFraction':

@@ -23,7 +23,7 @@ export interface StrategyFeatures {
   errors: number;
   /** Largest ring distance, in holes, of an error hole from the target. */
   maxHoleDistanceFromTarget: number;
-  /** Longest run of investigations of adjacent holes with no centre crossing during it; the target visit may end it. */
+  /** Longest run of investigations of adjacent holes in one direction around the ring with no centre crossing during it; a change of direction ends it and the target visit may end it (O7). */
   longestAdjacentRun: number;
   longestAdjacentRunHoles: number[];
   /** Entries into the centre zone during the search phase. */
@@ -189,21 +189,37 @@ export function computeStrategyFeatures(
   for (const e of errors)
     maxDist = Math.max(maxDist, holeIndexDistance(g, e.holeIndex!, g.targetIndex));
 
+  // O7 (settled 2026-09-06): a run is monotone in one direction around the ring; a change of
+  // direction ends it and the new run starts from the turn; the target visit may end a run
+  const n = g.holeCount;
+  const ringStep = (from: number, to: number): number =>
+    (to - from + n) % n === 1 ? 1 : (from - to + n) % n === 1 ? -1 : 0;
   let bestRun: number[] = [];
   let run: number[] = [];
+  let runDirection = 0;
   let runLastEnd = -1;
   for (const e of sequenceEvents) {
     const hole = e.holeIndex!;
     const last = run[run.length - 1];
     if (last === undefined) {
       run = [hole];
+      runDirection = 0;
     } else if (hole === last) {
       // a repeat of the same hole neither extends nor breaks the run
     } else {
       const startPosition = framePosition(frames, e.startFrame);
       const crossed = crossings.some((f) => f > runLastEnd && f < startPosition);
-      if (!crossed && holeIndexDistance(g, hole, last) === 1) run.push(hole);
-      else run = [hole];
+      const direction = ringStep(last, hole);
+      if (crossed || direction === 0) {
+        run = [hole];
+        runDirection = 0;
+      } else if (runDirection === 0 || direction === runDirection) {
+        run.push(hole);
+        runDirection = direction;
+      } else {
+        run = [last, hole];
+        runDirection = direction;
+      }
     }
     runLastEnd = Math.max(runLastEnd, framePosition(frames, e.endFrame));
     if (run.length > bestRun.length) bestRun = [...run];
@@ -252,37 +268,52 @@ function atLeast(text: string, value: number, limit: number): RuleCondition {
 }
 
 function evaluateRules(f: StrategyFeatures, o: Parameters['strategy']): RuleOutcome[] {
-  const spatial: RuleOutcome = {
-    strategy: 'spatial',
-    conditions: [
-      atMost(
-        `${f.errors} error${f.errors === 1 ? '' : 's'} (at most ${o.spatialMaxErrors})`,
-        f.errors,
-        o.spatialMaxErrors,
-      ),
-      atMost(
-        f.errors === 0
-          ? `no error hole to be farther than ${o.spatialMaxHoleDistance} holes from the target`
-          : `every error hole within ${f.maxHoleDistanceFromTarget} hole${f.maxHoleDistanceFromTarget === 1 ? '' : 's'} of the target (at most ${o.spatialMaxHoleDistance})`,
-        f.maxHoleDistanceFromTarget,
-        o.spatialMaxHoleDistance,
-      ),
-      atMost(
-        `${f.centreCrossings} centre crossing${f.centreCrossings === 1 ? '' : 's'} (at most ${o.spatialMaxCentreCrossings})`,
-        f.centreCrossings,
-        o.spatialMaxCentreCrossings,
-      ),
-    ],
-    fired: false,
-  };
-  spatial.fired = spatial.conditions.every((c) => c.satisfied);
+  // O7 (settled 2026-09-06): a direct approach — the target reached with no error before it — is
+  // spatial by definition, whatever the path did in the centre
+  const direct = f.targetReached && f.errors === 0;
+  const spatial: RuleOutcome = direct
+    ? {
+        strategy: 'spatial',
+        conditions: [
+          {
+            text: 'reached the target with no error before it: a direct approach is spatial by definition',
+            satisfied: true,
+            degree: 1,
+          },
+        ],
+        fired: true,
+      }
+    : {
+        strategy: 'spatial',
+        conditions: [
+          atMost(
+            `${f.errors} error${f.errors === 1 ? '' : 's'} (at most ${o.spatialMaxErrors})`,
+            f.errors,
+            o.spatialMaxErrors,
+          ),
+          atMost(
+            f.errors === 0
+              ? `no error hole to be farther than ${o.spatialMaxHoleDistance} holes from the target`
+              : `every error hole within ${f.maxHoleDistanceFromTarget} hole${f.maxHoleDistanceFromTarget === 1 ? '' : 's'} of the target (at most ${o.spatialMaxHoleDistance})`,
+            f.maxHoleDistanceFromTarget,
+            o.spatialMaxHoleDistance,
+          ),
+          atMost(
+            `${f.centreCrossings} centre crossing${f.centreCrossings === 1 ? '' : 's'} (at most ${o.spatialMaxCentreCrossings})`,
+            f.centreCrossings,
+            o.spatialMaxCentreCrossings,
+          ),
+        ],
+        fired: false,
+      };
+  if (!direct) spatial.fired = spatial.conditions.every((c) => c.satisfied);
   const runText =
     f.longestAdjacentRunHoles.length > 0 ? ` (${f.longestAdjacentRunHoles.join('→')})` : '';
   const serial: RuleOutcome = {
     strategy: 'serial',
     conditions: [
       atLeast(
-        `longest run of adjacent holes with no centre crossing during it ${f.longestAdjacentRun}${runText} (at least ${o.serialMinRun})`,
+        `longest run of adjacent holes in one direction with no centre crossing during it ${f.longestAdjacentRun}${runText} (at least ${o.serialMinRun})`,
         f.longestAdjacentRun,
         o.serialMinRun,
       ),

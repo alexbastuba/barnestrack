@@ -23,7 +23,7 @@ describe('classifyStrategy (O7)', () => {
     expect(r.strategy.features.sequence).toEqual([12, 11, 10, 9, 8]);
     expect(r.strategy.runnerUp).toBe('random');
     expect(r.strategy.reasoning.join('\n')).toContain(
-      'serial fired: longest run of adjacent holes with no centre crossing during it 5 (12→11→10→9→8)',
+      'serial fired: longest run of adjacent holes in one direction with no centre crossing during it 5 (12→11→10→9→8)',
     );
     expect(r.strategy.reasoning.join('\n')).toContain('4 errors');
     expect(r.strategy.reasoning.join('\n')).toContain(
@@ -186,6 +186,46 @@ describe('classifyStrategy (O7)', () => {
     expect(changed.strategy.autoStrategy).toBe('spatial');
     expect(changed.strategy.strategy).toBe('serial');
     expect(changed.strategy.strategySource).toBe('corrected');
+  });
+
+  it('ends a run at a change of direction and restarts it from the turn (O7, settled)', () => {
+    const r = pipeline(visitHoles([12, 13, 12, 11, 8]), { g: target8 });
+    expect(r.strategy.features.longestAdjacentRun).toBe(3);
+    expect(r.strategy.features.longestAdjacentRunHoles).toEqual([13, 12, 11]);
+    expect(r.strategy.strategy).toBe('serial');
+  });
+
+  it('never builds a run longer than two from a zig-zag between two holes', () => {
+    const r = pipeline(visitHoles([8, 9, 8, 9, 7]));
+    expect(r.strategy.features.longestAdjacentRun).toBe(2);
+    expect(r.strategy.features.errors).toBe(4);
+    expect(r.strategy.strategy).toBe('random');
+  });
+
+  it('lets a run end at the target visit: 9→8→7 with target 7 is a run of three', () => {
+    const r = pipeline(visitHoles([9, 8, 7]));
+    expect(r.strategy.features.longestAdjacentRun).toBe(3);
+    expect(r.strategy.features.longestAdjacentRunHoles).toEqual([9, 8, 7]);
+    // two errors next to the target: spatial fires first, serial fired too and is outranked
+    expect(r.strategy.strategy).toBe('spatial');
+    expect(r.strategy.runnerUp).toBe('serial');
+    expect(r.strategy.reasoning.join('\n')).toContain('serial fired, outranked by spatial');
+  });
+
+  it('calls a direct approach spatial by definition, however many centre crossings it made', () => {
+    const outside = (hole: number): Segment => ({ kind: 'moveToHole', hole, seconds: 0.5, offset_cm: 8 });
+    const r = pipeline([
+      outside(3),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      outside(15),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      ...visitHoles([7]),
+    ]);
+    expect(r.strategy.features.errors).toBe(0);
+    expect(r.strategy.features.targetReached).toBe(true);
+    expect(r.strategy.features.centreCrossings).toBeGreaterThanOrEqual(2);
+    expect(r.strategy.strategy).toBe('spatial');
+    expect(r.strategy.reasoning.join('\n')).toContain('a direct approach is spatial by definition');
   });
 
   it('reads its thresholds from the strategy block of the parameters (D55)', () => {
