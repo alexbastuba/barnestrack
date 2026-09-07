@@ -46,7 +46,6 @@ import { ANALYSIS_PARAMETER_BOUNDS, hasSlider } from './analysis-parameter-bound
 import { describeDiff } from './describe-diff.js';
 import { formatParameterValue } from './format.js';
 import type { AnnounceCallback, Component } from './types.js';
-import './review-components.css';
 
 export interface ParametersPanelProps {
   parameters: Parameters;

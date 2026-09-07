@@ -35,7 +35,6 @@ import {
 } from './format.js';
 import { wholeClipStateFractions } from './quality-summary.js';
 import type { Component, SeekCallbacks } from './types.js';
-import './review-components.css';
 
 export interface QualityPanelProps {
   session: SessionFile;

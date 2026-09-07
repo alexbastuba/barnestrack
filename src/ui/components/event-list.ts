@@ -17,7 +17,6 @@ import { describeEventCounts } from './describe-diff.js';
 import { createEventCard } from './event-card.js';
 import type { Component, SeekCallbacks } from './types.js';
 import { pluralise } from './format.js';
-import './review-components.css';
 
 export interface EventListProps {
   events: readonly EventRecord[];

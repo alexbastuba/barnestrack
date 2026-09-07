@@ -6,14 +6,23 @@
     <title>BarnesTrack review components</title>
     <style>
       /*
-       * Page chrome only. The components bring their own styles — the app
-       * stylesheet and `review-components.css` are imported by `main.ts` — so
-       * what is on this page is what the Review step will look like.
+       * Page chrome only. The panels are styled by `src/styles/app.css`, which
+       * `main.ts` imports, so what is on this page is what the Review step will
+       * look like.
        */
       body {
         margin: 0;
         padding: 1.25rem;
         max-width: 82rem;
+      }
+
+      /*
+       * The harness stacks panels in a column where the Review step lays them
+       * out in a grid with its own gap, so the spacing belongs here rather than
+       * on `.review-panel` in the app sheet.
+       */
+      .review-panel + .review-panel {
+        margin-top: 0.75rem;
       }
 
       .lede {

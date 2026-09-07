@@ -38,7 +38,6 @@ import {
   formatTimeAndFrame,
 } from './format.js';
 import { positionToFrame, type Component, type StrategyCallbacks } from './types.js';
-import './review-components.css';
 
 export interface MetricsCardProps {
   analysis: DerivedAnalysis;

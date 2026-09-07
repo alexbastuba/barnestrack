@@ -232,18 +232,23 @@ describe('the quality panel tab order', () => {
 });
 
 describe('every panel brings its own styles', () => {
-  it('imports the component stylesheet from each module that renders', async () => {
-    // A consumer importing `createEventList` directly, rather than through the
-    // barrel, must still get `.event-card.is-corrected`'s hatch — which is the
-    // shape half of the D26 marking.
-    const { readFileSync } = await import('node:fs');
-    const modules = ['parameters-panel', 'event-list', 'metrics-card', 'quality-panel'];
-    for (const name of modules) {
-      const source = readFileSync(`src/ui/components/${name}.ts`, 'utf-8');
-      expect(source, `${name}.ts does not import its styles`).toContain(
-        "import './review-components.css'",
-      );
+  it('keeps the components in the one stylesheet', async () => {
+    // The panels were styled by a second sheet, `review-components.css`, while
+    // `src/styles/` was outside chunk 7a's file boundary. It is folded into
+    // `src/styles/app.css` now, so no module here may bring a sheet of its own
+    // again: two stylesheets is how `.review-panel` came to be declared twice
+    // with different padding, with load order deciding which won.
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const files = readdirSync('src/ui/components');
+    expect(files.filter((name) => name.endsWith('.css'))).toEqual([]);
+    for (const name of files) {
+      const source = readFileSync(`src/ui/components/${name}`, 'utf-8');
+      expect(source, `${name} imports a stylesheet of its own`).not.toMatch(/import\s+'.*\.css'/);
     }
+    // The style the D26 hatch needs is in the app sheet, where the app already
+    // loads it from.
+    const app = readFileSync('src/styles/app.css', 'utf-8');
+    expect(app).toContain('.event-card.is-corrected');
   });
 });
 

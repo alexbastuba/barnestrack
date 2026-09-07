@@ -1249,3 +1249,422 @@ button.metric-value:hover:not(:disabled) {
   border-top: 1px solid var(--line);
   padding-top: 0.5rem;
 }
+
+/* ---- review components -------------------------------------------------- */
+
+/*
+ * The panels in `src/ui/components/`, folded in from the second stylesheet
+ * chunk 7a had to keep while `src/styles/` was outside its file boundary.
+ *
+ * No colours of its own: every value below is a token already on `:root`
+ * (D2 — no external asset, no new palette). Anything that carries meaning
+ * carries it in text or shape as well as colour (D26, D37): the corrected
+ * marking is a hatch *and* the word "user", the quality tier is a glyph *and*
+ * the word GOOD/REVIEW/POOR, and a row in error says what is wrong rather than
+ * only turning red.
+ *
+ * Three selectors the component sheet also declared — `.review-panel`,
+ * `button.metric-value` and `.strategy-block` — are not repeated here: the
+ * Review step above already styles them, and one rule per selector is the
+ * point of folding the sheets together.
+ */
+
+.review-panel .what {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  max-width: 60rem;
+}
+
+/* --- parameters panel ---------------------------------------------------- */
+
+.diff-badge {
+  display: block;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.625rem;
+  margin-bottom: var(--gap);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.param-block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem 0.75rem;
+  margin: 0 0 var(--gap);
+}
+
+.param-block > legend {
+  font-weight: 600;
+  padding: 0 0.375rem;
+}
+
+.param-block.is-readonly {
+  background: var(--paper-soft);
+}
+
+.param-block .hint {
+  display: block;
+  max-width: 55rem;
+  margin-bottom: 0.5rem;
+}
+
+.reset-block {
+  margin-bottom: 0.5rem;
+}
+
+.param-row {
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 0 0.375rem;
+}
+
+.param-row > label,
+.param-row .label-like {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  min-width: 16rem;
+}
+
+.param-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.param-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.param-switch label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.param-slider {
+  min-width: 12rem;
+  flex: 0 1 16rem;
+}
+
+.param-unit {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.param-readonly-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.param-decision {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0.25rem 0 0;
+}
+
+.param-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+}
+
+/*
+ * An invalid row is marked by a bar on its leading edge as well as by the
+ * message underneath it, so the state does not rest on the colour of the bar.
+ */
+.param-row.is-invalid {
+  border-left: 4px solid var(--danger);
+  padding-left: 0.5rem;
+  background: var(--danger-soft);
+}
+
+/* --- event list ---------------------------------------------------------- */
+
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+.event-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.625rem;
+  margin: 0 0 0.5rem;
+}
+
+.event-filter > legend {
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0 0.375rem;
+}
+
+.event-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.event-count {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.625rem;
+  cursor: pointer;
+}
+
+.event-card:hover {
+  border-color: var(--accent);
+}
+
+.event-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+.event-kind {
+  font-weight: 700;
+}
+
+/*
+ * The card is a <button>, which may hold phrasing content only, so these are
+ * spans made to behave as blocks rather than <p>/<dl>. The button's own text is
+ * then its accessible name, and a screen reader reads the evidence, both
+ * distances and any review flag along with it (D19, D26, D37).
+ */
+.event-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.25rem;
+}
+
+.event-fact-value {
+  font-weight: 600;
+}
+
+.event-evidence {
+  display: block;
+  font-size: 0.875rem;
+  margin-top: 0.375rem;
+}
+
+.event-shadow {
+  display: block;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * D26: a corrected event is hatched *and* labelled. The hatch is drawn from the
+ * existing accent token at low opacity over the paper, so it survives a
+ * grayscale print, and the "user" badge beside it survives a screen reader.
+ */
+.event-card.is-corrected {
+  border: 2px solid var(--accent);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--accent-soft),
+    var(--accent-soft) 6px,
+    var(--paper) 6px,
+    var(--paper) 12px
+  );
+}
+
+.badge-user::before {
+  content: '✎ ';
+}
+
+.badge-target::before {
+  content: '★ ';
+}
+
+.badge-flag::before {
+  content: '⚠ ';
+}
+
+.event-flag {
+  display: block;
+  font-size: 0.8125rem;
+  margin-top: 0.375rem;
+  border-left: 4px solid var(--warn-line);
+  background: var(--warn-bg);
+  padding: 0.25rem 0.5rem;
+}
+
+/* --- metrics card -------------------------------------------------------- */
+
+.metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  border-top: 1px solid var(--line);
+  padding: 0.3125rem 0;
+}
+
+.metric-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  min-width: 16rem;
+}
+
+.metric-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.metric-note {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.strategy-block h4 {
+  margin: 0 0 0.375rem;
+  font-size: 1rem;
+}
+
+.strategy-reasoning {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.strategy-rule {
+  font-size: 0.8125rem;
+  margin: 0.25rem 0;
+}
+
+.strategy-condition {
+  margin: 0;
+  padding-left: 1.25rem;
+  list-style: none;
+}
+
+.strategy-override {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 0.5rem;
+}
+
+.strategy-reason {
+  min-width: 18rem;
+  flex: 1 1 20rem;
+  font: inherit;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+
+/* --- quality panel ------------------------------------------------------- */
+
+.tier-badge {
+  font-weight: 700;
+  border: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.0625rem 0.5rem;
+}
+
+/*
+ * Shape as well as word as well as colour: the glyph is part of the text, so it
+ * reaches a screen reader's label through the surrounding sentence and survives
+ * a grayscale print on its own.
+ */
+.tier-GOOD {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.tier-REVIEW {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+
+.tier-POOR {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.quality-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.quality-figure {
+  min-width: 12rem;
+}
+
+.quality-figure dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.quality-figure dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.quality-strip-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.seek-cell {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 0 0.25rem;
+  text-decoration: underline;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.seek-cell:hover {
+  border-color: var(--accent);
+}
