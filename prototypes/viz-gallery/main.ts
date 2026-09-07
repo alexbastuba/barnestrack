@@ -9,6 +9,7 @@
  * export checks are made on.
  */
 import { buildExportBundle } from '../../src/export/index.js';
+import { downloadBlob } from '../../src/ui/download.js';
 import { METRIC_LABELS, FIGURES } from '../../src/viz/index.js';
 import { figurePngName, renderFigureToPng } from '../../src/viz/figure-export.js';
 import type {
@@ -55,19 +56,6 @@ function currentData(): FigureData {
 
 function currentTheme(): ThemeName {
   return themeSelect.value === 'print' ? 'print' : 'light';
-}
-
-/** The page has no server, so a file is handed over on a synthetic anchor. */
-function downloadBlob(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 interface Card {

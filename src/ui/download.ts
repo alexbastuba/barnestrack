@@ -2,8 +2,8 @@
  * Handing a file to the user without a server (D2): an object URL on a
  * synthetic anchor, revoked as soon as the browser has taken the data.
  */
-export function downloadText(filename: string, text: string, mimeType = 'application/json'): void {
-  const url = URL.createObjectURL(new Blob([text], { type: `${mimeType};charset=utf-8` }));
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
@@ -12,6 +12,11 @@ export function downloadText(filename: string, text: string, mimeType = 'applica
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** The same, for text the caller already has in memory. */
+export function downloadText(filename: string, text: string, mimeType = 'application/json'): void {
+  downloadBlob(filename, new Blob([text], { type: `${mimeType};charset=utf-8` }));
 }
 
 /** Opens a file picker and resolves with what was chosen (empty when cancelled). */
