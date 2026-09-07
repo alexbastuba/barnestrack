@@ -26,6 +26,12 @@ BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
   is planted through `window.__barnestrackStore`, which `main.ts` exposes under `import.meta.env.DEV`
   only and the production build strips — the correction UI that would make one lands in a later
   chunk.
+- `review.spec.ts` (chunk 6) — the review step driven from the keyboard: a nose placed by hand with
+  `N` and the arrows recomputes the analysis and reaches the frames table as `corrected`; a relabel
+  through the hole select marks the event `user` and keeps the automatic hole beside it; a threshold
+  change leaves both pinned (D20); a reload brings all of it back through the autosave (D27) with
+  the video detached; and `Space` plays at the video's own frame rate and pauses on the frame it
+  reached.
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 
@@ -130,3 +136,84 @@ hint. The progress text is `aria-live="off"`; only the transitions — started, 
 summary sentence, cancelled, failed — are announced through the shell's live region, so a screen
 reader is told what happened without a running commentary. Status is carried by words, with colour
 only echoing it.
+
+### Chunk 6 — the review step
+
+Driven in Google Chrome against `npm run dev` on the same machine, on test51 (741 frames at
+14.985 fps, the chunk-3 map fitted to it: platform 280.0, 239.9 px, radius 222.5 px, target 7) and,
+for the timings, test50 (5,539 frames). The Chrome automation window was in the background for the
+whole pass, which matters for one check below.
+
+**S4 end to end on test51.** Frame 115 is one of the two head/tail flips in the automatic track (the
+nose vector turns 172° against frame 114) and the first frame of the first investigation, at hole
+12. With the frame field (`F`, `115`, `Enter`), `N`, four `Shift+→` and two `Shift+↓` the nose moved
+from (104, 144) to (144, 164) px: **one** correction entry after six nudges (coalesced), the frame
+overlay reads "nose 0.50 · user" on a diamond, the frames table's nose source reads `corrected`
+with the automatic centroid still `auto`, the nose track shows the diamond and the corrections
+track a mark, and the investigation recomputed from 115–123 to 116–123 — the event no longer
+starts on a nose that was really the tail. Selecting that event (`E`) and moving it to hole 13
+through the hole select (`H`, then the option) gives a hatched row reading "user (auto: hole 12,
+frames 116–123)", the bar labelled "13 user" (or "13·u" when narrow), the overlay "investigation 13 ·
+user" with hole 13 bracketed, and the strategy reasoning re-listing the holes visited. Raising
+`holeInvestigation.minDuration_s` from 0.2 to 0.5 s dropped the 0.20 s visit at 176–179 (10
+events → 9, parameters hash a995a8bf… → 780d374c…) while the 0.47 s corrected event **stayed**, as
+did the nose fix (D20). After a reload — "All changes saved in this browser" first — the step
+came back with both corrections, the threshold at 0.5, the same hash, and the note that the video
+is not attached; the timeline, the tables and every correction still worked on the stored track,
+and re-dropping the file restored the frames.
+
+**Recompute time (D22, < 50 ms).** `derive()` measured inside the step, wall clock:
+
+| video | frames | first derive | after a nose fix | after a threshold change |
+| ----- | -----: | -----------: | ---------------: | -----------------------: |
+| test51 | 741 | 6.9 ms | 2.4–4.6 ms | 6.0 ms |
+| test50 | 5,539 | 26.6 ms | 18.6 ms | 11.7 ms |
+
+The status line reports both the derive and the whole edit-to-redraw time (test50: 29 ms with the
+redraw). Tracking test50 first took 6.5 s (1,262 frames/s).
+
+**Autosave with the derived cache (D27, D55).** Timing the IndexedDB write directly, the record
+holding both videos' automatic layers and derived caches was 4.72 MB and took 19.9 ms to write
+after the nose fix and 24.5 ms after the threshold change. Well under the ~100 ms the plan set as
+the point at which the cache would move to `flush()` / `pagehide`, so the cache stays in the
+ordinary autosave and corrections are saved on every change.
+
+**Every correction from the keyboard.** With focus on the timeline (the step's keyboard home; `F` +
+`Enter` or `Escape` returns there): `]` / `[` jump between flagged runs and announce them ("Flagged
+run: low confidence, frames 102–107"); `End`, `Shift+←` ×2, `←` land on 719; `=` / `-` / `0` zoom the
+window (82–300 of 741 at 3.4 ×, back to the whole clip); `T` sets the trial start at the playhead
+and the "Revert trial start" button undoes it; `V` at 300, twenty `→`, `V` marks 300–320 not
+visible (the frames table reads `not detected / not_visible`, both sources `corrected`); `A`, ten
+`→`, `A` adds an investigation at the nearest hole (10) and `Delete` removes it — an added event
+deleted leaves no entry; `E`, `D`, `Shift+→` ×3 move the selected event's end from 527 to 530 as
+one edit; `B` at 700 marks the escape box from there (trial end 700, escape entry 700–740 at the
+target, latency 41.71 s, escaped yes); the strategy override with a reason reads "spatial (user
+override)" and reverts. Every entry has its own "Revert to automatic"; the corrections count and the
+derive time are announced each time. An orphan is listed, never dropped: deleting the 176–179 event
+and then raising the threshold that removes it anyway lists the delete as "no longer matches an
+automatic event … nothing was removed".
+
+**Metrics seek.** "Primary errors 9" seeks to frame 116 (the first error), the corrections list's
+"Seek" to 115.
+
+**Play (`Space`).** Requires the tab to be visible: the loop runs on `requestAnimationFrame`, which
+Chrome does not fire for a hidden tab, and the automation window was hidden. With
+`requestAnimationFrame` stubbed to a 16 ms timer for the check, 1.5 s of play from frame 100 reached
+frame 124 (14.985 fps → 22 frames expected, plus the stub's slack), `Space` paused with "Paused at
+frame 124", and play from 735 stopped with "Reached the end of the video". `review.spec.ts` plays
+for real in a visible Playwright page.
+
+**Grayscale (D26).** With `filter: grayscale(1)` on the document: the automatic centroid is a
+filled disc, the corrected nose a hollow diamond with "· user", the target hole a double ring with
+"T7 target", the current event's hole bracketed, corrected event bars hatched and tagged, failures
+dashed, the trial-start marker a triangle on a line, the selected edge a bar. Nothing is carried by
+hue alone.
+
+**200 % zoom (D37).** Emulated with `zoom: 2` on the document (a 640 CSS px layout, the window could
+not be resized from the automation): the toolbar wraps group by group, the timeline keeps its full
+width with the window slider beneath, the three panels stack, the events and frames tables scroll
+inside their own containers, and the document has no horizontal scroll.
+
+**Not attached.** With the file gone after a reload, the step shows the note, runs the scrubber on
+the track's own timestamps (741 frames), draws the maze and the markers on a blank platform, and
+accepts every correction.

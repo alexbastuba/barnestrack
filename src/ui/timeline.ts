@@ -84,6 +84,7 @@ export class Timeline {
   private readonly callbacks: TimelineCallbacks;
 
   private model: TimelineModel | null = null;
+  private resizeFrame = 0;
   private window: TimelineWindow = { first: 0, last: 0 };
   private playhead = 0;
   private selectedEventId: string | null = null;
@@ -145,7 +146,15 @@ export class Timeline {
     // Non-passive: the wheel zooms the timeline instead of scrolling the page.
     this.canvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
 
-    this.resizeObserver = new ResizeObserver(() => this.onResize());
+    // Sizing the canvas inside the observer's own delivery changes layout mid-cycle and trips
+    // "ResizeObserver loop completed with undelivered notifications"; do it on the next frame.
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.resizeFrame !== 0) return;
+      this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = 0;
+        this.onResize();
+      });
+    });
     this.resizeObserver.observe(this.surface);
   }
 

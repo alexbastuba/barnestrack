@@ -95,7 +95,14 @@ session it is found (D39).
   time (test53's last 89 frames at hole 2 under the recorded map), so such trials carry a review
   flag and `status: review` even when nothing is wrong with the tracking. The flag is honest about
   what the rule saw; whether a long head-in-hole dwell at a non-target hole should count as
-  entry-shaped at all is an O4 question.
+  entry-shaped at all is an O4 question. The same rule reads a hand-marked "not visible" range of
+  a second or more beside a non-target hole as entry-shaped too (test51, frames 300–320 inside the
+  hole-12 visit): the visit stays one flagged investigation rather than splitting at the gap.
+- **The hole select's type-ahead relabels on every keystroke.** Typing `13` into the "Hole" select
+  changes it to hole 1 and then to hole 13, and each change is applied; the two coalesce into one
+  correction entry, but the recompute runs twice and the announcement reads "moved from hole 1 to
+  hole 13". Picking the option with the arrows or the mouse avoids it. A fix would apply on blur or
+  after a short pause.
 - **A parameter change can orphan an event correction.** Event corrections address automatic
   events by an id made of kind, hole and start frame, matched exactly or by span (see
   `docs/data-contracts.md` §6). A change that moves an event away from the frame named in the id,
@@ -165,6 +172,17 @@ session it is found (D39).
   repairing the `e7ad7fe` merge (chunk 7a).
 
 ## Excluded scope
+
+- **No undo/redo; repeated edits of one item coalesce.** Every correction is a separate entry
+  with its own "Revert to automatic", but there is no undo stack: nudging a point six times leaves
+  one entry at the final position (the original id, the latest timestamp), and reverting it
+  restores the automatic value, not the previous nudge. The same holds for repeated edits of one
+  event, the trial start and the strategy override. Undo/redo is out of scope for this version.
+- **The review step's threshold fields are provisional.** Six thresholds (hole investigation,
+  escape entry, nose confidence cutoff) are editable on the step; the rest are on the export's
+  parameters sheet and change only through a loaded session file until the parameters panel
+  (chunk 7b) replaces the fields. The `#review-parameters`, `#review-events`, `#review-metrics`
+  and `#review-quality` sections are its mount points.
 
 - **Input format.** MP4 with H.264 (AVC) video only (D4, O13). Other containers/codecs are listed
   in the UI with the reason, never silently dropped, and with a re-encode hint:
