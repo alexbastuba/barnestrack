@@ -6,7 +6,7 @@ calls that you can defend six months later — in a browser tab, with nothing to
 **Live:** <https://barnestrack.pages.dev>
 **Demo video:** <!-- DEMO_URL --> _placeholder — link added when the recording is made._
 **Nothing to hand?** Press **Load example cohort** on the Videos step to open a worked cohort with
-every result already computed. _(Placeholder: the button ships with the demo-state chunk.)_
+every result already computed. _(Placeholder: the button ships in a later release.)_
 
 ## What it does, and who it is for
 
@@ -22,15 +22,16 @@ The work is four steps, and the page says the same thing at the top of each one:
    after a reload. Nothing is uploaded."
 2. **Maze** — "Mark the platform, generate the hole ring, name the target hole and enter the
    platform diameter. The map belongs to the whole session, so hole 7 means the same hole in every
-   video; a second video only needs to say where that maze sits in its own frame." A new maze costs
-   five clicks on the image; reusing it on a video shot on the same rig costs none, and three when
-   the camera moved. The panel shows the running count.
+   video; a second video only needs to say where that maze sits in its own frame." D13 budgets at
+   most six clicks on the image for a new maze and at most three for a reused one; on the sample
+   recordings a new maze cost five, reusing it on a video from the same rig cost none, and three
+   where the camera had moved. The panel shows the running count.
 3. **Track** — "Run the automatic tracking pass over each video and watch it work. Tracking runs in
    the background, so you can keep working on the Videos and Maze steps while it does." A
    3-minute video takes a few seconds, and the page stays responsive while it happens.
 4. **Review & Export** — "Read the events, latencies, errors, path measures and search strategy for
    each trial, check the quality report, and export tidy CSVs and an XLSX workbook." _(This step is
-   mounted as a placeholder in the current build; it lands with the review chunk.)_
+   mounted as a placeholder in the current build; it lands in a later release.)_
 
 Three things shape everything else:
 
@@ -43,9 +44,11 @@ Three things shape everything else:
   downstream is recomputed. "Revert to automatic" is free, and re-running tracking cannot destroy
   an afternoon of human work.
 
-Every threshold that decides a number is visible in the interface, adjustable, and written into
-every export as its own column, alongside the tool version and a hash of the whole parameter set.
-Two spreadsheets that disagree can always be reconciled.
+Every threshold that decides a number is a named parameter rather than a constant buried in code:
+adjustable in the interface wherever the step that uses it has shipped, and carried into every
+export either as its own column or through the parameter set the export's hash covers, alongside
+the tool version. Two spreadsheets that disagree can be reconciled from what travels with them —
+except for eight thresholds not yet in the contract, named under Known limitations.
 
 ## How to run it
 
@@ -172,8 +175,8 @@ stale.
 
 ## Ambiguities, and how they were resolved
 
-The brief leaves the behavioural definitions open, which is correct — they are lab conventions, not
-facts. Each one is resolved with an explicit default that is **in force, visible in the interface,
+Barnes maze conventions vary between laboratories, so the behavioural definitions cannot simply be
+looked up — they are lab conventions, not facts. Each one is resolved with an explicit default that is **in force, visible in the interface,
 adjustable, and written into every export as a column**, so a later change of mind is a
 recomputation rather than a reanalysis. Defaults marked _provisional_ are recorded in
 [`docs/decisions.md`](docs/decisions.md) as closing against Gawel et al. 2019 and Illouz et al.
@@ -242,7 +245,7 @@ Five further ambiguities were resolved structurally rather than numerically:
 ## What was not built, and why
 
 - **SLEAP `.slp` import** onto `source: imported` — designed for (D8 exists partly to admit it) but
-  behind core acceptance in the stretch order (D42).
+  behind the core features in the order set out in D42.
 - **Automatic maze detection** proposing the map — the manual path already costs five clicks and
   none on a reused rig, so the payoff is small (D42).
 - **Undo/redo** — every correction is individually revertible and the automatic layer is never
@@ -275,8 +278,9 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   what the tool computes and what a full Barnes maze analysis needs, and it is a threshold question
   the user can see and change, not hidden behaviour.
 - **The nose is experimental.** On these re-encoded clips the tail is often below the foreground
-  threshold and a hunched animal has no defined major axis, so a nose heading is unavailable on
-  roughly a quarter of frames and usually rests on a single cue where it exists. Events therefore
+  threshold and a hunched animal has no defined major axis, so no nose cue exists at all on 21–32 %
+  of the frames that have a blob — and on every frame that has none — while a cue that does exist
+  usually stands alone. Events therefore
   record which point they were judged on, the quality report states the fraction judged on the
   nose, and the interface labels the nose experimental.
 - **Eight analysis thresholds are not yet in the parameters hash — and D55 says they must be.** The
@@ -292,8 +296,10 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
 **What leaves the user's machine: nothing.** BarnesTrack is a static page. Videos are read from
 disk by the browser and decoded in the tab; tracking, analysis, figures and exports all run
 locally; the session file and the CSVs are written straight to the downloads folder. There is no
-server to send anything to, no account, no telemetry, and no third party in the path — the build
-contains no external URL at all, so there is not even a font or a CDN script to fetch. The one
+server to send anything to, no account, no telemetry, and no third party in the path — there is not
+even a font or a CDN script to fetch. The built bundle contains exactly one URL-shaped string,
+`http://www.w3.org/2000/svg`, the XML namespace passed to `createElementNS`, which is never
+fetched. The one
 exception is deliberate and user-initiated: a "fetch a sample clip" button that downloads one clip
 from the public sample-data repository so the demo has a real video to scrub. Nothing else ever
 makes a request, and that is checkable rather than promised — open the network tab and work through
@@ -317,7 +323,9 @@ spreadsheets disagree. [`skills/barnestrack-cohort/`](skills/barnestrack-cohort/
 that answers them. Add it to Claude Code or claude.ai, point it at an export folder, and ask.
 
 It reads the exported files and nothing else — no server, no connection to the application, no
-access to the videos or the session's internals. It knows the column list and the units, and it is
+access to the videos. It works from the three CSVs and the parameter set, and falls back to the
+session file in the same folder only when those cannot answer the question. It knows the column
+list and the units, and it is
 built around the rules that make a cohort answer honest: it will not fold trials marked `review`
 into a headline number without saying so, it treats a blank cell as "not recorded" rather than
 zero, and it refuses to compare two cohorts without first checking that their `parameters_hash`
@@ -333,15 +341,19 @@ implemented, and how to check it:
   move the platform and the ring, arrow keys nudge a selected hole by 1 px (10 px with Shift),
   `+`/`−`/`0` zoom, `Alt` plus arrows pan, and the scrubber steps a frame at a time. The full key
   table is in [`tests/browser/README.md`](tests/browser/README.md). To check: unplug the mouse.
-- **Nothing means anything by colour alone.** Automatic points are filled markers, corrected ones
-  are diamonds with an edit badge, filled ones are hollow and dashed; corrected events are hatched
-  and tagged "user"; detection states and quality tiers are words first. To check: print a figure
-  in grayscale, or set the display to grayscale and work through a video.
-- **Every canvas has a DOM equivalent.** The maze overlay, the timeline and the figures are
-  mirrored by tables and lists carrying the same values, so nothing is reachable only by looking at
-  a picture. Canvases are labelled, and the label says the table below repeats what is drawn.
-- **Status is announced, but not narrated.** One polite live region carries state transitions —
-  tracking started, finished with its summary sentence, cancelled, failed — while continuous
+- **Nothing means anything by colour alone.** Detection states and quality tiers are words first;
+  in the figures, markers differ by shape and every series carries a text label. The correction
+  marking D26 specifies — automatic points filled, corrected ones diamonds with an edit badge,
+  filled ones hollow and dashed, corrected events hatched and tagged "user" — is specified and
+  implemented in the figure layer, but the correction tools that produce those values are not in
+  this build. To check what is here: set the display to grayscale and work through a video.
+- **Every canvas has a DOM equivalent.** The maze overlay is mirrored by a table carrying the same
+  values, and the canvas label says so. Each figure carries a `FigureDescription` — the same facts
+  as text — built to be rendered beside it; the Review step that puts those tables on the page has
+  not landed, so today they are exercised in the tests and in the development gallery.
+- **Status is announced, but not narrated.** The shell's shared polite live region carries state
+  transitions
+  — tracking started, finished with its summary sentence, cancelled, failed — while continuous
   progress is `aria-live="off"`, so a screen reader is told what happened without a running
   commentary.
 - **Usable at 200 % zoom.** Checked at a 483 × 423 CSS viewport, which is what a 1280-wide window
