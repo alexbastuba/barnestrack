@@ -82,6 +82,7 @@ import {
   drawNoseMarker,
 } from './overlay-draw.js';
 import { formatFrameTime } from './review-format.js';
+import { createReviewExport, type ReviewExport } from './review-export.js';
 import {
   createReviewFigures,
   type ReviewFigures,
@@ -908,8 +909,9 @@ export function createReviewStep(context: AppContext): Step {
   const eventsPanel = el('div', { id: 'review-events', class: 'review-panel review-panel-wide', attrs: { 'data-panel': 'events' } });
   const qualityPanel = el('div', { id: 'review-quality', class: 'review-panel', attrs: { 'data-panel': 'quality' } });
 
-  /** Where `createReviewFigures` mounts; the section itself is the component's. */
+  /** Where the figures and the export mount; each section itself is its module's. */
   const figuresHost = el('div', { class: 'review-figures-host' });
+  const exportHost = el('div', { class: 'review-export-host' });
 
   const framesBody = el('tbody');
   const framesSummary = el('p', { class: 'mirror-summary' });
@@ -966,6 +968,7 @@ export function createReviewStep(context: AppContext): Step {
     legend,
     el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
     figuresHost,
+    exportHost,
     framesMirror,
     eventsMirror,
     correctionsMirror,
@@ -1042,6 +1045,7 @@ export function createReviewStep(context: AppContext): Step {
     timeline.setSelection(selectedEventId, selectedEdge);
     renderPanels();
     renderFigures();
+    renderExport();
     renderEventsTable();
     renderFrameTable();
     renderCorrections();
@@ -1241,6 +1245,7 @@ export function createReviewStep(context: AppContext): Step {
   let eventsComponent: Component<EventListProps> | null = null;
   let qualityComponent: Component<QualityPanelProps> | null = null;
   let figures: ReviewFigures | null = null;
+  let exporter: ReviewExport | null = null;
 
   /**
    * The panel calls `onParametersChange` and then announces what the user
@@ -1338,6 +1343,16 @@ export function createReviewStep(context: AppContext): Step {
     figures = createReviewFigures(figuresHost, figuresProps, {
       onAnnounce: context.announce,
       onGoToTrack: () => context.showStep('track'),
+    });
+  }
+
+  function renderExport(): void {
+    if (exporter) {
+      exporter.update();
+      return;
+    }
+    exporter = createReviewExport(exportHost, store, context.toolVersion, {
+      onAnnounce: context.announce,
     });
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { hashParameters } from '../../src/analysis/parameters.js';
 import { TRIAL_COLUMNS } from '../../src/export/columns.js';
 import { toCsv } from '../../src/export/csv.js';
 import { buildExportBundle, exportZipName, XLSX_FILE_NAME } from '../../src/export/index.js';
@@ -79,6 +80,21 @@ describe('buildExportBundle', () => {
       `barnestrack_export_barnes-cohort-a_${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}${String(NOW.getDate()).padStart(2, '0')}.zip`,
     );
     expect(exportZipName({ ...session, name: '  ///  ' }, NOW)).toContain('_session_');
+  });
+
+  it('hashes parameters.json to the parameters_hash every trials.csv row names (D11, D12)', async () => {
+    const bundle = await buildExportBundle(session, session.toolVersion, { now: NOW });
+    const entries = await entriesOf(bundle.zip);
+    const decoder = new TextDecoder();
+
+    // The reconciliation the two files exist to allow: the hash in every row is
+    // the hash of the parameter set shipped beside it, in the same ZIP.
+    const written = hashParameters(JSON.parse(decoder.decode(entries.get('parameters.json'))));
+    const rows = decoder.decode(entries.get('trials.csv')).split('\r\n').filter(Boolean).slice(1);
+    const column = TRIAL_COLUMNS.findIndex((spec) => spec.header === 'parameters_hash');
+    expect(column).toBeGreaterThanOrEqual(0);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.split(',')[column]).toBe(written);
   });
 
   it('still produces a bundle for a session that has never been analysed (D47)', async () => {
