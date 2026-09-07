@@ -4,8 +4,8 @@
  * Step 4 — Review. The frame view with the automatic and corrected points,
  * the timeline (D24), every correction (D25) as a pure operation over the
  * corrections layer with a live recompute of the whole analysis (D20, D22),
- * the DOM mirrors of what the canvases draw (D37), and a minimal metrics
- * card whose values seek to the frame that defines them (D19 · F3).
+ * the DOM mirrors of what the canvases draw (D37), and chunk 7a's four panels
+ * mounted in the four boxes below (D19 · F3).
  *
  * Nothing here patches an output: a correction writes one entry into the
  * corrections layer, the store notifies, and the derived analysis is
@@ -17,23 +17,20 @@
  * one at its first frame, one at its last — for the not-visible range and the
  * added event; re-implemented here, no code copied.
  *
- * Mount points for the panels chunk 7b brings: `#review-parameters`,
- * `#review-events`, `#review-metrics`, `#review-quality`. What lives in them
- * now is the minimum this step needs and is replaced wholesale then.
+ * `#review-parameters`, `#review-metrics`, `#review-events` and
+ * `#review-quality` hold chunk 7a's components. They are built once and driven
+ * with `update()` on every recompute — never torn down and remounted, or a
+ * slider drag and the focused card are lost every time the debounce fires
+ * (`prototypes/review-components/RESULTS.md`). The 12-column events table that
+ * used to live in `#review-events` is still here as `#review-events-mirror`,
+ * beside the other two mirrors: the event cards are not a table, and D37 wants
+ * a table with D26's source column.
  */
 import type { DerivedAnalysis } from '../analysis/derive.js';
 import { nearestHoleIndex } from '../analysis/geometry.js';
-import {
-  PARAMETER_DECISIONS,
-  PARAMETER_DEFINITIONS,
-  PARAMETER_UNITS,
-  parameterAt,
-  validateParameters,
-  type ParameterPath,
-} from '../analysis/parameters.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { CorrectionsLayer, SearchStrategy, VideoDescriptor } from '../contracts/session.js';
+import type { CorrectionsLayer, VideoDescriptor } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
@@ -48,19 +45,32 @@ import {
   markRange,
   orphanedCorrections,
   pointCorrectionAt,
+  NO_CORRECTIONS,
   revertCorrection,
   revertEvent,
-  revertStrategyOverride,
   revertTrialStart,
   setPoint,
   setStrategyOverride,
   setTrialStart,
   strategyOverride,
-  trialStartCorrection,
   type CorrectionMeta,
 } from '../session/corrections.js';
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
+import {
+  createEventList,
+  createMetricsCard,
+  createParametersPanel,
+  createQualityPanel,
+  describeDiff,
+  type Component,
+  type EventListProps,
+  type MetricsCardProps,
+  type ParametersPanelProps,
+  type QualityPanelProps,
+  type SeekCallbacks,
+  type StrategyCallbacks,
+} from './components/index.js';
 import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
 import {
   ACCENT,
@@ -71,15 +81,7 @@ import {
   drawLabel,
   drawNoseMarker,
 } from './overlay-draw.js';
-import {
-  METRIC_ROWS,
-  formatFrameTime,
-  formatPercentage,
-  formatSeconds,
-  metricDefinition,
-  metricValueText,
-  seekFrameFor,
-} from './review-format.js';
+import { formatFrameTime } from './review-format.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
 import { Scrubber } from './scrubber.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
@@ -101,16 +103,6 @@ const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 /** Frames either side of the playhead in the frames table. */
 const FRAME_TABLE_RADIUS = 7;
-/** The thresholds the provisional parameter fields expose until chunk 7b's panel replaces them. */
-const PROVISIONAL_PARAMETERS: readonly ParameterPath[] = [
-  'holeInvestigation.radiusFactor',
-  'holeInvestigation.minDuration_s',
-  'holeInvestigation.mergeGap_s',
-  'escapeEntry.radiusFactor',
-  'escapeEntry.minDuration_s',
-  'noseConfidenceCutoff',
-];
-const STRATEGIES: readonly SearchStrategy[] = ['spatial', 'serial', 'random'];
 
 function newMeta(): CorrectionMeta {
   const uuid =
@@ -163,6 +155,13 @@ export function createReviewStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
   let lastVideoId: VideoId | null = null;
   let lastTimebaseSource: unknown = null;
+  /**
+   * The analysis each video had immediately before its current one, which is
+   * what the diff badge compares against (D20). Written in `ensureAnalysis` on
+   * a cache miss, so a threshold change, a correction and a re-derive all get a
+   * true "before", and an idle re-render does not silently reset it.
+   */
+  const previousByVideo = new Map<VideoId, DerivedAnalysis>();
 
   const body = el('div', { class: 'review-step' });
 
@@ -224,6 +223,7 @@ export function createReviewStep(context: AppContext): Step {
         cacheKey = null;
         return;
       }
+      if (analysis && cacheKey?.videoId === video.id) previousByVideo.set(video.id, analysis);
       analysis = run.analysis;
       model = timelineModel(analysis, entry.corrections);
       lastTiming = { deriveMs: run.deriveMs, totalMs: performance.now() - started };
@@ -915,6 +915,19 @@ export function createReviewStep(context: AppContext): Step {
     ]),
   ]);
 
+  /*
+   * The events mirror. It used to be what `#review-events` held; the event list
+   * (cards, with the evidence and the shadow values in prose) took that place,
+   * and this table came down here with the other two mirrors — D37 asks for a
+   * table of what the timeline draws and D26 for a source column in every one,
+   * and a card is neither. Closed by default: it repeats what is above it.
+   */
+  const eventsMirrorBody = el('div');
+  const eventsMirror = el('section', { id: 'review-events-mirror', class: 'mirror' }, [
+    el('h3', { text: 'Events' }),
+    disclosure('Every event as a table', [eventsMirrorBody]),
+  ]);
+
   const correctionsList = el('ol', { class: 'corrections-list' });
   const correctionsSummary = el('p', { class: 'mirror-summary' });
   const correctionsMirror = el('section', { class: 'mirror' }, [
@@ -937,6 +950,7 @@ export function createReviewStep(context: AppContext): Step {
     legend,
     el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
     framesMirror,
+    eventsMirror,
     correctionsMirror,
   );
 
@@ -1009,9 +1023,7 @@ export function createReviewStep(context: AppContext): Step {
     timeline.setModel(model, store.parameters.noseConfidenceCutoff);
     timeline.setPlayhead(playhead);
     timeline.setSelection(selectedEventId, selectedEdge);
-    renderParameters();
-    renderMetrics();
-    renderQuality();
+    renderPanels();
     renderEventsTable();
     renderFrameTable();
     renderCorrections();
@@ -1031,9 +1043,8 @@ export function createReviewStep(context: AppContext): Step {
   }
 
   function renderEventsTable(): void {
-    const heading = el('h3', { id: 'review-events-heading', text: 'Events' });
     if (!analysis) {
-      replaceChildren(eventsPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
+      replaceChildren(eventsMirrorBody, [el('p', { class: 'hint', text: 'No analysis yet.' })]);
       return;
     }
     const counts = { investigation: 0, escape_entry: 0, tracking_failure: 0 };
@@ -1076,8 +1087,7 @@ export function createReviewStep(context: AppContext): Step {
       ]);
       tbody.append(row);
     }
-    replaceChildren(eventsPanel, [
-      heading,
+    replaceChildren(eventsMirrorBody, [
       el('p', { class: 'mirror-summary', text: `${counts.investigation} investigation${counts.investigation === 1 ? '' : 's'} · ${counts.escape_entry} escape entr${counts.escape_entry === 1 ? 'y' : 'ies'} · ${counts.tracking_failure} tracking failure${counts.tracking_failure === 1 ? '' : 's'}. A hatched row was corrected by hand; its automatic values stay in the Source column.` }),
       el('div', { class: 'table-scroll' }, [
         el('table', { class: 'mirror-table' }, [
@@ -1198,150 +1208,135 @@ export function createReviewStep(context: AppContext): Step {
     );
   }
 
-  // ---- metrics card (minimal; chunk 7b replaces it) -------------------------------------------
+  // ---- the four panels (chunk 7a's components) ------------------------------------------------
 
-  const strategySelect = el('select', { id: uniqueId('review-strategy') });
-  for (const s of STRATEGIES) strategySelect.append(el('option', { text: s, attrs: { value: s } }));
-  const strategyReason = el('input', { id: uniqueId('review-strategy-reason'), class: 'range-input' });
-  strategyReason.type = 'text';
-  strategyReason.placeholder = 'why (optional)';
-  const strategyApply = button('Override strategy', () => {
-    const layer = layerOrNull();
-    if (!layer) return;
-    commit(setStrategyOverride(layer, strategySelect.value as SearchStrategy, strategyReason.value.trim(), newMeta()), `Strategy set to ${strategySelect.value} by hand`);
-  });
-  const strategyRevert = button('Revert to automatic', () => {
-    const layer = layerOrNull();
-    if (!layer) return;
-    commit(revertStrategyOverride(layer), 'Strategy override removed');
-  });
+  /**
+   * Built on the first analysis and then only ever `update()`d. Rebuilding them
+   * on every recompute interrupts a slider drag about every 100 ms and loses the
+   * focused event card — the defect chunk 7a found in its own harness and the
+   * reason `update()` exists. Only the transition to "no analysis at all" takes
+   * the three analysis-fed panels down; switching video is an update, not a
+   * remount.
+   */
+  let parametersComponent: Component<ParametersPanelProps> | null = null;
+  let metricsComponent: Component<MetricsCardProps> | null = null;
+  let eventsComponent: Component<EventListProps> | null = null;
+  let qualityComponent: Component<QualityPanelProps> | null = null;
 
-  function renderMetrics(): void {
-    const heading = el('h3', { id: 'review-metrics-heading', text: 'Metrics' });
-    if (!analysis) {
-      replaceChildren(metricsPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
-      return;
-    }
-    const a = analysis;
-    const m = a.metrics;
-    const list = el('dl', { class: 'metric-list' });
-    for (const row of METRIC_ROWS) {
-      const frame = seekFrameFor(row.seek, a);
-      const text = metricValueText(m, row.key);
-      const def = metricDefinition(row.key);
-      const value =
-        frame === null
-          ? el('span', { class: 'metric-plain', text })
-          : button(text, () => seek(frame, true), { class: 'metric-value', attrs: { 'aria-label': `${row.label} ${text}: seek to frame ${frame}` } });
-      list.append(
-        el('dt', { text: row.label }),
-        el('dd', {}, [
-          value,
-          ' ',
-          disclosure(`Definition (${def.decision})`, [el('p', { text: def.text })]),
-          row.key === 'status' && a.reviewFlags.length > 0
-            ? el('ul', { class: 'notes' }, a.reviewFlags.map((flag) => el('li', {}, [
-                el('span', { text: flag.message }),
-                ' ',
-                flag.frameIndex !== undefined ? button('Seek', () => seek(flag.frameIndex!, true), { attrs: { 'aria-label': `Seek to frame ${flag.frameIndex}` } }) : null,
-              ])))
-            : null,
-        ]),
-      );
-    }
-    const s = a.strategy;
-    const override = strategyOverride(currentLayer() ?? { entries: [] });
-    const start = trialStartCorrection(currentLayer() ?? { entries: [] });
-    const strategyDef = metricDefinition('strategy');
-    const block = el('div', { class: 'strategy-block' }, [
-      el('h4', {}, [el('span', { text: `Strategy: ${s.strategy} (${s.strategySource === 'corrected' ? 'user override' : 'automatic'}), runner-up ${s.runnerUp}` }), ' ', disclosure(`Definition (${strategyDef.decision})`, [el('p', { text: strategyDef.text })])]),
-      el('ul', { class: 'notes' }, s.reasoning.map((line) => el('li', { text: line }))),
-      el('div', { class: 'field-row' }, [
-        el('div', { class: 'field' }, [el('label', { text: 'Strategy by hand', attrs: { for: strategySelect.id } }), strategySelect]),
-        el('div', { class: 'field' }, [el('label', { text: 'Reason', attrs: { for: strategyReason.id } }), strategyReason]),
-        strategyApply,
-        override ? strategyRevert : null,
-      ]),
-      el('p', { class: 'hint', text: `Trial start: frame ${a.trial.startFrame ?? '—'} (${a.trial.startSource === 'corrected' ? 'set by hand' : 'automatic'})${start ? '' : '; drag the marker on the timeline or press T to change it'}. Trial end: frame ${a.trial.endFrame ?? '—'}, ${a.trial.endReason.replaceAll('_', ' ')}.` }),
-    ]);
-    if (override) strategySelect.value = override.strategy;
-    replaceChildren(metricsPanel, [heading, list, block]);
+  /**
+   * The panel calls `onParametersChange` and then announces what the user
+   * changed. The badge only exists after that recompute, so it is parked here
+   * and appended to the panel's own sentence: one utterance per change, not one
+   * per control and not two that overwrite each other (D37).
+   */
+  let pendingReflow = '';
+
+  const seekCallbacks: SeekCallbacks = {
+    onSeek: (frame) => seek(positionOfFrame(frame), true),
+    onAnnounce: context.announce,
+  };
+
+  const strategyCallbacks: StrategyCallbacks = {
+    ...seekCallbacks,
+    onOverride: (strategy, reason) => {
+      const layer = layerOrNull();
+      if (!layer) return;
+      commit(setStrategyOverride(layer, strategy, reason, newMeta()), `Strategy set to ${strategy} by hand`);
+    },
+    onRevert: (id) => {
+      const layer = layerOrNull();
+      if (!layer) return;
+      commit(revertCorrection(layer, id), 'Strategy override removed');
+    },
+  };
+
+  /**
+   * The components address frames by sample-table index; this step's playhead is
+   * a position in `cleanedTrack`. `timelineModel` refuses a track where the two
+   * differ (chunk 6), so today this is the identity — written out anyway, because
+   * a D42 import is exactly the case that would break the assumption.
+   */
+  function positionOfFrame(frameIndex: number): number {
+    const track = analysis?.cleanedTrack;
+    if (!track || track.length === 0) return 0;
+    if (track[frameIndex]?.frameIndex === frameIndex) return frameIndex;
+    const found = track.findIndex((frame) => frame.frameIndex === frameIndex);
+    return found >= 0 ? found : Math.max(0, Math.min(track.length - 1, frameIndex));
   }
 
-  function renderQuality(): void {
-    const heading = el('h3', { id: 'review-quality-heading', text: 'Quality' });
-    if (!analysis) {
-      replaceChildren(qualityPanel, [heading, el('p', { class: 'hint', text: 'No analysis yet.' })]);
-      return;
-    }
-    const q = analysis.quality;
-    replaceChildren(qualityPanel, [
-      heading,
-      el('p', {}, [
-        el('span', { class: `badge ${q.tier === 'GOOD' ? 'badge-ok' : 'badge-warn'}`, text: `Tier ${q.tier}` }),
-        ` · positioned ${formatPercentage(q.positionedFraction)} of the trial window (${formatPercentage(q.wholeClipPositionedFraction)} of the whole clip) · ${q.gaps.length} gap${q.gaps.length === 1 ? '' : 's'}, longest ${formatSeconds(q.longestGapSeconds)} · ${formatPercentage(q.noseJudgedEventFraction)} of events judged on the nose · calibration ${q.pxPerCm.toFixed(3)} px/cm.`,
-      ]),
-      el('p', { class: 'hint', text: 'The full quality report, with its gap list and the tracking strip, is shown in the Review step’s quality panel once it is mounted here.' }),
-    ]);
-  }
-
-  // ---- provisional parameter fields (chunk 7b replaces them with the panel) ------------------
-
-  const parameterInputs = new Map<ParameterPath, HTMLInputElement>();
-
-  function renderParameters(): void {
-    const heading = el('h3', { id: 'review-parameters-heading', text: 'Thresholds' });
-    const p = store.parameters;
-    const fields: Child[] = [];
-    for (const path of PROVISIONAL_PARAMETERS) {
-      let input = parameterInputs.get(path);
-      if (!input) {
-        input = el('input', { id: uniqueId('review-param'), class: 'number-input' });
-        input.type = 'number';
-        input.step = 'any';
-        input.addEventListener('change', () => applyParameter(path, input!));
-        parameterInputs.set(path, input);
-      }
-      if (document.activeElement !== input) input.value = String(parameterAt(p, path));
-      input.disabled = analysis === null;
-      fields.push(
-        el('div', { class: 'field' }, [
-          el('label', { text: `${path} (${PARAMETER_UNITS[path]})`, attrs: { for: input.id } }),
-          input,
-          disclosure(`Definition (${PARAMETER_DECISIONS[path]})`, [el('p', { text: PARAMETER_DEFINITIONS[path] })]),
-        ]),
-      );
-    }
-    replaceChildren(parametersPanel, [
-      heading,
-      el('p', { class: 'hint', text: 'Change a threshold and every event, metric and figure is recomputed at once; corrected events stay pinned (D20). The remaining thresholds are on the export’s parameters sheet.' }),
-      ...fields,
-    ]);
-  }
-
-  function applyParameter(path: ParameterPath, input: HTMLInputElement): void {
-    const value = Number(input.value);
-    if (!Number.isFinite(value)) {
-      context.announce(`${path} needs a number.`);
-      input.value = String(parameterAt(store.parameters, path));
-      return;
-    }
-    const next = structuredClone(store.parameters) as Parameters;
-    const keys = path.split('.');
-    let node = next as unknown as Record<string, unknown>;
-    for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
-    node[keys[keys.length - 1]!] = value;
-    const problems = validateParameters(next);
-    if (problems.length > 0) {
-      context.announce(`Not applied: ${problems[0]}`);
-      input.value = String(parameterAt(store.parameters, path));
-      return;
-    }
+  function onParametersChange(next: Parameters): void {
     const started = performance.now();
-    store.setParameters(next); // notifies → refresh → re-derive
-    const total = performance.now() - started;
-    context.announce(`${path} set to ${value}.${lastTiming ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${total.toFixed(0)} ms with the redraw).` : ''}`);
+    store.setParameters(next); // notifies → refresh → re-derive → re-render
+    const video = currentVideo();
+    const badge = describeDiff(video ? (previousByVideo.get(video.id) ?? null) : null, analysis);
+    const timing = lastTiming
+      ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${(performance.now() - started).toFixed(0)} ms with the redraw).`
+      : '';
+    pendingReflow = `${badge}${timing}`;
   }
+
+  function renderPanels(): void {
+    const video = currentVideo();
+    const parametersProps: ParametersPanelProps = {
+      parameters: store.parameters,
+      previous: video ? (previousByVideo.get(video.id) ?? null) : null,
+      next: analysis,
+    };
+    if (parametersComponent) {
+      parametersComponent.update(parametersProps);
+    } else {
+      replaceChildren(parametersPanel, []);
+      parametersComponent = createParametersPanel(parametersPanel, parametersProps, {
+        onParametersChange,
+        onAnnounce: (message) => {
+          context.announce(pendingReflow ? `${message} ${pendingReflow}` : message);
+          pendingReflow = '';
+        },
+      });
+    }
+
+    if (!analysis || !video) {
+      metricsComponent?.destroy();
+      eventsComponent?.destroy();
+      qualityComponent?.destroy();
+      metricsComponent = null;
+      eventsComponent = null;
+      qualityComponent = null;
+      for (const panel of [metricsPanel, eventsPanel, qualityPanel]) {
+        replaceChildren(panel, [el('p', { class: 'hint', text: 'No analysis yet.' })]);
+      }
+      return;
+    }
+
+    const metricsProps: MetricsCardProps = {
+      analysis,
+      parameters: store.parameters,
+      strategyOverrideId: strategyOverride(currentLayer() ?? NO_CORRECTIONS)?.id ?? null,
+    };
+    if (metricsComponent) {
+      metricsComponent.update(metricsProps);
+    } else {
+      replaceChildren(metricsPanel, []);
+      metricsComponent = createMetricsCard(metricsPanel, metricsProps, strategyCallbacks);
+    }
+
+    const eventsProps: EventListProps = { events: analysis.events, flags: analysis.reviewFlags };
+    if (eventsComponent) {
+      eventsComponent.update(eventsProps);
+    } else {
+      replaceChildren(eventsPanel, []);
+      eventsComponent = createEventList(eventsPanel, eventsProps, seekCallbacks);
+    }
+
+    const qualityProps: QualityPanelProps = { session: store.current, videoId: video.id, analysis };
+    if (qualityComponent) {
+      qualityComponent.update(qualityProps);
+    } else {
+      replaceChildren(qualityPanel, []);
+      qualityComponent = createQualityPanel(qualityPanel, qualityProps, seekCallbacks);
+    }
+  }
+
 
   // ---- helpers ------------------------------------------------------------------------------
 
