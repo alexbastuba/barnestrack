@@ -240,6 +240,27 @@ describe('describeDiff', () => {
     expect(sentence).toContain('quality tier GOOD → POOR');
   });
 
+  it('counts events judged on the nose over the set the quality panel counts', () => {
+    // The panel prints `QualityReport.noseJudgedEventFraction`, which excludes
+    // tracking failures (D54). A badge that counted them too would put a number
+    // on screen that no panel shows — 16 → 1 beside a panel reading "0 of 15".
+    const { before, after } = derivedPair('video-test50', (p) => ({
+      ...p,
+      noseConfidenceCutoff: 0.51,
+    }));
+    const judged = (a: DerivedAnalysis) =>
+      a.events.filter((e) => e.kind !== 'tracking_failure' && e.pointUsed === 'nose').length;
+    const sentence = describeDiff(before, after);
+    expect(sentence).toContain(
+      `events judged on the nose ${judged(before)} → ${judged(after)}`,
+    );
+    // The panel's own numerator, from the report rather than from this count.
+    expect(after.quality.noseJudgedEventFraction).toBeCloseTo(
+      judged(after) / after.events.filter((e) => e.kind !== 'tracking_failure').length,
+      12,
+    );
+  });
+
   it('reports a runner-up that moved while the class stood', () => {
     // The card prints the runner-up beside the class, and the O7 thresholds can
     // move one without the other.
@@ -285,15 +306,32 @@ describe('describeDiff', () => {
   });
 
   it('reports a trial start that moved, which the metrics card prints', () => {
-    // The metrics card prints the trial start and nothing compared it. No
-    // analysis threshold moves it on the three fixtures — the sweep below was
-    // instrumented and found zero such combinations — so this stub is the only
-    // cover the clause has, and it is here rather than left to the sweep.
     const sentence = describeDiff(
       analysisWith({ metrics: { trialStart_s: 4 } }),
       analysisWith({ metrics: { trialStart_s: 9.5 } }),
     );
     expect(sentence).toContain('trial start 4.00 s → 9.50 s');
+  });
+
+  it('reports a trial start moved by a correction, on a real re-derivation', () => {
+    // No analysis threshold moves the trial start on these fixtures — the sweep
+    // below was instrumented and found zero such combinations — so the clause
+    // is proved here instead, on the thing that does move it: a D25 trial-start
+    // correction, re-derived rather than patched.
+    const base = fixture('video-test50', { corrections: [] });
+    const moved = fixture('video-test50', {
+      corrections: [
+        {
+          id: 'c-trial-start',
+          timestamp: '2026-09-07T00:00:00.000Z',
+          source: 'user',
+          kind: 'trial_start',
+          frameIndex: 300,
+        },
+      ],
+    });
+    expect(moved.analysis.metrics.trialStart_s).not.toBe(base.analysis.metrics.trialStart_s);
+    expect(describeDiff(base.analysis, moved.analysis)).toContain('trial start ');
   });
 });
 
@@ -355,6 +393,15 @@ describe('the badge is never silent about a number the panels print', () => {
     return JSON.stringify({
       metrics: analysis.metrics,
       tier: analysis.quality.tier,
+      // D54's three figures, which the quality panel prints at the top and
+      // which it reads from the report rather than deriving. `positioned` is
+      // recoverable from `states`; the other two are not, so without them the
+      // sweep would be claiming coverage it did not have.
+      d54: [
+        analysis.quality.positionedFraction,
+        analysis.quality.wholeClipPositionedFraction,
+        analysis.quality.noseJudgedEventFraction,
+      ],
       gaps: analysis.quality.gaps.length,
       longestGap: analysis.quality.longestGapSeconds,
       timebase: analysis.quality.timebaseAnomalies,

@@ -164,7 +164,7 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     max: 10,
     step: '1',
     reason:
-      'Two adjacent holes in a row is a coincidence rather than a strategy, so that is the floor; ten consecutive adjacent holes is half the ring and almost no trial would qualify (O7).',
+      'Two is the loosest run anyone would defend as serial — one hole and every visit is a run — so it is the floor rather than the recommendation; ten consecutive adjacent holes is half the ring and almost no trial would qualify (O7).',
   },
   'strategy.centreZoneRadiusFraction': {
     min: 0.1,

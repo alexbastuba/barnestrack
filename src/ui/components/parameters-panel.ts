@@ -155,13 +155,23 @@ function markRow(row: Row, messages: readonly string[]): void {
   row.error.hidden = !bad;
   row.element.classList.toggle('is-invalid', bad);
   for (const control of row.element.querySelectorAll('input, select, textarea')) {
+    // The slider already has an `aria-describedby` of its own — it points at the
+    // numeric field it is a twin of — so the error id is added to and removed
+    // from the list rather than replacing it. Overwriting left a recovered
+    // slider with no description at all, which is the state it spends most of
+    // its life in.
+    const described = new Set(
+      (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean),
+    );
     if (bad) {
       control.setAttribute('aria-invalid', 'true');
-      control.setAttribute('aria-describedby', row.error.id);
+      described.add(row.error.id);
     } else {
       control.removeAttribute('aria-invalid');
-      control.removeAttribute('aria-describedby');
+      described.delete(row.error.id);
     }
+    if (described.size > 0) control.setAttribute('aria-describedby', [...described].join(' '));
+    else control.removeAttribute('aria-describedby');
   }
 }
 

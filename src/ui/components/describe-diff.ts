@@ -235,8 +235,16 @@ export function describeDiff(
 
   // O16: the cutoff decides whether each event is judged on the nose or the
   // centroid, and the quality panel prints that share. Nothing above notices it.
+  //
+  // Over the same set the panel counts, which is the set `QualityReport`'s
+  // `noseJudgedEventFraction` counts (D54): a tracking failure is a run of
+  // frames with no position, so which point it was "judged on" is not a
+  // judgement anyone made. Counting it here would put a number in the badge
+  // that no panel shows.
   const noseJudged = (analysis: DerivedAnalysis): number =>
-    analysis.events.filter((event) => event.pointUsed === 'nose').length;
+    analysis.events.filter(
+      (event) => event.kind !== 'tracking_failure' && event.pointUsed === 'nose',
+    ).length;
   if (noseJudged(previous) !== noseJudged(next)) {
     clauses.push(
       `events judged on the nose ${formatChange(
