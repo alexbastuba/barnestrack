@@ -142,7 +142,8 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   const status = page.locator('#app-status');
   // The 12-column mirror, which chunk 7b moved out of `#review-events` (now the
   // event list) and down beside the frames and corrections mirrors.
-  await page.locator('#review-events-mirror details > summary').click();
+  // `.first()`: each row carries its own "Evidence" disclosure inside this one.
+  await page.locator('#review-events-mirror summary').first().click();
   const rows = page.locator('#review-events-mirror tbody tr');
   await expect(rows.first()).toBeVisible();
   const eventCount = await rows.count();
@@ -213,7 +214,8 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
   await openReview(page);
   await expect(page.locator('.corrections-list li')).toHaveCount(2);
-  await page.locator('#review-events-mirror details > summary').click();
+  // `.first()`: each row carries its own "Evidence" disclosure inside this one.
+  await page.locator('#review-events-mirror summary').first().click();
   await expect(page.locator('#review-events-mirror tbody tr').first()).toHaveClass(/is-corrected/);
   await expect(page.locator('#review-events-mirror tbody tr').first()).toContainText(`user (auto: hole ${hole}`);
   await expect(parameterField(page, 'Hole investigation', 'Min duration')).toHaveValue('2');
