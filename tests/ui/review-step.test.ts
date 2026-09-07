@@ -140,6 +140,49 @@ describe('the Review step mounts the four panels', () => {
   });
 });
 
+describe('the step re-derives what the store invalidated', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('does not call an analysed cohort unanalysed after a session load', () => {
+    // The store drops the caches on `replaceSession` (D55), so the step has to
+    // put them back; otherwise loading a session file — or the D33 example
+    // cohort, which ships with no video attached — shows three empty figures and
+    // a disabled export button under a sentence saying nothing is analysed.
+    const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION, { autosaveDelayMs: 0 });
+    store.replaceSession(syntheticSession());
+    expect(store.videos.map((v) => store.analysisFor(v.id)?.derived)).toEqual([null, null, null]);
+
+    const context: AppContext = {
+      store,
+      toolVersion: TOOL_VERSION,
+      announce: () => undefined,
+      showStep: () => undefined,
+    };
+    const step = createReviewStep(context);
+    document.body.append(step.body);
+    store.subscribe(() => step.refresh());
+    step.refresh();
+
+    expect(store.videos.map((v) => store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
+    expect(step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
+    expect(step.body.querySelector<HTMLButtonElement>('#review-export button')!.disabled).toBe(false);
+    expect(step.body.querySelector<HTMLElement>('#review-export .figure-missing')!.hidden).toBe(true);
+  });
+
+  it('puts the caches back after a maze nudge, so the export stays available', () => {
+    const harness = mount();
+    const first = harness.store.videos[0]!;
+
+    harness.store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 3 });
+
+    expect(harness.store.videos.map((v) => harness.store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
+    expect(panel(harness.step, 'review-export').querySelector<HTMLButtonElement>('button')!.disabled).toBe(false);
+    expect(harness.step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
+  });
+});
+
 describe('a threshold change re-derives every video, through the panel', () => {
   let harness: Harness;
 
@@ -214,13 +257,16 @@ describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
     const quality = panel(harness.step, 'review-quality');
     const before = quality.textContent!;
     const beforeReport = harness.store.analysisFor(video.id)!.derived!.quality;
+    expect(beforeReport.tier).toBe('GOOD');
 
     // "Animal not visible here" over a stretch of the trial, through chunk 6's
-    // own pure op — the same path the range tool takes.
+    // own pure op — the same path the range tool takes. Long enough to move the
+    // tier: a shorter range moves the fraction and the gap list but leaves the
+    // tier where it was, which would leave this criterion unverified.
     const layer = harness.store.analysisFor(video.id)!.corrections;
     harness.store.setCorrections(
       video.id,
-      markRange(layer, 'not_visible', 40, 160, { id: 'test-range', timestamp: '2026-09-07T12:00:00.000Z' }),
+      markRange(layer, 'not_visible', 40, 600, { id: 'test-range', timestamp: '2026-09-07T12:00:00.000Z' }),
     );
     analyseAllVideos(harness.store);
     harness.step.refresh();
@@ -228,6 +274,8 @@ describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
     const afterReport = harness.store.analysisFor(video.id)!.derived!.quality;
     expect(afterReport.positionedFraction).toBeLessThan(beforeReport.positionedFraction);
     expect(afterReport.gaps.length).toBeGreaterThan(beforeReport.gaps.length);
+    expect(afterReport.tier).not.toBe(beforeReport.tier);
     expect(quality.textContent).not.toBe(before);
+    expect(quality.textContent).toContain(afterReport.tier);
   });
 });

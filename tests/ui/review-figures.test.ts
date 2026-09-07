@@ -181,6 +181,33 @@ describe('the mounted figures section', () => {
     expect(announce).toHaveBeenCalledWith(expect.stringContaining('positive number'));
   });
 
+  it('clamps a bin size outside the offered range, and says it did', () => {
+    const session = syntheticSession();
+    createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {
+      onAnnounce: announce,
+      onGoToTrack: goToTrack,
+    });
+    const bin = container.querySelector<HTMLInputElement>('#review-figure-bin')!;
+    const caption = (): string =>
+      [...container.querySelectorAll('.figure-card')]
+        .find((card) => card.querySelector('h5')!.textContent === 'Occupancy heatmap')!
+        .querySelector('.figure-caption')!.textContent!;
+
+    // 0.001 cm asks for millions of cells and used to throw out of `draw()`,
+    // freezing every card after the heatmap with nothing said.
+    bin.value = '0.001';
+    bin.dispatchEvent(new Event('change'));
+
+    expect(bin.value).toBe('1');
+    expect(caption()).toContain('1 cm cell');
+    expect(announce).toHaveBeenCalledWith(expect.stringContaining('outside the 1–12 cm range'));
+    // The cards after the heatmap are still current, not stale from before.
+    const captions = [...container.querySelectorAll('.figure-caption')].filter(
+      (node) => (node.textContent ?? '').trim().length > 0,
+    );
+    expect(captions).toHaveLength(TRIAL_FIGURES.length + COHORT_FIGURES.length);
+  });
+
   it('names the colour map in the caption when it is changed', () => {
     const session = syntheticSession();
     createReviewFigures(container, { session, videoId: session.videos[0]!.id }, {

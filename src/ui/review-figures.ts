@@ -18,6 +18,7 @@ import {
   COLORMAP_NAMES,
   DEFAULT_CELL_CM,
   FIGURES,
+  cellSizeCm,
   figurePngName,
   isAnalysed,
   renderFigureToPng,
@@ -130,6 +131,12 @@ export function createReviewFigures(
     options: FigureOptions;
   } | null = null;
 
+  /*
+   * Fixed ids, not `uniqueId()`: `#review-figures` is named by the chunk's own
+   * specification and by the stylesheet, and the Review step is a singleton in
+   * the app shell, like the four panel mount points beside it. Mounting two of
+   * these in one document — which only a harness would do — would duplicate them.
+   */
   const root = el('section', { id: 'review-figures', class: 'review-figures' });
   const heading = el('h3', { id: 'review-figures-heading', text: 'Figures' });
   root.setAttribute('aria-labelledby', heading.id);
@@ -150,15 +157,24 @@ export function createReviewFigures(
   binInput.step = String(CELL_CM_RANGE.step);
   binInput.value = String(DEFAULT_CELL_CM);
   binInput.addEventListener('change', () => {
-    const value = Number(binInput.value);
-    if (!Number.isFinite(value) || value <= 0) {
-      binInput.value = String(options.heatmapCellSize_cm ?? DEFAULT_CELL_CM);
+    const typed = Number(binInput.value);
+    if (!Number.isFinite(typed) || typed <= 0) {
+      binInput.value = String(cellSizeCm(options));
       callbacks.onAnnounce('The heatmap bin size needs a positive number of centimetres.');
       return;
     }
-    options = { ...options, heatmapCellSize_cm: value };
+    // `cellSizeCm` clamps to the offered range; the field is written back to the
+    // value actually drawn, and the announcement says so when they differ, so
+    // the number on screen is never one the figure did not use.
+    options = { ...options, heatmapCellSize_cm: typed };
+    const used = cellSizeCm(options);
+    binInput.value = String(used);
     drawIfStale();
-    callbacks.onAnnounce(`Occupancy heatmap binned at ${value} cm. A figure option, not a parameter: no number changed.`);
+    callbacks.onAnnounce(
+      used === typed
+        ? `Occupancy heatmap binned at ${used} cm. A figure option, not a parameter: no number changed.`
+        : `${typed} cm is outside the ${CELL_CM_RANGE.min}–${CELL_CM_RANGE.max} cm range, so the heatmap is binned at ${used} cm. A figure option, not a parameter: no number changed.`,
+    );
   });
 
   const scaleSelect = el('select', { id: 'review-figure-scale' });
@@ -199,10 +215,12 @@ export function createReviewFigures(
     const save = button(`Save PNG (${exportScale}×)`, () => {
       void savePng(figure);
     });
-    const card = el('figure', { class: 'figure-card' }, [
+    // The `<figure>` holds only the canvas and its caption, which HTML requires
+    // to be that element's first or last child; the heading, the note, the table
+    // and the button belong to the card around it.
+    const card = el('div', { class: 'figure-card' }, [
       el('h5', { text: figure.title }),
-      canvas,
-      caption,
+      el('figure', { class: 'figure-figure' }, [canvas, caption]),
       note,
       disclosure('The same figure as a table', [table]),
       save,
@@ -239,11 +257,6 @@ export function createReviewFigures(
     return { session: current.session, videoId: current.videoId ?? current.session.videos[0]?.id ?? '' };
   }
 
-  /**
-   * Redraws every figure. Called on every recompute and on resize; the figures
-   * have fixed logical sizes, so the only thing a resize can change is the
-   * device pixel ratio (a window moved to another display).
-   */
   /** Redraws only if something the figures read has actually changed. */
   function drawIfStale(): void {
     const session = current.session;
@@ -266,10 +279,22 @@ export function createReviewFigures(
     ) {
       return;
     }
-    drawnFrom = next;
+    // Only after a redraw that finished: marking the cache fresh first would let
+    // a figure that threw part-way leave every card after it showing stale
+    // content that nothing would ever redraw.
     draw();
+    drawnFrom = next;
   }
 
+  /**
+   * Redraws every figure. Called on every recompute and on resize; the figures
+   * have fixed logical sizes, so the only thing a resize can change is the
+   * device pixel ratio (a window moved to another display).
+   *
+   * A figure that throws is reported on its own card and the rest still draw:
+   * one bad option must not leave the other seven showing content from before
+   * the change with nothing on screen to say so (D16).
+   */
   function draw(): void {
     const started = performance.now();
     const ratio = previewRatio(typeof window === 'undefined' ? 1 : window.devicePixelRatio);
@@ -294,8 +319,16 @@ export function createReviewFigures(
       card.save.disabled = reason !== null;
 
       const ctx = card.canvas.getContext('2d');
-      if (ctx) card.figure.draw(ctx, data, { ...options, scale: ratio, theme: 'light', width, height });
-      else {
+      if (ctx) {
+        try {
+          card.figure.draw(ctx, data, { ...options, scale: ratio, theme: 'light', width, height });
+        } catch (error) {
+          card.note.hidden = false;
+          card.note.textContent = `This figure could not be drawn: ${(error as Error).message}`;
+          card.save.disabled = true;
+          callbacks.onAnnounce(`${card.figure.title} could not be drawn: ${(error as Error).message}`);
+        }
+      } else {
         // happy-dom and any browser refusing a context: the caption and the
         // table still carry everything, so the figure is not simply missing.
         card.note.hidden = false;

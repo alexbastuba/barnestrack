@@ -45,10 +45,22 @@ function occupancyMap(name: ColormapName | undefined): Colormap {
   return reverseColormap(colormapByName(name, 'cividis'));
 }
 
-/** The bin size in force: the option when it is a usable number, else the default. */
+/**
+ * The bin size in force: the option clamped to the offered range and its step,
+ * or the default when there is no usable number.
+ *
+ * Clamped here rather than at the control, so every consumer agrees on one
+ * value — the drawing, the `describe()` table and the PNG filename. The grid
+ * allocates cells as the square of the span, so an unclamped 0.001 cm asks for
+ * 3.4 million cells on a 46 cm platform and throws `Invalid array length` from
+ * inside `draw()`; and an unrounded 4.001 and 4.002 would produce two different
+ * figures under one filename.
+ */
 export function cellSizeCm(options: FigureOptions | undefined): number {
   const chosen = options?.heatmapCellSize_cm;
-  return typeof chosen === 'number' && Number.isFinite(chosen) && chosen > 0 ? chosen : DEFAULT_CELL_CM;
+  if (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen <= 0) return DEFAULT_CELL_CM;
+  const stepped = Math.round(chosen / CELL_CM_RANGE.step) * CELL_CM_RANGE.step;
+  return Math.min(CELL_CM_RANGE.max, Math.max(CELL_CM_RANGE.min, stepped));
 }
 
 export interface OccupancyGrid {

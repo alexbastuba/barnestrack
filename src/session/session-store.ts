@@ -142,6 +142,10 @@ export class SessionStore {
         ? { ...DEFAULT_PARAMETERS, tracking: record.trackingParameters }
         : null);
     this.sessionEpoch += 1;
+    // Symmetry with `replaceSession`: a record written by an older build carries
+    // derived layers this session has not checked, and a cache is never the
+    // truth (D52, D55).
+    this.invalidateDerived();
     this.emit();
     return true;
   }
@@ -390,8 +394,13 @@ export class SessionStore {
   }
 
   setMazeTransform(videoId: VideoId, transform: SimilarityTransform): void {
-    this.updateVideo(videoId, (video) => ({ ...video, mazeTransform: { ...transform } }));
+    if (!this.videoById(videoId)) return;
+    // Before `updateVideo`, which notifies: every listener re-derives inside that
+    // notification, and invalidating afterwards would delete the layer they just
+    // computed with no second notification to say so — leaving the Review step's
+    // own cache key claiming a freshness the store no longer has.
     this.invalidateDerived();
+    this.updateVideo(videoId, (video) => ({ ...video, mazeTransform: { ...transform } }));
   }
 
   countMazeClick(videoId: VideoId, clicks = 1): void {

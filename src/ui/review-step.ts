@@ -36,7 +36,13 @@ import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
 import type { Point } from '../maze/types.js';
 import { videoToViewport, type ViewTransform } from '../maze/view-transform.js';
-import { analyseAllVideos, analyseVideo, analysisBlockedReason, type AnalysisRun } from '../session/analyse.js';
+import {
+  analyseAllVideos,
+  analyseMissing,
+  analyseVideo,
+  analysisBlockedReason,
+  type AnalysisRun,
+} from '../session/analyse.js';
 import {
   addEvent,
   deleteEvent,
@@ -976,6 +982,31 @@ export function createReviewStep(context: AppContext): Step {
 
   // ---- rendering --------------------------------------------------------------------------
 
+  /**
+   * Re-derives anything the store invalidated but nothing has recomputed yet.
+   *
+   * The store drops the derived cache whenever the parameters, the maze map or a
+   * transform changes, and on every session load — so a video with no cache is a
+   * video that needs deriving, not one that was never analysed. Without this,
+   * loading a session file or nudging the maze left an analysed cohort looking
+   * unanalysed: empty figures, a disabled export button, and the "N of M not
+   * analysed" line stating something false. `ensureAnalysis` covers the video on
+   * screen; this covers the rest, which is what the figures and the export count.
+   */
+  function sweepMissingAnalyses(): void {
+    if (sweeping) return;
+    const stale = store.videos.some(
+      (video) => analysisBlockedReason(store, video.id) === null && !store.analysisFor(video.id)?.derived,
+    );
+    if (!stale) return;
+    sweeping = true;
+    try {
+      analyseMissing(store);
+    } finally {
+      sweeping = false;
+    }
+  }
+
   function render(): void {
     if (deriving || sweeping) return;
     if (store.epoch !== lastEpoch) {
@@ -997,6 +1028,7 @@ export function createReviewStep(context: AppContext): Step {
       video?.id ?? '',
     );
     ensureAnalysis();
+    sweepMissingAnalyses();
 
     const isAttached = video !== null && store.isAttached(video.id);
     // The scrubber runs on the file's frame table when the video is attached and on the

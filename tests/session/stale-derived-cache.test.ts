@@ -20,7 +20,13 @@ import { derive, toDerivedLayer } from '../../src/analysis/derive.js';
 import { hashParameters, type Parameters } from '../../src/analysis/parameters.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { trialRows } from '../../src/export/rows.js';
-import { analyseAllVideos, analyseVideo, prepareExport, staleAnalyses } from '../../src/session/analyse.js';
+import {
+  analyseAllVideos,
+  analyseMissing,
+  analyseVideo,
+  prepareExport,
+  staleAnalyses,
+} from '../../src/session/analyse.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
@@ -99,6 +105,43 @@ describe('the derived cache cannot go stale (A2)', () => {
     const first = store.videos[0]!;
     store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 3 });
     expect(store.videos.map((v) => store.analysisFor(v.id)?.derived)).toEqual([null, null, null]);
+  });
+
+  it('invalidates before it notifies, so a listener that re-derives is not undone', () => {
+    const store = loadedStore();
+    // The shell re-derives inside every notification. If a mutator invalidated
+    // afterwards it would delete the layer that listener just computed, with no
+    // second notification to say so — and the listener's own cache key would
+    // still claim it was fresh.
+    const seen: (unknown | null)[] = [];
+    store.subscribe(() => {
+      const first = store.videos[0]!;
+      if (!store.analysisFor(first.id)?.derived) analyseAllVideos(store);
+      seen.push(store.analysisFor(first.id)?.derived ?? null);
+    });
+
+    const first = store.videos[0]!;
+    store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 5 });
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(store.videos.map((v) => store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
+  });
+
+  it('re-derives what it invalidated, so no cache means "needs deriving", not "never analysed"', () => {
+    const store = loadedStore();
+    const first = store.videos[0]!;
+    store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 2 });
+    expect(store.videos.map((v) => store.analysisFor(v.id)?.derived)).toEqual([null, null, null]);
+
+    const run = analyseMissing(store);
+
+    expect(run.runs.size).toBe(3);
+    const expected = hashParameters(store.current.parameters!);
+    for (const video of store.videos) {
+      expect(store.analysisFor(video.id)!.derived!.quality.parametersHash).toBe(expected);
+    }
+    // And it does no work when every cache is already current.
+    expect(analyseMissing(store).runs.size).toBe(0);
   });
 
   it('does not trust the derived layers in a loaded session file (D9, D55)', () => {

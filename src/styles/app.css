@@ -1777,6 +1777,10 @@ button.metric-value:hover:not(:disabled) {
   font-size: 0.9375rem;
 }
 
+.figure-figure {
+  margin: 0;
+}
+
 .figure-canvas {
   display: block;
   max-width: 100%;

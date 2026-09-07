@@ -133,6 +133,47 @@ export function staleAnalyses(session: SessionFile): VideoId[] {
     .map((video) => video.id);
 }
 
+/**
+ * Derives every video that can be derived and does not already carry a cache
+ * made with the parameters in force.
+ *
+ * The store drops the derived layer whenever anything a derive reads changes,
+ * which is what makes "no cache" mean "needs deriving" rather than "was never
+ * analysed" — but only if something re-derives. Without this, loading a session
+ * file or nudging the maze leaves an analysed cohort looking unanalysed: the
+ * figures empty, the export button disabled, and the "N of M not analysed" line
+ * asserting something false about videos that are analysed (D33 promises the
+ * example cohort renders every result with no video attached).
+ */
+export function analyseMissing(store: SessionStore): CohortRun {
+  const session = store.current;
+  const expected = session.parameters === null ? null : hashParameters(session.parameters);
+  const runs = new Map<VideoId, AnalysisRun>();
+  const skipped = new Map<VideoId, string>();
+  let deriveMs = 0;
+  for (const video of store.videos) {
+    const blocked = analysisBlockedReason(store, video.id);
+    if (blocked) {
+      skipped.set(video.id, blocked);
+      continue;
+    }
+    const derived = store.analysisFor(video.id)?.derived;
+    if (derived && expected !== null && derived.quality.parametersHash === expected) continue;
+    try {
+      const run = analyseVideo(store, video.id);
+      if (!run) {
+        skipped.set(video.id, 'this video has nothing to derive from');
+        continue;
+      }
+      runs.set(video.id, run);
+      deriveMs += run.deriveMs;
+    } catch (error) {
+      skipped.set(video.id, (error as Error).message);
+    }
+  }
+  return { runs, skipped, deriveMs };
+}
+
 export interface ExportReadiness {
   /** Why the export must not be built, or null when the session is consistent. */
   blocked: string | null;

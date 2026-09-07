@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hashParameters, parameterPaths } from '../../src/analysis/parameters.js';
-import { FIGURES, figureById } from '../../src/viz/index.js';
+import { CELL_CM_RANGE, cellSizeCm, FIGURES, figureById } from '../../src/viz/index.js';
 import { figurePngName, renderFigureToPng } from '../../src/viz/figure-export.js';
 import type { FigureData, FigureOpts } from '../../src/viz/types.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
@@ -123,7 +123,30 @@ describe('figure options in the PNG name (D53)', () => {
     const heatmap = FIGURES.find((f) => f.id === 'heatmap')!;
     expect(figurePngName(heatmap, data, 2)).toContain('_bin4cm_');
     expect(figurePngName(heatmap, data, 3, { heatmapCellSize_cm: 6 })).toContain('_bin6cm_');
-    expect(figurePngName(heatmap, data, 3, { heatmapCellSize_cm: 2.5 })).toContain('_bin2-5cm_');
+  });
+
+  it('names the bin size actually drawn, so two nearby values cannot share a name', () => {
+    const heatmap = FIGURES.find((f) => f.id === 'heatmap')!;
+    // `cellSizeCm` clamps to the offered range and its step, so the drawing, the
+    // description table and this name always agree. Before that, 4.001 and 4.002
+    // drew two different figures under one filename.
+    expect(cellSizeCm({ heatmapCellSize_cm: 4.001 })).toBe(4);
+    expect(cellSizeCm({ heatmapCellSize_cm: 2.5 })).toBe(3);
+    expect(figurePngName(heatmap, data, 2, { heatmapCellSize_cm: 4.001 })).toContain('_bin4cm_');
+    expect(heatmap.describe(data, { heatmapCellSize_cm: 4.001 }).rows).toContainEqual(['Cell size (cm)', 4]);
+  });
+
+  it('refuses a bin size that would allocate millions of cells', () => {
+    const heatmap = FIGURES.find((f) => f.id === 'heatmap')!;
+    // The grid is the square of the span, so 0.001 cm on a 46 cm platform asked
+    // for 3.4 million cells and threw `Invalid array length` from inside `draw`.
+    expect(cellSizeCm({ heatmapCellSize_cm: 0.001 })).toBe(CELL_CM_RANGE.min);
+    expect(cellSizeCm({ heatmapCellSize_cm: 1e6 })).toBe(CELL_CM_RANGE.max);
+    expect(() => heatmap.describe(data, { heatmapCellSize_cm: 0.001 })).not.toThrow();
+    const ctx = fakeContext();
+    expect(() =>
+      heatmap.draw(ctx, data, { scale: 1, theme: 'light', heatmapCellSize_cm: 0.001 }),
+    ).not.toThrow();
   });
 
   it('gives two exports of one figure under different options different names', () => {
