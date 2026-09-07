@@ -36,7 +36,7 @@ import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
 import type { Point } from '../maze/types.js';
 import { videoToViewport, type ViewTransform } from '../maze/view-transform.js';
-import { analyseVideo, analysisBlockedReason } from '../session/analyse.js';
+import { analyseAllVideos, analyseVideo, analysisBlockedReason, type AnalysisRun } from '../session/analyse.js';
 import {
   addEvent,
   deleteEvent,
@@ -162,6 +162,10 @@ export function createReviewStep(context: AppContext): Step {
    * true "before", and an idle re-render does not silently reset it.
    */
   const previousByVideo = new Map<VideoId, DerivedAnalysis>();
+  /** A cohort sweep's result for the video on screen, handed to the next `ensureAnalysis`. */
+  let adopted: { videoId: VideoId; run: AnalysisRun } | null = null;
+  /** True while a cohort sweep is writing derived caches; one render follows, not one per video. */
+  let sweeping = false;
 
   const body = el('div', { class: 'review-step' });
 
@@ -216,7 +220,11 @@ export function createReviewStep(context: AppContext): Step {
     deriving = true;
     try {
       const started = performance.now();
-      const run = analyseVideo(store, video.id);
+      // A cohort sweep has already derived this video; taking its result rather
+      // than deriving a second time is the difference between three derives and
+      // four on every threshold change.
+      const run = adopted?.videoId === video.id ? adopted.run : analyseVideo(store, video.id);
+      adopted = null;
       if (!run) {
         analysis = null;
         model = null;
@@ -957,7 +965,7 @@ export function createReviewStep(context: AppContext): Step {
   // ---- rendering --------------------------------------------------------------------------
 
   function render(): void {
-    if (deriving) return;
+    if (deriving || sweeping) return;
     if (store.epoch !== lastEpoch) {
       lastEpoch = store.epoch;
       lastVideoId = null;
@@ -1264,15 +1272,41 @@ export function createReviewStep(context: AppContext): Step {
     return found >= 0 ? found : Math.max(0, Math.min(track.length - 1, frameIndex));
   }
 
+  /**
+   * One threshold change re-derives the whole cohort, not just the video on
+   * screen: the parameters are shared (D28), so every video's numbers move at
+   * once, and an export assembled from three videos derived under two parameter
+   * sets is the defect the trust audit found (A2).
+   *
+   * The sweep runs with rendering held off — `setDerivedLayer` notifies once per
+   * video — and the video on screen takes its result from the sweep rather than
+   * being derived a second time. Autosave is unaffected: `changed()` debounces,
+   * so the whole reflow still lands as one write.
+   */
   function onParametersChange(next: Parameters): void {
     const started = performance.now();
-    store.setParameters(next); // notifies → refresh → re-derive → re-render
+    let sweep;
+    sweeping = true;
+    try {
+      store.setParameters(next); // drops every derived cache (A2)
+      sweep = analyseAllVideos(store);
+    } finally {
+      sweeping = false;
+    }
     const video = currentVideo();
+    const run = video ? sweep.runs.get(video.id) : undefined;
+    if (video && run) adopted = { videoId: video.id, run };
+    render();
+
     const badge = describeDiff(video ? (previousByVideo.get(video.id) ?? null) : null, analysis);
-    const timing = lastTiming
-      ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${(performance.now() - started).toFixed(0)} ms with the redraw).`
+    const derives = sweep.runs.size;
+    const timing = derives > 0
+      ? ` ${derives} video${derives === 1 ? '' : 's'} recomputed in ${sweep.deriveMs.toFixed(1)} ms (${(performance.now() - started).toFixed(0)} ms with the redraw).`
       : '';
-    pendingReflow = `${badge}${timing}`;
+    const skipped = sweep.skipped.size > 0
+      ? ` ${sweep.skipped.size} not analysed: ${[...sweep.skipped.values()][0]}.`
+      : '';
+    pendingReflow = `${badge}${timing}${skipped}`;
   }
 
   function renderPanels(): void {
