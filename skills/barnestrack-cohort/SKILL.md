@@ -17,16 +17,17 @@ have to be re-exported.
 
 A BarnesTrack export is a folder or ZIP named `barnestrack_export_<cohort>_<YYYYMMDD>.zip`, where
 `<cohort>` is the session name lowercased with runs of non-alphanumerics replaced by hyphens — so
-"Barnes cohort A" gives `barnes-cohort-a`. It contains six files:
+"Barnes cohort A" gives `barnes-cohort-a`. That slug names the ZIP only; the session file inside
+keeps the cohort name as it was typed. The six files:
 
-| File                        | One row per                   | Notes                                                                                                       |
-| --------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trials.csv`                | trial                         | 35 columns; the headline numbers                                                                            |
-| `events.csv`                | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
-| `quality.csv`               | video                         | 17 columns; whether to trust the video at all                                                               |
-| `parameters.json`           | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
-| `<cohort>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
-| `barnestrack_export.xlsx`   | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
+| File                              | One row per                   | Notes                                                                                                       |
+| --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `trials.csv`                      | trial                         | 35 columns; the headline numbers                                                                            |
+| `events.csv`                      | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
+| `quality.csv`                     | video                         | 17 columns; whether to trust the video at all                                                               |
+| `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
+| `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
+| `barnestrack_export.xlsx`         | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
 
 Reading conventions that apply to all three CSVs:
 
@@ -50,8 +51,8 @@ Any of the four may be blank; BarnesTrack does not parse filenames.
 
 Measures:
 
-- `trial_start_s` (s) — where the trial begins. Every latency is measured from here, not from the
-  start of the video.
+- `trial_start_s` (s, **may be blank**) — where the trial begins. Every latency is measured from
+  here, not from the start of the video. Blank on an `unresolved` row, where no trial was found.
 - `primary_latency_s` (s, **may be blank**) — trial start to the first investigation of the target
   hole. Blank when the animal never investigated the target.
 - `total_latency_s` (s, **may be blank**) — trial start to the escape-box entry. Blank when the
@@ -67,7 +68,7 @@ Measures:
 - `strategy_source` — `auto` or `corrected`.
 - `escaped` — `true` or `false`.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
-- `tracked_fraction` (0–1) — frames in the trial with a fully resolved position. This counts the
+- `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
   `tracked` state only, so it reads lower than "frames with a usable position"; `quality.csv` has
   the full breakdown.
 - `correction_count` (count) — human corrections affecting this trial.
@@ -163,13 +164,20 @@ number.
 
    `unresolved` is different and more dangerous: it means **no trial window was found at all** —
    no trial start could be detected. Nothing about it involves review, and a correction cannot
-   produce it. Its `trial_start_s`, latencies and `tracked_fraction` are blank, but
-   `primary_errors` and `total_errors` still read a literal **`0`**, and `path_length_cm`,
-   `path_length_smoothed_cm`, `mean_speed_cm_per_s`, `target_quadrant_time_s` and `strategy` are
-   computed over the **whole video** instead of over a trial. A mean of `total_errors` will
-   silently absorb that zero and a strategy cross-tabulation will silently count a classification
-   of a trial that does not exist. Exclude `unresolved` rows from every aggregate and say that you
-   did.
+   produce it. On such a row `trial_start_s`, both latencies, `tracked_fraction`,
+   `path_length_cm`, `path_length_smoothed_cm`, `mean_speed_cm_per_s` and `target_quadrant_time_s`
+   are all blank — there is no window to measure them over. Two columns are not blank, and both
+   mislead:
+
+   - `primary_errors` and `total_errors` read a literal **`0`**, because no event can fall inside a
+     window that does not exist. Rule 2 will not save you here: the cell is not blank, so a mean of
+     `total_errors` absorbs the zero in silence.
+   - `strategy` reads **`random`** with `strategy_source = auto`. No rule produced it; it is a
+     placeholder recorded when the classifier could not run. Nothing in the CSV distinguishes it
+     from a real `random` classification, so every `unresolved` row inflates the `random` bucket of
+     any strategy cross-tabulation.
+
+   Exclude `unresolved` rows from every aggregate, and say that you did.
 
 2. **Blank is not zero.** `total_latency_s`, `primary_latency_s` and `min_nose_distance_cm` are the
    usual blanks. Count them, report them, and never let them enter a mean as zero. If the analyst
@@ -188,7 +196,7 @@ number.
 
    Matching hashes are not a guarantee. In this version the trial-censoring switch, the five
    strategy-rule numbers and the two quality-tier thresholds sit outside `Parameters` altogether:
-   they are in the hash, in the columns and in `parameters.json` — none of them. Two exports can
+   they are in none of the hash, the columns or `parameters.json`. Two exports can
    therefore carry the same `parameters_hash` and still disagree on `strategy`, `tier` and a
    censored `total_latency_s`. `tool_version` is the only handle on them, so when hashes match but
    strategy or tier disagree, compare tool versions and say that these thresholds are not covered.

@@ -176,12 +176,12 @@ stale.
 ## Ambiguities, and how they were resolved
 
 Barnes maze conventions vary between laboratories, so the behavioural definitions cannot simply be
-looked up — they are lab conventions, not facts. Each one is resolved with an explicit default that is **in force, visible in the interface,
-adjustable, and written into every export as a column**, so a later change of mind is a
-recomputation rather than a reanalysis. Defaults marked _provisional_ are recorded in
-[`docs/decisions.md`](docs/decisions.md) as closing against Gawel et al. 2019 and Illouz et al.
-2020; that literature check is not yet done, and the entries say so rather than implying the
-numbers are settled.
+looked up — they are lab conventions, not facts. Each one is resolved with an explicit default that
+is **in force, visible in the interface, adjustable, and written into every export as a column**, so
+a later change of mind is a recomputation rather than a reanalysis. Defaults marked _provisional_
+are recorded in [`docs/decisions.md`](docs/decisions.md) as closing against Gawel et al. 2019 and
+Illouz et al. 2020; that literature check is not yet done, and the entries say so rather than
+implying the numbers are settled.
 
 Each default below is provisional in the sense D-numbered decisions use: recorded in
 [`docs/decisions.md`](docs/decisions.md) as closing against the literature, and in force meanwhile.
@@ -280,9 +280,8 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
 - **The nose is experimental.** On these re-encoded clips the tail is often below the foreground
   threshold and a hunched animal has no defined major axis, so no nose cue exists at all on 21–32 %
   of the frames that have a blob — and on every frame that has none — while a cue that does exist
-  usually stands alone. Events therefore
-  record which point they were judged on, the quality report states the fraction judged on the
-  nose, and the interface labels the nose experimental.
+  usually stands alone. Events therefore record which point they were judged on, the quality
+  report states the fraction judged on the nose, and the interface labels the nose experimental.
 - **Eight analysis thresholds are not yet in the parameters hash — and D55 says they must be.** The
   trial-censoring switch, the five strategy-rule numbers and the two quality-tier thresholds still
   live in a defaults object because the `Parameters` contract has no field for them, so two exports
@@ -342,20 +341,20 @@ implemented, and how to check it:
   `+`/`−`/`0` zoom, `Alt` plus arrows pan, and the scrubber steps a frame at a time. The full key
   table is in [`tests/browser/README.md`](tests/browser/README.md). To check: unplug the mouse.
 - **Nothing means anything by colour alone.** Detection states and quality tiers are words first;
-  in the figures, markers differ by shape and every series carries a text label. The correction
-  marking D26 specifies — automatic points filled, corrected ones diamonds with an edit badge,
-  filled ones hollow and dashed, corrected events hatched and tagged "user" — is specified and
-  implemented in the figure layer, but the correction tools that produce those values are not in
-  this build. To check what is here: set the display to grayscale and work through a video.
+  in the figures, markers differ by shape, every series carries a text label, gap-filled positions
+  are hollow rings, and corrected events are hatched with "corrected by a reviewer" in the legend.
+  The rest of what D26 specifies — a corrected point drawn as a diamond with an edit badge — is
+  decided but not yet in the figure layer, because the correction tools that would produce a
+  corrected point are not in this build. To check what is here: set the display to grayscale and
+  work through a video.
 - **Every canvas has a DOM equivalent.** The maze overlay is mirrored by a table carrying the same
   values, and the canvas label says so. Each figure carries a `FigureDescription` — the same facts
   as text — built to be rendered beside it; the Review step that puts those tables on the page has
   not landed, so today they are exercised in the tests and in the development gallery.
 - **Status is announced, but not narrated.** The shell's shared polite live region carries state
-  transitions
-  — tracking started, finished with its summary sentence, cancelled, failed — while continuous
-  progress is `aria-live="off"`, so a screen reader is told what happened without a running
-  commentary.
+  transitions — tracking started, finished with its summary sentence, cancelled, failed — while
+  continuous progress is `aria-live="off"`, so a screen reader is told what happened without a
+  running commentary.
 - **Usable at 200 % zoom.** Checked at a 483 × 423 CSS viewport, which is what a 1280-wide window
   looks like at 200 %: no horizontal scrolling and every control still reachable. Text contrast was
   measured against the stylesheet's palette — the lowest text pair is 6.56:1 and the two non-text
