@@ -125,22 +125,49 @@ function latency(value: number | null): string {
  * formatted strings are compared, which is exactly the promise — the badge is
  * silent only when the two numbers look identical on screen.
  *
- * Two unrecordable values are the same value, not a change: `NaN !== NaN`
- * would otherwise report a change between two byte-identical analyses and make
- * `No change.` unreachable for a trial with no tracked time (D55).
+ * Two values that cannot be computed are the same value, not a change: `NaN
+ * !== NaN`, and `null` is now the contract's own spelling of the same thing
+ * (D55), so without this guard two byte-identical analyses would report a
+ * change and `No change.` would be unreachable for a trial with no tracked
+ * time.
  */
-function changed(before: number, after: number, format: (value: number) => string): boolean {
+function changed(
+  before: number | null,
+  after: number | null,
+  format: (value: number | null) => string,
+): boolean {
   if (!isRecorded(before) && !isRecorded(after)) return false;
   if (!isRecorded(before) || !isRecorded(after)) return true;
   return format(before) !== format(after);
 }
 
-/** The continuous per-trial measures, with the unit each is written in. */
+/**
+ * How a measure is written in the badge. The formatters print `—` for a value
+ * that does not exist, which is right in a table beside a label but not in a
+ * sentence: `— → 12.30 cm/s` does not say what happened. So the badge spells it
+ * out, and the two directions read as opposites of each other.
+ */
+function measureText(value: number | null, format: (value: number | null) => string): string {
+  return isRecorded(value) ? format(value) : 'not computable';
+}
+
+/**
+ * The continuous per-trial measures, with the unit each is written in. Every
+ * one of them is `number | null` in the contract, because a trial with no
+ * tracked time has no mean speed and a trial whose start was never proposed has
+ * no start (D55).
+ */
 const MEASURES: readonly {
-  key: 'pathLength_cm' | 'pathLengthSmoothed_cm' | 'meanSpeed_cmPerS' | 'targetQuadrantTime_s';
+  key:
+    | 'trialStart_s'
+    | 'pathLength_cm'
+    | 'pathLengthSmoothed_cm'
+    | 'meanSpeed_cmPerS'
+    | 'targetQuadrantTime_s';
   name: string;
-  format(value: number): string;
+  format(value: number | null): string;
 }[] = [
+  { key: 'trialStart_s', name: 'trial start', format: formatSeconds },
   { key: 'pathLength_cm', name: 'path length', format: formatCm },
   { key: 'pathLengthSmoothed_cm', name: 'smoothed path length', format: formatCm },
   { key: 'meanSpeed_cmPerS', name: 'mean speed', format: formatSpeed },
@@ -188,15 +215,22 @@ export function describeDiff(
     clauses.push(`escaped ${formatChange(a.escaped ? 'yes' : 'no', b.escaped ? 'yes' : 'no')}`);
   }
   // The continuous measures. They are floats recomputed from scratch, so they
-  // are compared with a tolerance rather than by identity — but they must be
-  // compared: `targetQuadrant.holeSpan` and `kinematicsSmoothingWindowFrames`
-  // move only these, and a badge that ignored them would read "No change."
-  // while the card beside it showed the quadrant time doubling.
+  // are compared as the card prints them rather than by identity — see
+  // `changed()`, which explains why a tolerance cannot do this job. They must be
+  // compared at all because `targetQuadrant.holeSpan` and
+  // `kinematicsSmoothingWindowFrames` move only these, and a badge that ignored
+  // them would read "No change." while the card beside it showed the quadrant
+  // time doubling.
   for (const measure of MEASURES) {
     const before = a[measure.key];
     const after = b[measure.key];
     if (!changed(before, after, measure.format)) continue;
-    clauses.push(`${measure.name} ${formatChange(measure.format(before), measure.format(after))}`);
+    clauses.push(
+      `${measure.name} ${formatChange(
+        measureText(before, measure.format),
+        measureText(after, measure.format),
+      )}`,
+    );
   }
 
   // O16: the cutoff decides whether each event is judged on the nose or the

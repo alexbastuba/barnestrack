@@ -34,12 +34,17 @@ const KIND_WORDS: Record<EventKind, string> = {
 };
 
 /**
- * What each review flag is called on the card. Four of the five codes can name
+ * What each review flag is called on the card. Four of the six codes can name
  * an event, and they mean different things: only `physically_unlikely_entry` is
  * the O4 "there is no escape box there" finding, so only it may be labelled
  * "physically unlikely". Calling a lost-tracking flag or an orphaned correction
  * by that name would tell the user the animal did something impossible when the
  * tracker merely lost it.
+ *
+ * The label is a short noun phrase because the sentence is already in
+ * `flag.message` — the card renders the badge and then the message verbatim, so
+ * `stale_auto_layer` supplies its own "re-track the video before trusting the
+ * parameters hash on any export" (D51, `src/analysis/derive.ts`).
  */
 const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   physically_unlikely_entry: 'physically unlikely',
@@ -47,6 +52,7 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   oversized_in_trial: 'oversized foreground',
   orphaned_correction: 'orphaned correction',
   correction_out_of_range: 'correction out of range',
+  stale_auto_layer: 'stale automatic track',
 };
 
 /** The review flags that belong to one event. */
