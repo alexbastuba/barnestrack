@@ -14,11 +14,12 @@ import { readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { SESSION_SCHEMA_VERSION } from '../../src/contracts/session.js';
+import { SESSION_SCHEMA_VERSION, type SessionFile } from '../../src/contracts/session.js';
 import { parseSessionDocument } from '../../src/session/session-file.js';
 import { fingerprintsMatch } from '../../src/session/attach.js';
 import { hashParameters } from '../../src/session/parameters-hash.js';
 import { trialRows } from '../../src/export/rows.js';
+import { DETECTION_REASONS } from '../../src/analysis/tracker/select.js';
 import {
   EXAMPLE_SESSION_NAME,
   SAMPLE_FINGERPRINTS,
@@ -34,17 +35,19 @@ const STILLS = ['test50.jpg', 'test51.jpg', 'test53.jpg'];
 const COMMIT_BLOB_LIMIT_BYTES = 2 * 1024 * 1024;
 const STILL_LIMIT_BYTES = 60 * 1024;
 
-/** The eight fixed strings of docs/data-contracts.md §2 / §6. */
-const CONTRACT_REASONS = new Set([
-  'single_blob',
-  'proximity_to_previous',
-  'no_foreground',
-  'multiple_blobs',
-  'oversized_blob',
-  'partial_at_rim',
-  'small_blob',
-  'fragmented',
-]);
+/**
+ * The prose the synthetic fixture writes where the contract wants one of the
+ * tracker's eight names. Recorded in docs/known-limitations.md; goes away with
+ * the demo take, since the real tracker emits DETECTION_REASONS.
+ */
+const KNOWN_OFF_CONTRACT_REASONS = [
+  'single mouse-sized component inside the platform mask',
+  'blob smaller than half the expected body area (small_blob)',
+  'component larger than three times the expected body area (oversized_blob)',
+  'no foreground component above the area prior',
+  'foreground component below the area prior for two frames',
+  'no foreground component inside the platform mask (last seen at the target hole)',
+];
 
 function committedSessionText(): string {
   return gunzipSync(readFileSync(BUNDLE_PATH)).toString('utf-8');
@@ -124,7 +127,7 @@ describe('the committed example bundle', () => {
     expect(stamped).toEqual([hashParameters(parameters)]);
   });
 
-  it('has a recorded reason on every frame, and says which are off-contract', () => {
+  it('has a recorded reason on every frame, and no new off-contract ones', () => {
     const parsed = parseSessionDocument(committedSessionText());
     if (!parsed.ok) throw new Error(parsed.message);
 
@@ -136,15 +139,40 @@ describe('the committed example bundle', () => {
       }
     }
 
-    // docs/data-contracts.md §2 fixes the vocabulary. The synthetic fixture
-    // writes prose instead — recorded in docs/known-limitations.md and resolved
-    // when the real tracker's output replaces it. This asserts the divergence
-    // that exists rather than the one that should, so the day it disappears
-    // this test fails and the limitation gets deleted with it.
-    const offContract = [...seen].filter((reason) => !CONTRACT_REASONS.has(reason));
-    expect(offContract.length, `off-contract reasons: ${offContract.join(' | ')}`).toBeGreaterThan(
-      0,
+    // data-contracts.md §2 fixes the vocabulary to the tracker's own eight. The
+    // synthetic fixture writes prose instead; the real tracker already emits
+    // DETECTION_REASONS, so the demo take resolves this with no code change.
+    // Pinned to the exact known sentences rather than asserted away: new prose
+    // fails here, and when the last one disappears this test fails too, which
+    // is the signal to delete it along with the known-limitations entry.
+    const offContract = [...seen].filter(
+      (reason) => !(DETECTION_REASONS as readonly string[]).includes(reason),
     );
+    expect(
+      [...offContract].sort(),
+      'off-contract reasons changed — if they are gone, delete this test and the ' +
+        'known-limitations entry that records them',
+    ).toEqual([...KNOWN_OFF_CONTRACT_REASONS].sort());
+  });
+
+  it('detects a hash that does not reconcile, so the guard is not vacuous', async () => {
+    const built = await buildExampleSession();
+    const [videoId, analysis] = Object.entries(built.analyses)[0]!;
+
+    // Neither a placeholder nor the real value — what a real take with a
+    // genuine mismatch would carry. hashProblems must see it, or the build's
+    // assertion protects nothing.
+    const tampered: SessionFile = {
+      ...built,
+      analyses: {
+        ...built.analyses,
+        [videoId]: { ...analysis, auto: { ...analysis.auto, parametersHash: 'f'.repeat(64) } },
+      },
+    };
+
+    expect(hashProblems(built)).toEqual([]);
+    expect(hashProblems(tampered)).toHaveLength(1);
+    expect(hashProblems(tampered)[0]).toContain(videoId);
   });
 
   it('matches what the builder produces now, so the artifact is not stale', async () => {

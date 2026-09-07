@@ -41,6 +41,20 @@ export const EXAMPLE_BANNER_TEXT =
   'Frames and manual correction need the video file: drop test53.mp4 from the ' +
   'sample-data repository, or fetch the smallest clip below.';
 
+/**
+ * Said on screen, not only in the docs.
+ *
+ * The cohort names three real recordings and carries their real fingerprints,
+ * frame counts and stills, so every number beside them reads as this tool's
+ * output on that data. Until the demo take replaces the bundle, the numbers are
+ * not: they are illustrative. A limitation recorded only in
+ * `docs/known-limitations.md` is not disclosed to the person looking at the
+ * screen, and "honest uncertainty over plausible lies" (D16) is about what the
+ * tool shows. Delete this in the commit that swaps in the real outputs.
+ */
+export const EXAMPLE_PROVENANCE_TEXT =
+  'These results are illustrative, not a real tracking run of these clips.';
+
 export type FetchLike = (input: string) => Promise<Response>;
 
 export interface ExampleLoaderOptions {

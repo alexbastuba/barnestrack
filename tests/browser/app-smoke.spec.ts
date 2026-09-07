@@ -335,6 +335,47 @@ test.describe('the example cohort, driven through the loader module', () => {
     );
   });
 
+  test('Escape cancels the replace confirmation, even after tabbing inside it', async ({ page }) => {
+    // A session with work in it, so loading has to ask first.
+    await page.evaluate(() => {
+      const store = (globalThis as unknown as Record<string, unknown>)['__barnestrackStore'] as {
+        addVideo: (video: unknown) => unknown;
+      };
+      store.addVideo({
+        filename: 'mine.mp4',
+        fingerprint: { byteLength: 1, durationSeconds: 1, frameCount: 1, sha256: 'a'.repeat(64) },
+        referenceResolution: { width: 640, height: 480 },
+      });
+    });
+    await mountPanel(page);
+
+    await page.getByRole('button', { name: LOAD_BUTTON_LABEL }).click();
+    const confirm = page.locator('.example-cohort .confirm');
+    await expect(confirm).toBeVisible();
+
+    // Tab first: `{ once: true }` on the keydown listener used to be consumed
+    // by this, leaving Escape dead.
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Escape');
+
+    await expect(confirm).toBeHidden();
+    // Focus comes back to the button, which must not be left disabled.
+    const load = page.getByRole('button', { name: LOAD_BUTTON_LABEL });
+    await expect(load).toBeEnabled();
+    await expect(load).toBeFocused();
+    // Cancelled means the user's own video is still there.
+    await expect(page.locator('.video-card h3')).toHaveText(['mine.mp4']);
+  });
+
+  test('says on screen that the example numbers are illustrative', async ({ page }) => {
+    await loadExampleViaModule(page);
+    await mountPanel(page);
+
+    await expect(page.locator('.example-provenance')).toHaveText(
+      'These results are illustrative, not a real tracking run of these clips.',
+    );
+  });
+
   test('has no serious or critical accessibility violations on the steps that render', async ({
     page,
   }) => {

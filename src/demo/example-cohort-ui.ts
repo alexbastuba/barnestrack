@@ -6,14 +6,16 @@
  *   pickers.append(mountExampleCohortPanel({ store, announce: context.announce }));
  *
  * Accessibility is part of the feature, not a pass afterwards (D37): the
- * controls are real buttons with real labels, progress and outcome go to a live
- * region rather than colour, the confirmation is a labelled group that Escape
- * cancels, and the banner is text.
+ * controls are real buttons with real labels, the outcome goes to the shell's
+ * live region rather than colour, progress updates stay out of it so a screen
+ * reader is not read one line per network chunk, the confirmation is a labelled
+ * group that Escape cancels, and the banner is text.
  */
 import type { SessionStore } from '../session/session-store.js';
-import { button, el } from '../ui/dom.js';
+import { button, el, uniqueId } from '../ui/dom.js';
 import {
   EXAMPLE_BANNER_TEXT,
+  EXAMPLE_PROVENANCE_TEXT,
   EXAMPLE_SESSION_NAME,
   SAMPLE_DATA_URL,
   loadExampleCohort,
@@ -62,6 +64,13 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   // chunk would bury the outcome under a running commentary.
   const progress = el('p', { class: 'example-progress', attrs: { 'aria-live': 'off' } });
 
+  // Said on screen, next to the numbers it qualifies, not buried in the docs.
+  const provenance = el('p', {
+    class: 'example-provenance',
+    text: EXAMPLE_PROVENANCE_TEXT,
+  });
+  provenance.hidden = true;
+
   const banner = el('p', { class: 'example-banner', text: `${EXAMPLE_BANNER_TEXT} ` }, [
     el('a', {
       text: 'Sample-data repository',
@@ -80,13 +89,21 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
 
   const loadButton = button(LOAD_BUTTON_LABEL, () => void onLoad(), { class: 'example-load' });
   const fetchButton = button(FETCH_BUTTON_LABEL, () => void onFetch(), { class: 'example-fetch' });
-  const fetchHint = el('span', { class: 'hint', text: FETCH_BUTTON_HINT });
+  // Tied to the button, so the D2 statement is part of its accessible
+  // description rather than nearby text a screen reader may never reach.
+  const fetchHint = el('span', {
+    class: 'hint',
+    id: uniqueId('fetch-hint'),
+    text: FETCH_BUTTON_HINT,
+  });
+  fetchButton.setAttribute('aria-describedby', fetchHint.id);
   const fetchRow = el('div', { class: 'example-fetch-row' }, [fetchButton, fetchHint]);
   fetchRow.hidden = true;
 
   const root = el('div', { class: 'example-cohort' }, [
     loadButton,
     confirmRow,
+    provenance,
     banner,
     fetchRow,
     progress,
@@ -103,6 +120,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   function refresh(): void {
     const loaded = store.videos.length > 0 && store.current.name === EXAMPLE_SESSION_NAME;
     banner.hidden = !loaded;
+    provenance.hidden = !loaded;
     // Only offered once there is a descriptor to verify the download against.
     fetchRow.hidden = !loaded || attachedAlready();
     context.onChange?.();
@@ -121,9 +139,16 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   function askToReplace(): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false;
+      const onKeydown = (event: KeyboardEvent): void => {
+        if (event.key === 'Escape') finish(false);
+      };
       const finish = (answer: boolean): void => {
         if (settled) return;
         settled = true;
+        // Removed explicitly rather than with `{ once: true }`: `once` fires on
+        // the first keydown of any kind, so a Tab from "Yes" to "Cancel" would
+        // consume it and leave Escape dead (D37).
+        confirmRow.removeEventListener('keydown', onKeydown);
         confirmRow.hidden = true;
         confirmRow.replaceChildren();
         loadButton.hidden = false;
@@ -142,14 +167,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
       );
       confirmRow.hidden = false;
       loadButton.hidden = true;
-      // `once` so repeated confirmations do not stack listeners on the row.
-      confirmRow.addEventListener(
-        'keydown',
-        (event) => {
-          if (event.key === 'Escape') finish(false);
-        },
-        { once: true },
-      );
+      confirmRow.addEventListener('keydown', onKeydown);
       confirmRow.querySelector('button')?.focus();
     });
   }
@@ -167,7 +185,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
         case 'loaded':
           say(
             `Example cohort loaded: ${result.session.videos.length} videos with results, ` +
-              'no video files attached.',
+              `no video files attached. ${EXAMPLE_PROVENANCE_TEXT}`,
           );
           break;
         case 'already-loaded':

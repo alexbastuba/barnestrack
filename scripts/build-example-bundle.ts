@@ -15,7 +15,7 @@
  * and otherwise taken from the values recorded below.
  *
  * Output is gzipped: serialized the way the app writes a session file it is
- * 11,608,353 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
+ * 11,608,385 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
  * pre-commit guard refuses any staged blob over 2 MB. Gzipped it is ~491 kB.
  * See docs/known-limitations.md.
  */
@@ -28,7 +28,11 @@ import { parseSessionDocument, serializeSessionFile } from '../src/session/sessi
 import { hashParameters, hashTrackingParameters } from '../src/session/parameters-hash.js';
 import { fingerprintVideo } from '../src/video/fingerprint.js';
 import { parseMp4Index } from '../src/video/mp4-index.js';
-import { syntheticSession } from '../tests/fixtures/synthetic-analysis.js';
+import {
+  FIXTURE_PARAMETERS_HASH,
+  FIXTURE_TRACKING_HASH,
+  syntheticSession,
+} from '../tests/fixtures/synthetic-analysis.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_PATH = join(REPO_ROOT, 'public/examples/example-cohort.barnestrack.json.gz');
@@ -123,19 +127,22 @@ function withRealFingerprints(
 }
 
 /**
- * Restamps the parameter hashes so they are the hashes of the parameters the
- * bundle actually carries.
+ * Replaces the fixture's two placeholder hash constants with real ones.
  *
- * The fixture ships constants (`FIXTURE_TRACKING_HASH`, `FIXTURE_PARAMETERS_HASH`)
- * that are not the hash of anything. Shipping those would mean a `trials.csv`
- * exported from the demo disagreeing with the `parameters.json` in the same
- * bundle, which is the reconciliation D11 and D12 exist to provide; and chunk 6
- * comparing `auto.parametersHash` against the tracking hash, as D51 says the key
- * is for, would decide the cohort needs a re-track it can never run with no
- * video attached. Same argument as the fingerprints above: derivable from data
- * the bundle already holds, so derive it.
+ * Deliberately narrow. `FIXTURE_TRACKING_HASH` and `FIXTURE_PARAMETERS_HASH` are
+ * not the hash of anything, and shipping them would mean a `trials.csv` exported
+ * from the demo disagreeing with the `parameters.json` beside it (D11, D12).
+ * But restamping *every* hash unconditionally would be just as wrong for the
+ * real take: under D51 a session tracked with one set of tracking parameters and
+ * re-derived under another legitimately carries `auto.parametersHash` that does
+ * not match `parameters.tracking`, and that disagreement is precisely the
+ * "needs a re-track" signal chunk 6 reads. Overwriting it would destroy the
+ * provenance rather than record it.
+ *
+ * So only these two exact placeholders are substituted. Anything else that does
+ * not hash out is left alone for `assertHashesAreReal` to reject.
  */
-function withRealHashes(session: SessionFile): SessionFile {
+function withoutPlaceholderHashes(session: SessionFile): SessionFile {
   const parameters = session.parameters;
   if (parameters === null) {
     throw new Error('build-example-bundle: the source session has no parameters to hash.');
@@ -145,17 +152,16 @@ function withRealHashes(session: SessionFile): SessionFile {
 
   const analyses: SessionFile['analyses'] = {};
   for (const [videoId, analysis] of Object.entries(session.analyses)) {
-    analyses[videoId] = {
-      ...analysis,
-      auto: { ...analysis.auto, parametersHash: trackingHash },
-      derived:
-        analysis.derived === null
-          ? null
-          : {
-              ...analysis.derived,
-              quality: { ...analysis.derived.quality, parametersHash: fullHash },
-            },
-    };
+    const auto =
+      analysis.auto.parametersHash === FIXTURE_TRACKING_HASH
+        ? { ...analysis.auto, parametersHash: trackingHash }
+        : analysis.auto;
+
+    let derived = analysis.derived;
+    if (derived !== null && derived.quality.parametersHash === FIXTURE_PARAMETERS_HASH) {
+      derived = { ...derived, quality: { ...derived.quality, parametersHash: fullHash } };
+    }
+    analyses[videoId] = { ...analysis, auto, derived };
   }
   return { ...session, analyses };
 }
@@ -197,11 +203,18 @@ function assertHashesAreReal(session: SessionFile): void {
 export async function buildExampleSession(): Promise<SessionFile> {
   const source = sourceSession();
   const fingerprints = await realFingerprints();
-  return withRealHashes({
+  const session = withoutPlaceholderHashes({
     ...source,
     name: EXAMPLE_SESSION_NAME,
     videos: withRealFingerprints(source.videos, fingerprints),
   });
+
+  // After placeholder substitution and before anything is written: a hash that
+  // still does not reconcile is a real disagreement in the source, and the
+  // build stops rather than papering over it. This is what makes the check
+  // meaningful for Monday's take, whose hashes are not placeholders.
+  assertHashesAreReal(session);
+  return session;
 }
 
 async function main(): Promise<void> {
@@ -214,10 +227,6 @@ async function main(): Promise<void> {
   if (!parsed.ok) {
     throw new Error(`build-example-bundle: the generated session is not valid — ${parsed.message}`);
   }
-
-  // Guards the real take as much as this one: a hash that is not the hash of
-  // the parameters beside it makes every export unreconcilable (D11, D12, D51).
-  assertHashesAreReal(session);
 
   const gzipped = gzipSync(Buffer.from(text, 'utf-8'), { level: 9 });
   mkdirSync(dirname(OUT_PATH), { recursive: true });

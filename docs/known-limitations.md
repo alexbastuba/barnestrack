@@ -177,9 +177,9 @@ session it is found (D39).
   focusable child once the table is longer than the box. A pointer user can scroll it and a
   keyboard user cannot, which inverts the point of having the table at all. The fix is one line —
   `tabindex="0"` plus a `role="group"` and an accessible name on the container — but it lands in
-  `src/ui/`, outside chunk 9b's boundary, so the browser smoke test allows it by step and rule name
-  (`Maze:scrollable-region-focusable` in `tests/browser/app-smoke.spec.ts`) and fails on anything
-  new. Delete that entry when the container is fixed. Three `region` findings ("All page content
+  `src/ui/`, outside chunk 9b's boundary, so the browser smoke test allows it by step, rule and matched node
+  (`Maze:scrollable-region-focusable:.table-scroll` in `tests/browser/app-smoke.spec.ts`) and fails on
+  anything new, including a second offending node under the same rule. Delete that entry when the container is fixed. Three `region` findings ("All page content
   should be contained by landmarks", against `.stepper`, on Videos, Maze and Track) are moderate
   and below the failing threshold; they are listed on every run.
 - **`npm run typecheck` is red on `main` and this branch, in code chunk 9b does not own.** 26
@@ -187,7 +187,7 @@ session it is found (D39).
   seven files in `src/viz/`, and three test files. D52 made `VideoAnalysis.derived` nullable on the
   chunk 5 branch while chunk 8 wrote its viz and export consumers against the non-null shape; each
   branch typechecked alone and the merge at `e7ad7fe` combined them, so nothing in the merge diff
-  shows the break. Lint and the 694 unit tests are green — only `tsc` sees it, which is why it
+  shows the break. Lint and the unit tests are green — only `tsc` sees it, which is why it
   survived the merge. The fix is a guard or a narrowing helper at each dereference and a decision
   about what the Review step should render for a tracked-but-unanalysed video (D52 says recompute
   on load), so it belongs with chunk 6, not here. Chunk 9b's own files add no new errors; the
