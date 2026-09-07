@@ -49,9 +49,10 @@ export interface ExampleLoaderOptions {
   /** Injected in tests; defaults to the document base so the build's `base: './'` holds. */
   baseUrl?: string;
   /**
-   * Asked before replacing a session the user already has work in. Returning
-   * false cancels. Absent means "there is nothing to lose, go ahead" — the
-   * caller decides, so the loader never silently overwrites (D27).
+   * Asked before replacing a session that already holds videos. Returning false
+   * cancels, and so does leaving this out: a caller with no way to ask cannot
+   * consent on the user's behalf, so the loader refuses rather than overwriting
+   * work it was never given permission to destroy (D27).
    */
   confirmReplace?: () => boolean | Promise<boolean>;
 }
@@ -161,8 +162,11 @@ export async function loadExampleCohort(
     return { kind: 'already-loaded' };
   }
 
-  const hasWorkToLose = store.videos.length > 0;
-  if (hasWorkToLose && options.confirmReplace !== undefined) {
+  // A session with videos in it is someone's work. Replacing it needs an
+  // answer, and a caller that supplies no way to ask does not get to guess:
+  // the default is to refuse, not to proceed.
+  if (store.videos.length > 0) {
+    if (options.confirmReplace === undefined) return { kind: 'cancelled' };
     const proceed = await options.confirmReplace();
     if (!proceed) return { kind: 'cancelled' };
   }

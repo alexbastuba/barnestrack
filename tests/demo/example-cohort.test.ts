@@ -153,6 +153,20 @@ describe('loadExampleCohort', () => {
     expect(store.videos).toHaveLength(3);
   });
 
+  it('refuses rather than overwriting when the caller offers no way to ask', async () => {
+    store.addVideo({
+      filename: 'mine.mp4',
+      fingerprint: { byteLength: 1, durationSeconds: 1, frameCount: 1, sha256: 'a'.repeat(64) },
+      referenceResolution: { width: 640, height: 480 },
+    });
+
+    // No confirmReplace: a caller with no way to ask cannot consent for the user.
+    const result = await loadExampleCohort(store, options());
+
+    expect(result.kind).toBe('cancelled');
+    expect(store.videos.map((video) => video.filename)).toEqual(['mine.mp4']);
+  });
+
   it('does not ask when the session is empty — there is nothing to lose', async () => {
     const confirmReplace = vi.fn(() => true);
 
