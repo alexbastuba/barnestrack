@@ -179,6 +179,32 @@ session it is found (D39).
   other three are missing. Surfacing it belongs to whichever step mounts those figures: it should say
   "3 of 10 videos are not analysed yet" beside the figure and the export button. Found while
   repairing the `e7ad7fe` merge (chunk 7a).
+- **`QualityReport` carries neither of the two numbers D54 asks it to state.** D54 wants the
+  whole-clip tracked fraction shown beside the trial-window headline, and the fraction of events
+  judged on the nose (O16). `qualityReport()` computes everything over the trial window and the
+  contract has no field for either, so the Review step's quality panel derives them itself in
+  `src/ui/components/quality-summary.ts`. They are therefore on screen but absent from
+  `quality.csv`: a user can read them and cannot export them. Closing it means adding
+  `wholeClipTrackedFraction` and `noseJudgedEventFraction` to `QualityReport`
+  (`src/contracts/quality.ts`), computing them in `src/analysis/quality.ts`, and adding two columns
+  to `QualityRow` in `src/contracts/exportRows.ts` with their headers in `src/export/columns.ts` —
+  a data-contract change, so it needs a schema-version bump and Alex's sign-off.
+- **The D55 thresholds are still un-hashed analysis options.** D55 says the trial-censoring,
+  strategy-rule and quality-tier thresholds join `Parameters`, so that `parametersHash` and the
+  export's parameter columns cover them. In this build they are still `AnalysisOptions`
+  (`src/analysis/parameters.ts`), neither hashed nor exported, while `ANALYSIS_MODEL` beside them is
+  a fixed model constant and correctly is not a parameter. The consequence is concrete: two analyses
+  that differ only in `strategy.serialMinRun` produce different strategies under the same
+  `parametersHash`, so an export cannot be reproduced from what it records. The Review step's
+  parameters panel lists them read-only under "Model options — not hashed, not exported (D55)"
+  rather than hiding the divergence, but "thresholds adjustable" is a hard constraint and this one
+  is not adjustable. Found in chunk 7a; the fix is outside that chunk's boundary.
+- **A second stylesheet exists.** `src/ui/components/review-components.css` sits alongside
+  `src/styles/app.css`, against this project's one-stylesheet convention, because chunk 7a's file
+  boundary excluded `src/styles/` while chunk 6 was editing the Review step on main. It defines no
+  colours of its own — every value is an existing `:root` token — and should be folded into
+  `app.css` when the Review step is mounted, dropping the `import './review-components.css'` lines
+  from the component modules.
 
 ## Excluded scope
 
