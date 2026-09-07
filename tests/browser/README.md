@@ -257,6 +257,35 @@ else in the build is a URL, and nothing else in the build issues a request. The 
 its own icon as a data URI in `index.html`, so a walkthrough's network panel no longer shows even
 the stray `/favicon.ico` the browser asks for when none is declared.
 
+**The manual pass**, in Google Chrome on macOS against `npm run preview` of the built `dist/` on
+port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean profile.
+
+- **Keyboard-only load.** From the "Choose videos" file input, two `Tab` presses reach the
+  `Load example cohort` button — file input, "Choose a folder", the button — and `Enter` loads.
+  After it: the live region reads "Example cohort loaded: 3 videos with results, no video files
+  attached. These results are illustrative, not a real tracking run of these clips.", the session
+  name reads `Example cohort`, three `.video-card`s are badged "video not attached", and all four
+  step tabs read `ready`. The panel sets no `tabindex`; its buttons are ordinary `<button>`s.
+- **Review with no video attached.** One click on the Review & Export tab: the panel renders three
+  canvases and six sections — Thresholds, Metrics, Quality, Events, Frames around the playhead,
+  Corrections — with no "Nothing to show yet".
+- **The fetch button.** One click downloads, verifies and attaches: `test53.mp4`'s badge becomes
+  "file attached", the fetch row hides itself, and the live region reads "test53.mp4 verified and
+  attached — frames and corrections are available." `performance.getEntriesByType('resource')`
+  filtered to cross-origin entries is empty before the click and afterwards holds exactly the one
+  `raw.githubusercontent.com` URL above — no favicon request, no font, nothing else.
+- **Reload.** The autosave brings the cohort back with the video detached, and the banner, the
+  provenance line and the fetch row are all showing again, from exactly one `.example-cohort`. This
+  is the case the panel got wrong when it was first mounted; see the remount in
+  `src/ui/videos-step.ts`.
+- **Grayscale (D26).** With `filter: grayscale(1)` on the document, the provenance line is a bold
+  sentence behind a dark left rule and the banner is regular weight behind a lighter rule on a
+  tinted ground. Both read as notices, and they read as different notices, with no hue involved.
+- **200 % zoom (D37).** Emulated with `zoom: 2` on the document: `documentElement.scrollWidth`
+  equals `clientWidth` — no horizontal scroll — the stepper reflows to two rows, the pickers stack,
+  the panel keeps its own full-width row, and the fetch button and its hint stack rather than
+  colliding. Every control in the panel stays inside the viewport.
+
 **The `app-smoke.spec.ts` shipped-UI flow still skips, for a different reason.** Its skip used to be
 "no `Load example cohort` button in the built app"; that button now ships, so the guard was moved to
 the absence of a button matching `/Export bundle/i` — chunk 7b's Review export. Chunk 9c-b un-skips
