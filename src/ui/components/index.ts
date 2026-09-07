@@ -37,11 +37,7 @@ export type { ParametersPanelCallbacks, ParametersPanelProps } from './parameter
 export { createQualityPanel, figureDataFor } from './quality-panel.js';
 export type { QualityPanelOptions, QualityPanelProps } from './quality-panel.js';
 
-export {
-  noseJudgedEventFraction,
-  wholeClipStateFractions,
-  wholeClipTrackedFraction,
-} from './quality-summary.js';
+export { wholeClipStateFractions } from './quality-summary.js';
 
 export { positionToFrame } from './types.js';
 export type { AnnounceCallback, Component, SeekCallbacks, StrategyCallbacks } from './types.js';

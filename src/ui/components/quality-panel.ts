@@ -33,11 +33,7 @@ import {
   formatSeconds,
   formatTimeAndFrame,
 } from './format.js';
-import {
-  noseJudgedEventFraction,
-  wholeClipStateFractions,
-  wholeClipTrackedFraction,
-} from './quality-summary.js';
+import { wholeClipStateFractions } from './quality-summary.js';
 import type { Component, SeekCallbacks } from './types.js';
 import './review-components.css';
 
@@ -158,24 +154,29 @@ export function createQualityPanel(
 
   function renderFigures(): void {
     const { analysis } = current;
-    const { quality, metrics, cleanedTrack, events } = analysis;
+    const { quality, cleanedTrack, events } = analysis;
     const wholeClip = wholeClipStateFractions(cleanedTrack);
+    // D54 counts the fraction of events judged on the nose over the events that
+    // were judged at all, so a tracking failure is not in the denominator. The
+    // caption has to draw from the same set or it would contradict the number
+    // beside it.
+    const judged = events.filter((event) => event.kind !== 'tracking_failure');
 
     const children: HTMLElement[] = [
       figure(
-        'Tracked (trial window)',
-        formatPercent(metrics.trackedFraction),
-        'the headline (D54)',
+        'Positioned (trial window)',
+        formatPercent(quality.positionedFraction),
+        'the headline the tier is judged on (D54)',
       ),
       figure(
-        'Tracked (whole clip)',
-        formatPercent(wholeClipTrackedFraction(cleanedTrack)),
+        'Positioned (whole clip)',
+        formatPercent(quality.wholeClipPositionedFraction),
         'secondary; includes frames before the animal was placed',
       ),
       figure(
         'Events judged on the nose',
-        formatPercent(noseJudgedEventFraction(events)),
-        `${events.filter((e) => e.pointUsed === 'nose').length} of ${events.length} (O16)`,
+        formatPercent(quality.noseJudgedEventFraction),
+        `${judged.filter((e) => e.pointUsed === 'nose').length} of ${judged.length} (O16)`,
       ),
       figure('Gaps in the trial', formatCount(quality.gaps.length)),
       figure('Longest gap', formatSeconds(quality.longestGapSeconds)),

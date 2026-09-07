@@ -12,11 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { qualityStripFigure } from '../../../src/viz/quality-strip.js';
 import { createQualityPanel, figureDataFor } from '../../../src/ui/components/quality-panel.js';
-import {
-  noseJudgedEventFraction,
-  wholeClipStateFractions,
-  wholeClipTrackedFraction,
-} from '../../../src/ui/components/quality-summary.js';
+import { wholeClipStateFractions } from '../../../src/ui/components/quality-summary.js';
 import { fakeContext } from '../../viz/fake-context.js';
 import { fixture } from './fixture.js';
 
@@ -62,32 +58,49 @@ describe('the tier badge', () => {
   });
 });
 
-describe('the two tracked fractions (D54)', () => {
+describe('the three D54 numbers, read from the quality report', () => {
   it('shows the trial-window headline and the whole-clip number side by side', () => {
     mount();
     const text = container.querySelector('.quality-figures')!.textContent ?? '';
-    expect(text).toContain('Tracked (trial window)');
-    expect(text).toContain('Tracked (whole clip)');
-    expect(text).toContain('the headline (D54)');
+    expect(text).toContain('Positioned (trial window)');
+    expect(text).toContain('Positioned (whole clip)');
+    expect(text).toContain('the headline the tier is judged on (D54)');
   });
 
-  it('reports them as the two different numbers they are', () => {
-    const trial = f.analysis.metrics.trackedFraction;
-    const clip = wholeClipTrackedFraction(f.analysis.cleanedTrack);
-    // test50's trial starts at the first frame, so the two agree here; what
-    // matters is that the panel prints each from its own source.
+  it('prints the report’s own fields rather than deriving them again', () => {
+    const { positionedFraction, wholeClipPositionedFraction, noseJudgedEventFraction } =
+      f.analysis.quality;
     mount();
     const text = container.textContent ?? '';
-    expect(text).toContain(`${(trial * 100).toFixed(1)} %`);
-    expect(text).toContain(`${(clip * 100).toFixed(1)} %`);
+    for (const fraction of [
+      positionedFraction,
+      wholeClipPositionedFraction,
+      noseJudgedEventFraction,
+    ]) {
+      expect(text).toContain(`${(fraction * 100).toFixed(1)} %`);
+    }
   });
 
-  it('states the fraction of events judged on the nose (O16)', () => {
+  it('states the fraction of events judged on the nose, over the events that were judged (O16)', () => {
     mount();
-    const fraction = noseJudgedEventFraction(f.analysis.events);
+    // The denominator excludes tracking failures, which `qualityReport()` also
+    // excludes: a caption drawn from a different set would contradict the
+    // percentage printed beside it.
+    const judged = f.analysis.events.filter((event) => event.kind !== 'tracking_failure');
+    const nose = judged.filter((event) => event.pointUsed === 'nose').length;
     const text = container.textContent ?? '';
     expect(text).toContain('Events judged on the nose');
-    expect(text).toContain(`${(fraction * 100).toFixed(1)} %`);
+    expect(text).toContain(`${nose} of ${judged.length} (O16)`);
+    expect(judged.length).toBeLessThan(f.analysis.events.length);
+  });
+
+  it('shows an em dash, not a zero, for a fraction the report could not compute', () => {
+    const quality = { ...f.analysis.quality, noseJudgedEventFraction: Number.NaN };
+    mount({ ...f, analysis: { ...f.analysis, quality } });
+    const text = container.querySelector('.quality-figures')!.textContent ?? '';
+    expect(text).toContain('Events judged on the nose');
+    expect(text).not.toContain('0.0 %');
+    expect(text).toContain('—');
   });
 });
 
@@ -242,20 +255,13 @@ describe('quality-summary', () => {
     const fractions = wholeClipStateFractions(track);
     const sum = Object.values(fractions).reduce((a, b) => a + b, 0);
     expect(sum).toBeCloseTo(1, 10);
-    expect(fractions.tracked).toBeCloseTo(wholeClipTrackedFraction(track), 12);
+    const tracked = track.filter((frame) => frame.detectionState === 'tracked').length;
+    expect(fractions.tracked).toBeCloseTo(tracked / track.length, 12);
   });
 
-  it('reports NaN rather than a confident zero for an empty track or trial', () => {
-    expect(wholeClipTrackedFraction([])).toBeNaN();
-    expect(noseJudgedEventFraction([])).toBeNaN();
-  });
-
-  it('is a share of all events, tracking failures included', () => {
-    const nose = f.analysis.events.filter((e) => e.pointUsed === 'nose').length;
-    expect(noseJudgedEventFraction(f.analysis.events)).toBeCloseTo(
-      nose / f.analysis.events.length,
-      12,
-    );
+  it('reports NaN rather than a confident zero for an empty track', () => {
+    const fractions = wholeClipStateFractions([]);
+    for (const fraction of Object.values(fractions)) expect(fraction).toBeNaN();
   });
 });
 
