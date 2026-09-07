@@ -230,3 +230,35 @@ inside their own containers, and the document has no horizontal scroll.
 **Not attached.** With the file gone after a reload, the step shows the note, runs the scrubber on
 the track's own timestamps (741 frames), draws the maze and the markers on a blank platform, and
 accepts every correction.
+
+### Chunk 9c-a — the demo state in the shipped build
+
+**No network (D2), restated — this supersedes the chunk-3 paragraph above.** That paragraph said
+`dist/` contains no external URL and that the SVG namespace is the only `http://` string in the
+build. Both were true only because nothing imported `src/demo/`, so tree-shaking dropped it.
+`src/ui/videos-step.ts` now imports `mountExampleCohortPanel`, and the demo modules are in the
+shipped JS. `npm run build && grep -oE "https?://[A-Za-z0-9._~:/?#@!$&*+,;=%-]+" dist/assets/*.js |
+sort -u` prints three strings and no others:
+
+```
+http://www.w3.org/2000/svg
+https://github.com/salk-airc/rse-takehome-2026/tree/main/data/barnes-maze
+https://raw.githubusercontent.com/salk-airc/rse-takehome-2026/main/data/barnes-maze/test53.mp4
+```
+
+The first is an XML namespace identifier passed to `createElementNS` and is never fetched. The
+third is `SAMPLE_CLIP_URL` in `src/demo/fetch-sample-clip.ts`, and the **only** outbound request the
+application can make: it is issued by `fetchSampleClip()` in that file, only from the "Fetch
+test53.mp4 (≈ 0.5 MB) from the sample-data repository" button on the Videos step, only after the
+user presses it, and the downloaded bytes are verified against the session's own fingerprint before
+anything is attached. The second is `SAMPLE_DATA_URL` in `src/demo/example-cohort.ts`, which is not
+requested at all: it is the `href` of the link the banner renders for the reader to follow. Nothing
+else in the build is a URL, and nothing else in the build issues a request. The page also declares
+its own icon as a data URI in `index.html`, so a walkthrough's network panel no longer shows even
+the stray `/favicon.ico` the browser asks for when none is declared.
+
+**The `app-smoke.spec.ts` shipped-UI flow still skips, for a different reason.** Its skip used to be
+"no `Load example cohort` button in the built app"; that button now ships, so the guard was moved to
+the absence of a button matching `/Export bundle/i` — chunk 7b's Review export. Chunk 9c-b un-skips
+it once 7b is merged. The spec's `mountPanel()` helper now reuses the panel the Videos step mounts
+rather than appending a second one, which would have matched every `.example-*` locator twice.

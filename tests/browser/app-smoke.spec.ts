@@ -300,12 +300,19 @@ test.describe('the example cohort, driven through the loader module', () => {
   });
 
   /**
-   * Mounts the panel chunk 9c will mount, into the Videos step, so the axe scan
-   * sees the controls this chunk actually added. Without this the scan covers
-   * only pre-existing markup and the chunk's own accessibility goes unchecked.
+   * Makes sure the Videos step has the panel on it, so the axe scan and the
+   * assertions below see the controls the demo state actually added.
+   *
+   * Chunk 9c-a mounted `mountExampleCohortPanel` into `src/ui/videos-step.ts`,
+   * so on a current build the panel is already there and this only waits for
+   * it. Appending a second one would leave every `.example-*` locator and the
+   * load button matching twice, which Playwright's strict mode rejects. The
+   * append branch is kept so the spec still says what it is testing when run
+   * against a tree where the mount has been reverted.
    */
   async function mountPanel(page: Page): Promise<void> {
     await page.evaluate(async () => {
+      if (document.querySelector('.example-cohort') !== null) return;
       const specifier = '/src/demo/example-cohort-ui.ts';
       const module = (await import(specifier)) as {
         mountExampleCohortPanel: (context: unknown) => HTMLElement;
@@ -410,12 +417,10 @@ test.describe('the whole demo flow through the shipped UI', () => {
     if ((await loadButton.count()) === 0) {
       test.skip(
         true,
-        'chunk 9c has not mounted mountExampleCohortPanel into src/ui/videos-step.ts yet, ' +
-          'so there is no "Load example cohort" button in the built app. Re-run this spec ' +
-          'after chunks 6 and 9c are merged.',
+        'mountExampleCohortPanel is not mounted into src/ui/videos-step.ts, so there is no ' +
+          '"Load example cohort" button in the built app.',
       );
     }
-
     await loadButton.click();
     await expect(page.locator('.video-card')).toHaveCount(3);
     await expect(page.locator('.video-card .badge')).toHaveText([
@@ -430,6 +435,21 @@ test.describe('the whole demo flow through the shipped UI', () => {
     await expect(reviewPanel).toBeVisible();
     await expect(reviewPanel.locator('.empty')).toHaveCount(0);
     await expect(reviewPanel.locator('canvas').first()).toBeVisible();
+
+    // Everything from here is chunk 7b's: the parameters panel to retune, the
+    // live event count to watch, and the export button — which 7b ships as
+    // "Export bundle (.zip)". Chunk 9c-a mounted the loader while 7b was still
+    // in flight, which un-skipped this test through the guard above, so the
+    // skip moved here rather than letting it fail on 7b's absence. Chunk 9c-b
+    // deletes this block once 7b is merged.
+    if ((await reviewPanel.getByRole('button', { name: /Export bundle/i }).count()) === 0) {
+      test.skip(
+        true,
+        "chunk 7b's Review export has not landed, so there is no \"Export bundle\" button to " +
+          'download and no live event count to retune against. Chunk 9c-b un-skips this after ' +
+          '7b is merged.',
+      );
+    }
 
     // A threshold change moves the event count (D20).
     const eventCount = reviewPanel.locator('[data-testid="event-count"]').first();
