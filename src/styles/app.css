@@ -1748,10 +1748,18 @@ button.metric-value:hover:not(:disabled) {
 .example-progress,
 .example-status {
   margin: 0;
+  /* Held open so the first status line does not shove the video list down the
+     page under a reader who is watching it (D37). */
   min-height: 1.25rem;
   font-size: 0.8125rem;
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* Progress only exists during a download; reserving a second empty line for it
+   leaves a visible hole under the panel the rest of the time. */
+.example-progress:empty {
+  min-height: 0;
 }
 
 .example-status {
