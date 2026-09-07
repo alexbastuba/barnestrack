@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const SAMPLE_DIR = process.env['BARNESTRACK_SAMPLE_DIR'];
 const APP_URL = '/';
@@ -56,6 +56,27 @@ async function dropFiles(page: Page, paths: string[]): Promise<void> {
 
 async function setNumber(page: Page, label: string, value: number): Promise<void> {
   const input = page.getByLabel(label, { exact: true });
+  await input.fill(String(value));
+  await input.blur();
+}
+
+/**
+ * One row of the mounted parameters panel (chunk 7b). Rows are scoped by their
+ * block, because two blocks have a "Min duration": the panel derives every
+ * label from the parameter path, so a bare label is ambiguous by construction.
+ */
+function parameterField(page: Page, block: string, label: string): Locator {
+  return page
+    .locator('#review-parameters fieldset.param-block', { has: page.getByText(block, { exact: false }) })
+    .filter({ hasText: block })
+    .first()
+    .locator('.param-row')
+    .filter({ has: page.getByText(label, { exact: true }) })
+    .locator('input[type="number"]');
+}
+
+async function setParameter(page: Page, block: string, label: string, value: number): Promise<void> {
+  const input = parameterField(page, block, label);
   await input.fill(String(value));
   await input.blur();
 }
@@ -119,7 +140,10 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await openReview(page);
 
   const status = page.locator('#app-status');
-  const rows = page.locator('#review-events tbody tr');
+  // The 12-column mirror, which chunk 7b moved out of `#review-events` (now the
+  // event list) and down beside the frames and corrections mirrors.
+  await page.locator('#review-events-mirror details > summary').click();
+  const rows = page.locator('#review-events-mirror tbody tr');
   await expect(rows.first()).toBeVisible();
   const eventCount = await rows.count();
   expect(eventCount).toBeGreaterThan(0);
@@ -173,9 +197,11 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await expect(page.locator('.corrections-list li')).toHaveCount(2);
 
   // A threshold change recomputes everything and leaves both corrections pinned (D20).
+  // Chunk 7b replaced the provisional fields with 7a's parameters panel, so the
+  // row is reached through its block and its derived label.
   const hashBefore = await page.locator('#panel-review .review-timing').textContent();
-  await setNumber(page, 'holeInvestigation.minDuration_s (s)', 2);
-  await expect(status).toContainText('holeInvestigation.minDuration_s set to 2');
+  await setParameter(page, 'Hole investigation', 'Min duration', 2);
+  await expect(status).toContainText('Min duration set to 2');
   await expect(page.locator('#panel-review .review-timing')).not.toHaveText(hashBefore ?? '');
   await expect(rows.first()).toHaveClass(/is-corrected/);
   await expect(rows.first()).toContainText(`user (auto: hole ${hole}`);
@@ -187,9 +213,10 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
   await openReview(page);
   await expect(page.locator('.corrections-list li')).toHaveCount(2);
-  await expect(page.locator('#review-events tbody tr').first()).toHaveClass(/is-corrected/);
-  await expect(page.locator('#review-events tbody tr').first()).toContainText(`user (auto: hole ${hole}`);
-  await expect(page.getByLabel('holeInvestigation.minDuration_s (s)', { exact: true })).toHaveValue('2');
+  await page.locator('#review-events-mirror details > summary').click();
+  await expect(page.locator('#review-events-mirror tbody tr').first()).toHaveClass(/is-corrected/);
+  await expect(page.locator('#review-events-mirror tbody tr').first()).toContainText(`user (auto: hole ${hole}`);
+  await expect(parameterField(page, 'Hole investigation', 'Min duration')).toHaveValue('2');
   await expect(page.locator('#panel-review .review-note')).toBeVisible();
   await expect(page.locator('#panel-review .review-note')).toContainText('not attached');
 });
