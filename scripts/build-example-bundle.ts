@@ -25,7 +25,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SessionFile, VideoDescriptor, VideoFingerprint } from '../src/contracts/session.js';
 import { parseSessionDocument, serializeSessionFile } from '../src/session/session-file.js';
-import { hashParameters, hashTrackingParameters } from '../src/session/parameters-hash.js';
+import { hashParameters, hashTrackingParameters } from '../src/analysis/parameters.js';
 import { fingerprintVideo } from '../src/video/fingerprint.js';
 import { parseMp4Index } from '../src/video/mp4-index.js';
 import {

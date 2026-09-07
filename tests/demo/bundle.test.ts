@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { SESSION_SCHEMA_VERSION, type SessionFile } from '../../src/contracts/session.js';
 import { parseSessionDocument } from '../../src/session/session-file.js';
 import { fingerprintsMatch } from '../../src/session/attach.js';
-import { hashParameters } from '../../src/session/parameters-hash.js';
+import { hashParameters } from '../../src/analysis/parameters.js';
 import { trialRows } from '../../src/export/rows.js';
 import { DETECTION_REASONS } from '../../src/analysis/tracker/select.js';
 import {
