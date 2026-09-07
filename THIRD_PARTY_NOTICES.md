@@ -6,13 +6,19 @@ on or is derived from (D38).
 ## talmolab/vibes
 
 - **What:** Patterns re-implemented in TypeScript, with a header comment naming the source tool in
-  each file that borrows from it. No file is copied wholesale.
-  - Borrowed: the sample-table frame-identity model, keyframe-window decoding and `avcC` decoder
-    configuration (`video-player`); the two-layer canvas with screen-to-video transform and
-    device-pixel-ratio handling (`labelroi`); the row model and paint-style editing operations
-    (`event-annotator`); the worker-side demux/decode core (`slp-viewer`).
+  each file that borrows from it. No file is copied wholesale. Every borrowing below is checkable
+  with `grep -rn "Adapted from talmolab/vibes" src/`; nothing is claimed that no file carries a
+  header for.
+  - Borrowed, from `video-player`: the sample-table frame-identity model, keyframe-window decoding
+    and `avcC` decoder configuration — `src/video/mp4-index.ts`, `src/video/sample-reader.ts`,
+    `src/video/frame-source.ts`.
+  - Borrowed, from `labelroi`: the two-layer canvas with its screen-to-video transform and
+    device-pixel-ratio backing store — `src/ui/canvas-view.ts`, `src/maze/view-transform.ts`.
+  - Borrowed, from `slp-viewer`: the worker-side demux/decode core — `src/video/track-worker.ts`,
+    `src/video/decoder.ts`, `src/video/mp4-index.ts`.
   - Ideas only, no code: quality tiers (`quality-review-tool`), re-encode guidance
-    (`encoding-helper`).
+    (`encoding-helper`), and `event-annotator`, considered for the event list's row model and edit
+    operations; no code used as of this commit.
   - Not used: `webcam-pose-tracking`, `pose-subspace-analysis`, `salk-signature`.
 - **Source:** https://github.com/talmolab/vibes, commit `d9410fa`.
 - **Licence:** BSD 3-Clause.
@@ -110,3 +116,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## matplotlib
+
+- **What:** Colour-map data, not code. `src/viz/colormap-tables.ts` holds 33 RGB anchor points for
+  each of `viridis` and `cividis`, sampled at evenly spaced positions from matplotlib's own tables
+  and rounded to 8 bits; the figures interpolate between those anchors. No matplotlib source is
+  used, imported or shipped, and the anchors are the only thing taken.
+- **Version sampled:** matplotlib 3.9.1, recorded in the header of `src/viz/colormap-tables.ts`.
+- **Source:** https://github.com/matplotlib/matplotlib
+- **Licence:** the Matplotlib licence (a BSD-compatible, PSF-derived licence). Its full text, and
+  the separate notices matplotlib keeps for the colour-map data it distributes, are in the
+  `LICENSE/` directory of the matplotlib repository at the version named above. That directory is
+  the authority on the terms for these anchor values; this file names what was taken and from
+  where rather than restating terms it cannot verify offline.
