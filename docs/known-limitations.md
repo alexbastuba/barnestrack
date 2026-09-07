@@ -184,7 +184,6 @@ session it is found (D39).
   needs an amendment or the header needs to appear when the event list lands; until then the
   decision record and the notices file disagree, in the safe direction.
 
-
 ## Excluded scope
 
 - **Input format.** MP4 with H.264 (AVC) video only (D4, O13). Other containers/codecs are listed
