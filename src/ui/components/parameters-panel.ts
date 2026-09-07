@@ -322,7 +322,10 @@ export function createParametersPanel(
     };
   }
 
-  /** The one boolean: `gapFilling.enabled`. A switch has no slider. */
+  /**
+   * The two booleans: `gapFilling.enabled` and, since D55,
+   * `trialCensoring.censorToCutoff`. A switch has no slider.
+   */
   function booleanRow(path: ParameterPath): Row {
     const label = labelForPath(path);
     const input = el('input', { id: uniqueId('param'), class: 'param-checkbox' });

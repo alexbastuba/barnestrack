@@ -245,10 +245,30 @@ describe('every panel brings its own styles', () => {
       const source = readFileSync(`src/ui/components/${name}`, 'utf-8');
       expect(source, `${name} imports a stylesheet of its own`).not.toMatch(/import\s+'.*\.css'/);
     }
-    // The style the D26 hatch needs is in the app sheet, where the app already
-    // loads it from.
+    // The rules the components cannot be read without are in the app sheet,
+    // where the app already loads them from. One `toContain` would not have
+    // noticed a rule dropped in the fold, so this names the load-bearing ones:
+    // the D26 hatch, the D37 invalid-row bar, the tier badges, and the layout
+    // each panel depends on.
     const app = readFileSync('src/styles/app.css', 'utf-8');
-    expect(app).toContain('.event-card.is-corrected');
+    for (const selector of [
+      '.event-card.is-corrected',
+      '.badge-user::before',
+      '.param-row.is-invalid',
+      '.param-block',
+      '.param-controls',
+      '.diff-badge',
+      '.metric-row',
+      '.tier-GOOD',
+      '.tier-REVIEW',
+      '.tier-POOR',
+      '.quality-figures',
+      '.quality-strip-canvas',
+      '.event-list',
+      '.seek-cell',
+    ]) {
+      expect(app, `${selector} was lost in the fold`).toContain(`${selector} {`);
+    }
   });
 });
 

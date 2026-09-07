@@ -175,8 +175,9 @@ Chrome 152 on macOS 15.5, viewport 1295 × 802 CSS px, 2026-09-07,
 
 - **All four panels mount and the eight D55 thresholds are editable.** The blocks read
   `Trial censoring (O5)`, `Search strategy (O7)` and `Quality tier (D30)`, "Model options — not
-  hashed, not exported" is gone, and the page loads two stylesheets — the app sheet and the harness
-  page's own chrome — rather than three. Clicking **Censor to cutoff** on test50, whose trial is cut
+  hashed, not exported" is gone, and the panels are styled entirely by `src/styles/app.css` —
+  `document.styleSheets` holds it and the page's own inline `<style>` chrome, and no third sheet.
+  Clicking **Censor to cutoff** on test50, whose trial is cut
   off, gave `total latency none → 180.00 s; strategy unchanged; status unchanged; quality tier
 unchanged.`, a `derive()` in 23.4 ms and the announcement "Censor to cutoff turned on."
 - **The strategy and quality thresholds move what they are supposed to move, and the badge says so.**

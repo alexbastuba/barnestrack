@@ -178,7 +178,7 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     max: 1,
     step: '0.01',
     reason:
-      'Below half the trial positioned, GOOD would claim more than the track supports; at 1 a single dropped frame denies a video the tier, so GOOD becomes unreachable (D30).',
+      'Below half the trial positioned, GOOD would claim more than the track supports. The top of the range is 1 — a lab that wants GOOD to mean a track with no dropped frame at all can ask for exactly that, and it is a setting rather than a trap: the slider drags back down and no video is refused, only re-tiered (D30).',
   },
   'quality.poorMaxPositionedFraction': {
     min: 0,

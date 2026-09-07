@@ -285,9 +285,10 @@ describe('describeDiff', () => {
   });
 
   it('reports a trial start that moved, which the metrics card prints', () => {
-    // `escapeEntry.persistCutoff_s` can move the trial start and nothing else,
-    // so a badge that never compared it would read "No change." beside a card
-    // showing a different trial.
+    // The metrics card prints the trial start and nothing compared it. No
+    // analysis threshold moves it on the three fixtures — the sweep below was
+    // instrumented and found zero such combinations — so this stub is the only
+    // cover the clause has, and it is here rather than left to the sweep.
     const sentence = describeDiff(
       analysisWith({ metrics: { trialStart_s: 4 } }),
       analysisWith({ metrics: { trialStart_s: 9.5 } }),
@@ -399,6 +400,11 @@ describe('the badge is never silent about a number the panels print', () => {
     // All three videos: a threshold that moves nothing on one clip may move a
     // great deal on another, and a sweep of one video reports coverage it does
     // not have.
+    //
+    // What it still does not reach: `metrics.trialStart_s` is inside `shown()`
+    // but no combination below moves it, so the clause for it is covered by its
+    // own test above rather than here. This loop proves the badge is not silent;
+    // it does not prove every measure was exercised.
     for (const videoId of VIDEO_IDS) {
       for (const path of paths) {
         const bound = ANALYSIS_PARAMETER_BOUNDS[path];
