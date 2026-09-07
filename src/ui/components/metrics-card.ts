@@ -21,7 +21,7 @@
  */
 import type { DerivedAnalysis } from '../../analysis/derive.js';
 import { firstTargetEvent, isPersistentEscape } from '../../analysis/metrics.js';
-import { ANALYSIS_OPTION_DEFINITIONS, PARAMETER_DEFINITIONS } from '../../analysis/parameters.js';
+import { PARAMETER_DEFINITIONS } from '../../analysis/parameters.js';
 import type { EventRecord } from '../../contracts/events.js';
 import type { Parameters } from '../../contracts/parameters.js';
 import type { TrialStatus } from '../../contracts/metrics.js';
@@ -437,8 +437,8 @@ export function createMetricsCard(
         ),
       ),
       disclosure('Definition', [
-        el('p', { text: ANALYSIS_OPTION_DEFINITIONS['strategy.spatialMaxErrors'] }),
-        el('p', { text: ANALYSIS_OPTION_DEFINITIONS['strategy.serialMinRun'] }),
+        el('p', { text: PARAMETER_DEFINITIONS['strategy.spatialMaxErrors'] }),
+        el('p', { text: PARAMETER_DEFINITIONS['strategy.serialMinRun'] }),
       ]),
     ]);
 

@@ -9,7 +9,7 @@
  * the default comes from, so the meaning of a threshold is one disclosure away
  * from the control that changes it.
  *
- * Two blocks are shown but not edited here:
+ * One block is shown but not edited here:
  *
  * - **Tracking (D6).** The automatic layer is keyed by the hash of the tracking
  *   parameters (D51). Editing one from this panel would orphan the tracking
@@ -17,11 +17,11 @@
  *   any case — the values would change nothing until the video were tracked
  *   again. They are shown with their definitions and a pointer to the Track
  *   step, and passed through untouched in every emitted `Parameters`.
- * - **Model options.** D55 says the trial-censoring, strategy-rule and
- *   quality-tier thresholds are hashed `Parameters` fields; the code still has
- *   them in `AnalysisOptions`, unhashed and absent from the exports. Hiding
- *   them would hide the divergence, so they are listed read-only and labelled
- *   as what they are.
+ *
+ * The trial-censoring, strategy-rule and quality-tier thresholds D55 moved into
+ * `Parameters` are ordinary editable blocks here, like every other threshold
+ * that decides a number: they are hashed and exported, so nothing about them
+ * needs a caveat any more.
  *
  * A change is emitted only when the whole parameter set validates. Invalid
  * input keeps what the user typed, says what is wrong beside the row that is
@@ -29,8 +29,6 @@
  * trial.
  */
 import {
-  ANALYSIS_OPTION_DEFINITIONS,
-  DEFAULT_ANALYSIS_OPTIONS,
   DEFAULT_PARAMETERS,
   PARAMETER_DECISIONS,
   PARAMETER_DEFINITIONS,
@@ -38,12 +36,11 @@ import {
   parameterAt,
   parameterPaths,
   validateParameters,
-  type AnalysisOptionPath,
   type ParameterPath,
 } from '../../analysis/parameters.js';
 import type { DerivedAnalysis } from '../../analysis/derive.js';
+import { clampToBound } from '../../analysis/tracker/params.js';
 import type { Parameters } from '../../contracts/parameters.js';
-import { clampToBound } from '../../session/tracking-parameter-bounds.js';
 import { append, button, disclosure, el, uniqueId } from '../dom.js';
 import { ANALYSIS_PARAMETER_BOUNDS, hasSlider } from './analysis-parameter-bounds.js';
 import { describeDiff } from './describe-diff.js';
@@ -75,14 +72,14 @@ const BLOCK_LABELS: Record<string, string> = {
   kinematics: 'Frame timing',
   noseConfidenceCutoff: 'Nose confidence',
   outlierVelocityThreshold_cmPerS: 'Outlier rejection',
+  trialCensoring: 'Trial censoring',
+  strategy: 'Search strategy',
+  quality: 'Quality tier',
   tracking: 'Tracking',
 };
 
 const TRACKING_NOTE =
   'These are set on the Track step. Changing one needs a new tracking pass — the automatic track is keyed by their hash (D51) — so they are shown here for reference and cannot be edited from this step.';
-
-const OPTIONS_NOTE =
-  'D55 says these thresholds belong in Parameters, hashed and exported. In this build they are still analysis options: they change the numbers but are not covered by the parameters hash and do not appear in the exports. They are listed here so that gap is visible rather than hidden.';
 
 /** The top-level block a leaf path belongs to. */
 function blockOf(path: ParameterPath): string {
@@ -464,31 +461,6 @@ export function createParametersPanel(
   }
 
   append(root, buildBlocks());
-
-  // The D55 divergence, stated rather than hidden.
-  const optionPaths = Object.keys(ANALYSIS_OPTION_DEFINITIONS) as AnalysisOptionPath[];
-  const optionsBlock = el('fieldset', { class: 'param-block is-readonly' }, [
-    el('legend', { text: 'Model options — not hashed, not exported (D55)' }),
-    el('p', { class: 'hint', text: OPTIONS_NOTE }),
-  ]);
-  for (const path of optionPaths) {
-    const value = path
-      .split('.')
-      .reduce<unknown>(
-        (node, key) => (node as Record<string, unknown>)?.[key],
-        DEFAULT_ANALYSIS_OPTIONS,
-      );
-    optionsBlock.append(
-      el('div', { class: 'param-row is-readonly' }, [
-        el('div', { class: 'param-controls' }, [
-          el('span', { class: 'label-like', text: labelForPath(path as ParameterPath) }),
-          el('span', { class: 'param-readonly-value', text: formatParameterValue(value) }),
-        ]),
-        disclosure('Definition', [el('p', { text: ANALYSIS_OPTION_DEFINITIONS[path] })]),
-      ]),
-    );
-  }
-  root.append(optionsBlock);
 
   container.append(root);
 
