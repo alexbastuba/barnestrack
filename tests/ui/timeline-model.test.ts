@@ -10,12 +10,14 @@ import type { CorrectionsLayer } from '../../src/contracts/session.js';
 import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
 import { NO_CORRECTIONS, editEvent, markRange, setPoint, setStrategyOverride } from '../../src/session/corrections.js';
 import {
+  assertPositionsAreFrameIndices,
   eventAtFrame,
   eventLabel,
   flaggedRuns,
   nextSpan,
   stateAtFrame,
   timelineModel,
+  unlikelyEventIds,
 } from '../../src/ui/timeline-model.js';
 import { TEST_RESOLUTION, testGeometry, testMazeMap } from '../analysis/maze-fixture.js';
 import { scriptTrack, visitHoles, type Segment } from '../analysis/synthetic-track.js';
@@ -47,6 +49,44 @@ const script: Segment[] = [
 ];
 
 describe('timelineModel', () => {
+  it('reads the "physically unlikely" mark from the review flag, so a corrected event keeps it', () => {
+    // A two-second head-in-hole run at a non-target hole: entry-shaped, flagged (O4).
+    const unlikelyScript: Segment[] = [
+      { kind: 'empty', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 2, state: 'low_confidence', reason: 'small_blob' },
+      { kind: 'dwell', hole: 3, seconds: 0.3 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      ...visitHoles([5]),
+    ];
+    const { model, analysis } = build(unlikelyScript);
+    const flagged = analysis.reviewFlags.filter((f) => f.code === 'physically_unlikely_entry');
+    expect(flagged).toHaveLength(1);
+    const target = model.events.find((e) => e.id === flagged[0]!.eventId)!;
+    expect(target.unlikely).toBe(true);
+    expect(unlikelyEventIds(analysis)).toEqual(new Set([target.id]));
+
+    // Retimed by one frame: the evidence is rewritten, the flag and the mark stay.
+    const auto = analysis.events.find((e) => e.id === target.id)!;
+    const corrections = editEvent(
+      NO_CORRECTIONS,
+      auto.id,
+      { holeIndex: auto.holeIndex ?? undefined, startFrame: auto.startFrame, endFrame: auto.endFrame + 1 },
+      meta(1),
+    );
+    const edited = build(unlikelyScript, corrections);
+    const bar = edited.model.events.find((e) => e.startFrame === auto.startFrame)!;
+    expect(bar.corrected).toBe(true);
+    expect(bar.unlikely).toBe(true);
+    expect(edited.analysis.events.find((e) => e.id === bar.id)!.evidence.startsWith('Physically unlikely')).toBe(false);
+  });
+
+  it('refuses a track whose frame indices are not positions', () => {
+    expect(() => assertPositionsAreFrameIndices([{ frameIndex: 0 }, { frameIndex: 1 }])).not.toThrow();
+    expect(() => assertPositionsAreFrameIndices([{ frameIndex: 0 }, { frameIndex: 2 }])).toThrow(/frame 1 at position 1 but found frame 2/);
+  });
+
   it('labels every event bar with text and carries the trial markers', () => {
     const { model, analysis } = build(script);
     expect(model.frameCount).toBe(analysis.cleanedTrack.length);

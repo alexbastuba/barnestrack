@@ -27,6 +27,18 @@ import {
 const FRAMES = 5539; // test50
 const WIDTH = 600;
 
+describe('spanRect at the window edge', () => {
+  const window = { first: 10, last: 109 };
+  it('draws nothing for a span that ends just before the window or starts just after it', () => {
+    expect(spanRect(0, 9, window, 100, 0, 10)).toBeNull();
+    expect(spanRect(110, 120, window, 100, 0, 10)).toBeNull();
+  });
+  it('still draws a span that touches the window by one frame', () => {
+    expect(spanRect(0, 10, window, 100, 0, 10)).not.toBeNull();
+    expect(spanRect(109, 120, window, 100, 0, 10)).not.toBeNull();
+  });
+});
+
 describe('frame ↔ pixel', () => {
   it('maps the whole clip across the width and back', () => {
     const w = fullWindow(FRAMES);

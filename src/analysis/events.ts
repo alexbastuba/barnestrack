@@ -383,9 +383,8 @@ function runEvidence(
       run.lastSeen >= 0
         ? `, ${cm1(Math.hypot(pts.ex[r]! - pts.ex[run.lastSeen]!, pts.ey[r]! - pts.ey[run.lastSeen]!) / g.pxPerCm)} from where it was last seen full-size`
         : '';
-    parts.push(
-      `Seen full-size again at frame ${frames[r]!.frameIndex} (${s2(a.t[r]!)}) ${back}${moved}.`,
-    );
+    const how = pts.partialAt[r]! >= 0 ? 'Seen again, as a partial blob,' : 'Seen full-size again';
+    parts.push(`${how} at frame ${frames[r]!.frameIndex} (${s2(a.t[r]!)}) ${back}${moved}.`);
   }
   if (run.lastSeen >= 0) parts.push(`Before the run the ${blobTrend(a, run.lastSeen)}.`);
   return parts.join(' ');

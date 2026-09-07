@@ -73,7 +73,8 @@ export function spanRect(
 ): Rect | null {
   const x0 = frameToX(Math.min(startFrame, endFrame), window, width);
   const x1 = frameToX(Math.max(startFrame, endFrame) + 1, window, width);
-  if (x1 < 0 || x0 > width) return null;
+  // A span that ends at the window's first pixel or starts at its last is not in view.
+  if (x1 <= 0 || x0 >= width) return null;
   let left = Math.max(0, x0);
   const right = Math.min(width, x1);
   const w = Math.max(MIN_MARK_PX, right - left);

@@ -1,3 +1,5 @@
+// Adapted from talmolab/vibes/event-annotator (BSD-3-Clause, commit d9410fa)
+// Copyright (c) 2025, Talmo Lab at the Salk Institute.
 /**
  * Step 4 — Review. The frame view with the automatic and corrected points,
  * the timeline (D24), every correction (D25) as a pure operation over the
@@ -10,6 +12,10 @@
  * recomputed from `auto ⊕ corrections` and re-rendered — the same functions
  * that produce the exports (D55). Automatic and corrected values are told
  * apart by shape and word, never colour alone (D26).
+ *
+ * Borrowed from event-annotator (D38): painting a range with two keystrokes —
+ * one at its first frame, one at its last — for the not-visible range and the
+ * added event; re-implemented here, no code copied.
  *
  * Mount points for the panels chunk 7b brings: `#review-parameters`,
  * `#review-events`, `#review-metrics`, `#review-quality`. What lives in them
@@ -77,7 +83,14 @@ import {
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
 import { Scrubber } from './scrubber.js';
 import { frameAtTime } from './timeline-geometry.js';
-import { eventAtFrame, flaggedRuns, nextSpan, timelineModel, type TimelineModel } from './timeline-model.js';
+import {
+  eventAtFrame,
+  flaggedRuns,
+  nextSpan,
+  timelineModel,
+  unlikelyEventIds,
+  type TimelineModel,
+} from './timeline-model.js';
 import { Timeline, type EventEdge } from './timeline.js';
 import type { AppContext, Step } from './step.js';
 
@@ -269,13 +282,22 @@ export function createReviewStep(context: AppContext): Step {
     const frame = analysis.cleanedTrack[playhead];
     if (!frame) return;
     const current = tool === 'nose' ? frame.nose : frame.centroid;
+    const other = tool === 'nose' ? frame.centroid : frame.nose;
     const existing = currentLayer() ? pointCorrectionAt(currentLayer()!, playhead, tool) : null;
-    const base = existing?.value.valid ? existing.value : current.valid ? current : null;
-    if (!base) {
-      context.announce(`The ${tool} is not positioned on frame ${playhead}: click the frame to place it first.`);
-      return;
+    if (existing?.value.valid) {
+      placePoint(tool, existing.value.x + dx, existing.value.y + dy);
+    } else if (current.valid) {
+      placePoint(tool, current.x + dx, current.y + dy);
+    } else {
+      // Nothing to nudge: seed the point from the keyboard at the frame's other point, or at
+      // the platform centre, and say so — the arrows then walk it into place.
+      const seed = other.valid ? other : { x: analysis.geometry.platform.cx, y: analysis.geometry.platform.cy };
+      const from = other.valid ? `the ${tool === 'nose' ? 'centroid' : 'nose'}` : 'the platform centre';
+      placePoint(tool, seed.x + dx, seed.y + dy);
+      context.announce(
+        `The ${tool} was not positioned on frame ${playhead}, so it was placed at ${from}: keep nudging it into place, or click the frame.`,
+      );
     }
-    placePoint(tool, base.x + dx, base.y + dy);
   }
 
   function markInvalid(): void {
@@ -793,8 +815,12 @@ export function createReviewStep(context: AppContext): Step {
     if (tag === 'SUMMARY' && (event.key === ' ' || event.key === 'Enter')) return;
     const action = resolveKey(event, { pointTool: tool !== 'off', edgeSelected: selectedEdge !== null && selectedEventId !== null });
     if (!action) return;
+    // The frame view zooms itself on + − 0; those keys are the frame's when it has focus.
+    if ((action === 'zoom-in' || action === 'zoom-out' || action === 'zoom-fit') && target && canvasView.viewport.contains(target)) return;
     event.preventDefault();
     dispatch(action, event.shiftKey);
+    // Escape in a field or select hands the keyboard back to the timeline.
+    if (editing) timeline.surface.focus();
   });
 
   // ---- layout ------------------------------------------------------------------------------
@@ -998,6 +1024,7 @@ export function createReviewStep(context: AppContext): Step {
     }
     const counts = { investigation: 0, escape_entry: 0, tracking_failure: 0 };
     for (const ev of analysis.events) counts[ev.kind]++;
+    const unlikely = unlikelyEventIds(analysis);
     const tbody = el('tbody');
     for (const ev of analysis.events) {
       const selected = ev.id === selectedEventId;
@@ -1027,7 +1054,7 @@ export function createReviewStep(context: AppContext): Step {
                 : 'user'
               : 'auto',
         }),
-        el('td', { text: ev.evidence.startsWith('Physically unlikely') ? 'physically unlikely — review' : '' }),
+        el('td', { text: unlikely.has(ev.id) ? 'physically unlikely — review' : '' }),
         el('td', {}, [
           disclosure('Evidence', [el('p', { text: ev.evidence })]),
         ]),

@@ -490,10 +490,26 @@ describe('derive', () => {
     expect(d.metrics.status).toBe('review');
   });
 
+  it('flags an automatic layer produced by other tracking parameters and sends the trial to review (D51)', () => {
+    const { input } = inputFor(escapeTrial);
+    expect(derive(input).reviewFlags.map((f) => f.code)).not.toContain('stale_auto_layer');
+
+    const stale: DeriveInput = { ...input, auto: { ...input.auto, parametersHash: 'deadbeef0000' } };
+    const d = derive(stale);
+    const flag = d.reviewFlags.find((f) => f.code === 'stale_auto_layer');
+    expect(flag).toBeDefined();
+    expect(flag!.message).toContain('deadbeef…');
+    expect(flag!.message).toContain(`${hashTrackingParameters(DEFAULT_PARAMETERS.tracking).slice(0, 8)}…`);
+    expect(flag!.message).toContain('re-track the video');
+    expect(d.metrics.status).toBe('review');
+    // The numbers are those of the track that exists; only the provenance is called out.
+    expect(d.metrics.primaryErrors).toBe(derive(input).metrics.primaryErrors);
+  });
+
   it('handles an empty track and a never-tracked track without throwing', () => {
     const empty = derive({
       ...inputFor([{ kind: 'dwell', seconds: 0.1 }]).input,
-      auto: { parametersHash: 'x', frames: [] },
+      auto: { parametersHash: hashTrackingParameters(DEFAULT_PARAMETERS.tracking), frames: [] },
     });
     expect(empty.cleanedTrack).toEqual([]);
     expect(empty.events).toEqual([]);
@@ -540,7 +556,7 @@ describe('derive', () => {
     expect(frames).toHaveLength(5539);
     const input: DeriveInput = {
       videoId: 'big',
-      auto: { parametersHash: 'x', frames },
+      auto: { parametersHash: hashTrackingParameters(DEFAULT_PARAMETERS.tracking), frames },
       corrections: { entries: [] },
       mazeMap: testMazeMap(),
       mazeTransform: IDENTITY_TRANSFORM,

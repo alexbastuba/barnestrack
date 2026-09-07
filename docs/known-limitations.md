@@ -98,6 +98,12 @@ session it is found (D39).
   entry-shaped at all is an O4 question. The same rule reads a hand-marked "not visible" range of
   a second or more beside a non-target hole as entry-shaped too (test51, frames 300–320 inside the
   hole-12 visit): the visit stays one flagged investigation rather than splitting at the gap.
+- **The review step addresses frames by position, not by sample-table index.** The playhead is a
+  position in the track and is written as a correction's `frameIndex`; event bars and seek targets
+  use `EventRecord.startFrame`, a frame index, on the same axis. The two agree for every track the
+  tracker produces (one frame per sample), and `timelineModel` refuses a track where they differ
+  rather than misaddress it, but an imported track (D42) whose indices are not positions will need
+  the conversion the analysis layer already has (`framePosition`) at the UI boundary.
 - **The hole select's type-ahead relabels on every keystroke.** Typing `13` into the "Hole" select
   changes it to hole 1 and then to hole 13, and each change is applied; the two coalesce into one
   correction entry, but the recompute runs twice and the announcement reads "moved from hole 1 to

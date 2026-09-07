@@ -162,6 +162,15 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     ...correctedEvents.flags,
     ...endFlags,
   ];
+  // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
+  // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
+  // stamped on this analysis would then name a configuration that never ran, so say so.
+  if (auto.parametersHash !== trackingParametersHash) {
+    reviewFlags.push({
+      code: 'stale_auto_layer',
+      message: `This track was produced with tracking parameters ${auto.parametersHash.slice(0, 8)}…, not the ${trackingParametersHash.slice(0, 8)}… in force now: re-track the video before trusting the parameters hash on any export.`,
+    });
+  }
   if (bounds.startFrame !== null && bounds.endFrame !== null) {
     let count = 0;
     let first = -1;

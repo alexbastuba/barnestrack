@@ -141,6 +141,18 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await expect(frameRow).toContainText('corrected');
   await page.keyboard.press('Escape');
 
+  // A frame the tracker did not position at all (test53's empty platform before the animal is
+  // placed): the first nudge seeds the point from the keyboard instead of refusing.
+  await seekTo(page, 10);
+  await page.keyboard.press('n');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(status).toContainText('was not positioned on frame 10, so it was placed at the platform centre');
+  await expect(page.locator('.corrections-list li')).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  // Undo that one so the rest of the scenario counts entries as before.
+  await page.locator('.corrections-list li').last().getByRole('button', { name: 'Revert to automatic' }).click();
+  await expect(page.locator('.corrections-list li')).toHaveCount(1);
+
   // The first event moved to the next hole through the hole select: the row is
   // hatched, says "user" and keeps the automatic hole beside it.
   await rows.first().locator('button').click();

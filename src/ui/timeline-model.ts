@@ -70,8 +70,34 @@ export function eventLabel(ev: Pick<EventRecord, 'kind' | 'holeIndex' | 'isTarge
 
 const AUTO_EVENT_ID = /^auto-(?:investigation|escape_entry|tracking_failure)-h(?:\d+|x)-f(\d+)$/;
 
+/** Ids of the events carrying the O4 "physically unlikely" review flag. */
+export function unlikelyEventIds(analysis: Pick<DerivedAnalysis, 'reviewFlags'>): Set<string> {
+  const ids = new Set<string>();
+  for (const flag of analysis.reviewFlags) {
+    if (flag.code === 'physically_unlikely_entry' && flag.eventId !== undefined) ids.add(flag.eventId);
+  }
+  return ids;
+}
+
+/**
+ * The review step addresses frames by their position in the track and writes that position as a
+ * correction's `frameIndex`; the two agree for every track the tracker produces. A track where
+ * they differ (an import, D42) needs the conversion the analysis layer already has
+ * (`framePosition`) before this UI can be trusted with it, so it is refused rather than misread.
+ */
+export function assertPositionsAreFrameIndices(track: readonly { frameIndex: number }[]): void {
+  for (let i = 0; i < track.length; i++) {
+    if (track[i]!.frameIndex !== i) {
+      throw new Error(
+        `the review step expects frame ${i} at position ${i} but found frame ${track[i]!.frameIndex}: this track's frame indices are not positions, and the review step cannot address it yet`,
+      );
+    }
+  }
+}
+
 export function timelineModel(analysis: DerivedAnalysis, corrections: CorrectionsLayer): TimelineModel {
   const track = analysis.cleanedTrack;
+  assertPositionsAreFrameIndices(track);
   const n = track.length;
   const frameTimes = new Float64Array(n);
   const noseConfidence = new Float32Array(n);
@@ -87,6 +113,8 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
     centroidFilled[i] = f.centroid.source === 'filled' ? 1 : 0;
   }
 
+  // The flag, not the prose: a corrected event's evidence is rewritten, its flag is not.
+  const unlikelyIds = unlikelyEventIds(analysis);
   const events: EventBar[] = analysis.events.map((ev) => ({
     id: ev.id,
     kind: ev.kind,
@@ -96,7 +124,7 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
     endFrame: ev.endFrame,
     label: eventLabel(ev),
     corrected: ev.source === 'corrected',
-    unlikely: ev.evidence.startsWith('Physically unlikely'),
+    unlikely: unlikelyIds.has(ev.id),
   }));
 
   const byId = new Map(analysis.events.map((ev) => [ev.id, ev]));

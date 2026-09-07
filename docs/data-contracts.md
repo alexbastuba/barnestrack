@@ -240,7 +240,8 @@ the search-strategy rule numbers and the quality-tier thresholds — lives in on
 (`src/contracts/parameters.ts`), never inline in analysis code (D55). Defaults and the one-sentence
 definitions the UI shows verbatim live in the single configuration module
 `src/analysis/parameters.ts` (`DEFAULT_PARAMETERS`, `PARAMETER_DEFINITIONS`, `PARAMETER_UNITS`,
-`PARAMETER_DECISIONS`, keyed by dotted path); the value is hashed into `parametersHash`, embedded in
+`PARAMETER_DECISIONS`, keyed by dotted path; `METRIC_DEFINITIONS` and `METRIC_DECISIONS`, keyed by
+`TrialMetrics` field, are the same for the metrics); the value is hashed into `parametersHash`, embedded in
 every export and drives live recomputation (D20). Spatial thresholds are centimetres or multiples of
 the hole radius, converted per video from the maze calibration (D14, D44); temporal thresholds are
 seconds applied to each frame's own timestamp (D7).
