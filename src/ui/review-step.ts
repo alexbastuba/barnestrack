@@ -82,6 +82,11 @@ import {
   drawNoseMarker,
 } from './overlay-draw.js';
 import { formatFrameTime } from './review-format.js';
+import {
+  createReviewFigures,
+  type ReviewFigures,
+  type ReviewFiguresProps,
+} from './review-figures.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
 import { Scrubber } from './scrubber.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
@@ -903,6 +908,9 @@ export function createReviewStep(context: AppContext): Step {
   const eventsPanel = el('div', { id: 'review-events', class: 'review-panel review-panel-wide', attrs: { 'data-panel': 'events' } });
   const qualityPanel = el('div', { id: 'review-quality', class: 'review-panel', attrs: { 'data-panel': 'quality' } });
 
+  /** Where `createReviewFigures` mounts; the section itself is the component's. */
+  const figuresHost = el('div', { class: 'review-figures-host' });
+
   const framesBody = el('tbody');
   const framesSummary = el('p', { class: 'mirror-summary' });
   const framesMirror = el('section', { class: 'mirror' }, [
@@ -957,6 +965,7 @@ export function createReviewStep(context: AppContext): Step {
     timeline.element,
     legend,
     el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
+    figuresHost,
     framesMirror,
     eventsMirror,
     correctionsMirror,
@@ -1032,6 +1041,7 @@ export function createReviewStep(context: AppContext): Step {
     timeline.setPlayhead(playhead);
     timeline.setSelection(selectedEventId, selectedEdge);
     renderPanels();
+    renderFigures();
     renderEventsTable();
     renderFrameTable();
     renderCorrections();
@@ -1230,6 +1240,7 @@ export function createReviewStep(context: AppContext): Step {
   let metricsComponent: Component<MetricsCardProps> | null = null;
   let eventsComponent: Component<EventListProps> | null = null;
   let qualityComponent: Component<QualityPanelProps> | null = null;
+  let figures: ReviewFigures | null = null;
 
   /**
    * The panel calls `onParametersChange` and then announces what the user
@@ -1307,6 +1318,27 @@ export function createReviewStep(context: AppContext): Step {
       ? ` ${sweep.skipped.size} not analysed: ${[...sweep.skipped.values()][0]}.`
       : '';
     pendingReflow = `${badge}${timing}${skipped}`;
+  }
+
+  /**
+   * The figures follow the same rule as the panels: created once, updated on
+   * every recompute. They are drawn from the session rather than from this
+   * step's in-memory analysis, so the cohort figures see every video, not only
+   * the one on screen.
+   */
+  function renderFigures(): void {
+    const figuresProps: ReviewFiguresProps = {
+      session: store.current,
+      videoId: currentVideo()?.id ?? null,
+    };
+    if (figures) {
+      figures.update(figuresProps);
+      return;
+    }
+    figures = createReviewFigures(figuresHost, figuresProps, {
+      onAnnounce: context.announce,
+      onGoToTrack: () => context.showStep('track'),
+    });
   }
 
   function renderPanels(): void {

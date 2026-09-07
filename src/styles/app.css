@@ -1704,3 +1704,106 @@ button.metric-value:hover:not(:disabled) {
 .seek-cell:hover {
   border-color: var(--accent);
 }
+
+/* --- the Review step's figures (D32, D53) -------------------------------- */
+
+.review-figures {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.review-figures h3,
+.review-export h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.review-figures h4 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.figure-options {
+  align-items: end;
+}
+
+/*
+ * The cards wrap to whatever the window allows. `defaultSize` fixes each
+ * figure's logical size, so the grid places them rather than scaling them —
+ * a scaled canvas would blur the text the figures draw.
+ */
+.figure-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.figure-card {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 0.5rem 0.75rem 0.75rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.figure-card h5 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.figure-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: var(--paper);
+}
+
+.figure-caption {
+  margin: 0.5rem 0 0;
+  max-width: 34rem;
+  color: var(--ink-soft);
+}
+
+.figure-note {
+  margin: 0.25rem 0 0;
+  max-width: 34rem;
+}
+
+.figure-card .disclosure {
+  margin: 0.5rem 0;
+}
+
+.figure-missing-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.figure-missing {
+  margin: 0;
+}
+
+/* --- the Review step's export (D11, D12) --------------------------------- */
+
+.review-export {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.review-export p {
+  max-width: 44rem;
+}
+
+.export-contents {
+  margin: 0.5rem 0;
+}
+
+.export-blocked {
+  margin: 0.5rem 0 0;
+}
