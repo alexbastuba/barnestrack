@@ -29,14 +29,14 @@ describe('syntheticSession', () => {
       const analysis = session.analyses[video.id];
       expect(analysis).toBeDefined();
       if (!analysis) continue;
-      const escapes = analysis.derived.events.filter((event) => event.kind === 'escape_entry');
-      expect(escapes.length).toBe(analysis.derived.metrics.escaped ? 1 : 0);
+      const escapes = analysis.derived!.events.filter((event) => event.kind === 'escape_entry');
+      expect(escapes.length).toBe(analysis.derived!.metrics.escaped ? 1 : 0);
     }
   });
 
   it('carries a tracking failure and a corrected event with its automatic shadow', () => {
     const session = syntheticSession();
-    const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived.events);
+    const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived!.events);
     expect(events.filter((event) => event.kind === 'tracking_failure').length).toBeGreaterThan(0);
     const corrected = events.filter((event) => event.source === 'corrected');
     expect(corrected).toHaveLength(3);
@@ -56,7 +56,7 @@ describe('syntheticSession', () => {
       ).toBe(false);
     }
     const filled = Object.values(session.analyses).flatMap((analysis) =>
-      analysis.derived.cleanedTrack.filter((frame) => frame.centroid.source === 'filled'),
+      analysis.derived!.cleanedTrack.filter((frame) => frame.centroid.source === 'filled'),
     );
     expect(filled.length).toBeGreaterThan(0);
   });
@@ -75,7 +75,7 @@ describe('syntheticSession', () => {
     for (const video of session.videos) {
       const analysis = session.analyses[video.id];
       if (!analysis) continue;
-      const track = analysis.derived.cleanedTrack;
+      const track = analysis.derived!.cleanedTrack;
       for (let i = 0; i < track.length; i++) {
         if (track[i]!.centroid.source !== 'filled') continue;
         if (i > 0 && track[i - 1]!.centroid.source === 'filled') continue;
@@ -113,7 +113,7 @@ describe('syntheticSession', () => {
     const ceiling = session.parameters?.gapFilling.maxDuration_s ?? 0;
     const shortUnfilled: number[] = [];
     for (const analysis of Object.values(session.analyses)) {
-      const track = analysis.derived.cleanedTrack;
+      const track = analysis.derived!.cleanedTrack;
       for (let i = 0; i < track.length; i++) {
         if (track[i]!.detectionState !== 'not_detected') continue;
         let end = i;
@@ -137,7 +137,7 @@ describe('syntheticSession', () => {
       const map = videoMazeMap(video);
       expect(holeCentres(map)).toHaveLength(20);
       if (!analysis) continue;
-      for (const frame of analysis.derived.cleanedTrack) {
+      for (const frame of analysis.derived!.cleanedTrack) {
         if (!frame.centroid.valid) continue;
         const distance = Math.hypot(
           frame.centroid.x - map.platform.cx,

@@ -15,7 +15,12 @@
 import type { EventRow, QualityRow, TrialRow } from '../contracts/exportRows.js';
 import { EXPORT_SCHEMA_VERSION } from '../contracts/exportRows.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { SessionFile, VideoAnalysis, VideoDescriptor } from '../contracts/session.js';
+import type {
+  DerivedLayer,
+  SessionFile,
+  VideoAnalysis,
+  VideoDescriptor,
+} from '../contracts/session.js';
 
 /** Seconds are reported to 3 dp and centimetres to 2 dp; fractions are left alone. */
 function seconds(value: number): number;
@@ -43,20 +48,35 @@ function sessionId(session: SessionFile): string {
 
 interface AnalysedVideo {
   descriptor: VideoDescriptor;
-  analysis: VideoAnalysis;
+  analysis: VideoAnalysis & { derived: DerivedLayer };
 }
 
-/** Videos in session order that have actually been tracked (D47: no placeholders). */
+function hasDerived(
+  analysis: VideoAnalysis,
+): analysis is VideoAnalysis & { derived: DerivedLayer } {
+  return analysis.derived !== null;
+}
+
+/**
+ * Videos in session order that have actually been tracked *and* analysed
+ * (D47: no placeholders). A tracked but unanalysed video has no derived layer
+ * (D52), so it has no metrics, events or quality report to write: it
+ * contributes no row at all rather than a row of zeroes and blank hashes (D16).
+ */
 function analysedVideos(session: SessionFile): AnalysedVideo[] {
   const out: AnalysedVideo[] = [];
   for (const descriptor of session.videos) {
     const analysis = session.analyses[descriptor.id];
-    if (analysis) out.push({ descriptor, analysis });
+    if (analysis && hasDerived(analysis)) out.push({ descriptor, analysis });
   }
   return out;
 }
 
-function provenance(session: SessionFile, analysis: VideoAnalysis, toolVersion: string) {
+function provenance(
+  session: SessionFile,
+  analysis: AnalysedVideo['analysis'],
+  toolVersion: string,
+) {
   return {
     toolVersion,
     schemaVersion: EXPORT_SCHEMA_VERSION,
