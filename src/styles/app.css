@@ -1677,3 +1677,83 @@ button.metric-value:hover:not(:disabled) {
 .seek-cell:hover {
   border-color: var(--accent);
 }
+
+/* ---- example cohort -------------------------------------------------------- */
+
+/*
+ * The demo state's panel (D33), mounted inside the flex `.pickers` row. Every
+ * value here is an existing token: no new colour, no url(), no @import, so the
+ * page still makes zero network requests (D2). The banner and the provenance
+ * line are notices, and they say so with a left rule and weight rather than a
+ * hue, so they survive grayscale and a colour-blind reader (D26, D37).
+ */
+
+.example-cohort {
+  /* Its own row in the flex `.pickers`, so it reads as a separate offer rather
+     than a fourth file picker sitting beside the other three. */
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.example-load {
+  font-weight: 600;
+}
+
+.example-fetch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Its label names the file and its size, so it is long; let it wrap left-aligned
+   rather than push the hint off the row at 200 % zoom (D37). */
+.example-fetch {
+  flex: 0 1 auto;
+  text-align: left;
+}
+
+/* Wide enough to keep the D2 sentence on two or three lines, not eight. */
+.example-fetch-row .hint {
+  flex: 1 1 22rem;
+  max-width: 44rem;
+}
+
+.example-banner,
+.example-provenance {
+  margin: 0;
+  max-width: 70ch;
+  padding: 0.375rem 0.5rem;
+  border-left: 0.25rem solid var(--line-strong);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.example-banner {
+  background: var(--paper-soft);
+  color: var(--ink);
+}
+
+/* Heavier than the banner: it qualifies the numbers next to it, and a reader
+   who skims one line should skim this one. */
+.example-provenance {
+  border-left-color: var(--warn-line);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.example-progress,
+.example-status {
+  margin: 0;
+  min-height: 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.example-status {
+  color: var(--ink);
+}
