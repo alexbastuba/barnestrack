@@ -182,16 +182,6 @@ session it is found (D39).
   anything new, including a second offending node under the same rule. Delete that entry when the container is fixed. Three `region` findings ("All page content
   should be contained by landmarks", against `.stepper`, on Videos, Maze and Track) are moderate
   and below the failing threshold; they are listed on every run.
-- **`npm run typecheck` is red on `main` and this branch, in code chunk 9b does not own.** 26
-  `TS18047: 'derived' is possibly 'null'` errors across `src/export/rows.ts`, `src/export/xlsx.ts`,
-  seven files in `src/viz/`, and three test files. D52 made `VideoAnalysis.derived` nullable on the
-  chunk 5 branch while chunk 8 wrote its viz and export consumers against the non-null shape; each
-  branch typechecked alone and the merge at `e7ad7fe` combined them, so nothing in the merge diff
-  shows the break. Lint and the unit tests are green — only `tsc` sees it, which is why it
-  survived the merge. The fix is a guard or a narrowing helper at each dereference and a decision
-  about what the Review step should render for a tracked-but-unanalysed video (D52 says recompute
-  on load), so it belongs with chunk 6, not here. Chunk 9b's own files add no new errors; the
-  smoke-test work was checked by diffing `tsc` output against this 26-error baseline.
 
 ## Excluded scope
 
@@ -215,12 +205,17 @@ session it is found (D39).
   example cohort by `reason` sees eight distinct sentences rather than the eight names.
 - **The bundle is `.json.gz`, not plain `.json`.** 11.1 MiB of pretty-printed JSON for three
   videos, and `.claude/hooks/pre-commit-guard.sh` refuses any staged blob over 2 MB; gzip brings it
-  to 491 kB. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
+  to 502,426 B. The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
   a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
   body — works too.
-- **The demo's new controls are unstyled.** `mountExampleCohortPanel` emits `.example-cohort`,
-  `.example-banner`, `.example-status` and `.example-fetch-row`, and `src/styles/` is outside chunk
-  9b's boundary, so no rules exist for them yet. Chunk 9c styles them when it mounts the panel.
+- **The demo's new controls are unstyled.** `src/styles/` is outside chunk 9b's boundary, so no
+  rules exist for them yet; chunk 9c styles them when it mounts the panel. The complete set
+  `mountExampleCohortPanel` emits is eight classes: `.example-cohort` (the panel root),
+  `.example-load` and `.example-fetch` (the two buttons), `.example-fetch-row` (the fetch button
+  with its hint), `.example-banner`, `.example-provenance`, `.example-progress` (download progress,
+  outside any live region) and `.example-status` (the outcome line). It also reuses four classes
+  that already have rules and need none: `.confirm`, `.confirm-text` and `.danger` from the shell's
+  reset confirmation, and `.hint`.
 - **Only `test53.mp4` can be fetched.** The button downloads the smallest clip (496,723 bytes);
   test50 and test51 have to be dropped by hand from a local copy of the sample-data repository.
   Fetching 3 MB of video on a click is not something to do without asking, and one attached clip is

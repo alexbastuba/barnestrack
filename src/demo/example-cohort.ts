@@ -50,7 +50,12 @@ export const EXAMPLE_BANNER_TEXT =
  * not: they are illustrative. A limitation recorded only in
  * `docs/known-limitations.md` is not disclosed to the person looking at the
  * screen, and "honest uncertainty over plausible lies" (D16) is about what the
- * tool shows. Delete this in the commit that swaps in the real outputs.
+ * tool shows.
+ *
+ * Reword this in the commit that swaps in the real outputs — do not delete it.
+ * The line should then describe that run rather than disappear: where the
+ * numbers came from is worth saying whether or not they are illustrative, and
+ * the two tests that assert this string move with it.
  */
 export const EXAMPLE_PROVENANCE_TEXT =
   'These results are illustrative, not a real tracking run of these clips.';
