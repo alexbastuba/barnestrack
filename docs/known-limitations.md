@@ -7,6 +7,22 @@ session it is found (D39).
 
 ## Defects
 
+- **"Animal in the escape box from here" is an unconditional assertion, and is never checked
+  against where the animal is.** Measured in Chrome on test51 with the chunk-3 platform numbers and
+  the default target (hole 0). Pressing `B` at frame 691, where the animal has its head in hole 19,
+  produces an escape entry attributed to **hole 0** with `escaped = yes`, `status = ok` and a total
+  latency of 41.04 s — and the card's own evidence says "the animal is in the escape box at the
+  target hole 0 by assertion" beside "Min nose distance: 16.00 cm". Pressing `B` at frame 425, in
+  the middle of the widest gap between investigations with the animal crossing the open platform,
+  produces the *same* kind of event: an escape entry at hole 0, `escaped = yes`, `status = ok`,
+  total latency 23.36 s, "Min nose distance: 59.07 cm" — 59 cm from the hole it claims the animal
+  entered. No tracking failure, no review flag, no unresolved latency.
+  O4 says a loss away from any hole "is a tracking failure reported in the quality report and never
+  an event", and the chunk-7b acceptance scenario expected exactly that. The range tool bypasses the
+  rule instead. The evidence line is honest — it prints the distance that contradicts the claim —
+  but a 59 cm "entry" is a number a user can export without noticing. Whether a user assertion
+  should be believed unconditionally, warned about, or refused beyond some distance from a hole is
+  an operational definition, so it is recorded rather than changed here.
 - **The cohort figures always plot primary latency.** `PlottableMetric` offers seven measures and
   `src/viz/cohort.ts` names them all in `METRIC_LABELS`, but the Review step's figures section
   exposes no control for it, so the learning curve and the group comparison are fixed to
