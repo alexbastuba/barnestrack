@@ -24,7 +24,7 @@ keeps the cohort name as it was typed. The six files:
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `trials.csv`                      | trial                         | 35 columns; the headline numbers                                                                            |
 | `events.csv`                      | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
-| `quality.csv`                     | video                         | 17 columns; whether to trust the video at all                                                               |
+| `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
 | `barnestrack_export.xlsx`         | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
@@ -69,8 +69,9 @@ Measures:
 - `escaped` — `true` or `false`.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
-  `tracked` state only, so it reads lower than "frames with a usable position"; `quality.csv` has
-  the full breakdown.
+  `tracked` state only, so it reads lower than "frames with a usable position", which is
+  `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
+  breakdown.
 - `correction_count` (count) — human corrections affecting this trial.
 
 Threshold columns, carried so the numbers can be reconciled later:
@@ -101,7 +102,7 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
 - `point_used` — `nose` or `centroid`. Which body point the event was judged on. The nose is used
   only when its heading confidence clears `nose_confidence_cutoff`, and it is labelled experimental
   in the application; an analysis that leans on hole-level precision should report how many events
-  were judged on each.
+  were judged on each. `quality.csv` gives that per video as `nose_judged_event_fraction`.
 - `min_nose_distance_cm`, `min_centroid_distance_cm` (cm) — closest approach to the hole during the
   event. `min_nose_distance_cm` is **often blank**, because the nose is frequently unavailable.
 - `evidence_summary` — the sentence the application shows for why this is an event. Quote it when
@@ -117,13 +118,24 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
 Header, verbatim:
 
 ```
-session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,gap_count,longest_gap_s,duplicate_timestamp_count,dropped_frame_gap_count,drift_s,platform_diameter_cm,px_per_cm,tier,tool_version,schema_version,parameters_hash
+session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,duplicate_timestamp_count,dropped_frame_gap_count,drift_s,platform_diameter_cm,px_per_cm,tier,tool_version,schema_version,parameters_hash
 ```
 
 - `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction`
   (each 0–1) — the four detection states. `low_confidence` frames **do** carry a position; only
   `not_detected` and `ambiguous` lack one. The four are measured over the trial window when a trial
   start exists, so an empty platform before the animal is placed does not count against the video.
+- `positioned_fraction` (0–1) — **the number to judge a video on**, and the one `tier` is computed
+  from (D54). It is the fraction of trial-window frames that carry a position at all, so it counts
+  `tracked` and `low_confidence` together and is always ≥ `tracked_fraction`. Use this, not
+  `tracked_fraction`, when deciding whether to trust a video.
+- `whole_clip_positioned_fraction` (0–1) — the same fraction over every frame in the file rather
+  than over the trial window. It reads lower whenever the recording starts well before the animal
+  is placed; a large gap between the two is a long empty-platform preamble, not a tracking failure.
+- `nose_judged_event_fraction` (0–1, **may be blank**) — the fraction of this video's events whose
+  distance was measured from the nose rather than the body centroid (O16). Blank when the video has
+  no event at all; never 0 for that reason. An analysis that leans on hole-level precision should
+  read this before trusting `events.csv`'s `min_nose_distance_cm`.
 - `gap_count` (count), `longest_gap_s` (s) — runs with no position, and the worst one.
 - `duplicate_timestamp_count`, `dropped_frame_gap_count` (count), `drift_s` (s) — properties of the
   video file's own timing, always measured over the whole clip. Drift is how far the file's
@@ -132,7 +144,8 @@ session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,lo
 - `platform_diameter_cm` (cm), `px_per_cm` (px/cm) — the calibration this video's measurements rest
   on. Two videos with very different `px_per_cm` were framed differently; that is expected, and it
   is already accounted for because every threshold is stored in centimetres.
-- `tier` — `GOOD`, `REVIEW` or `POOR`.
+- `tier` — `GOOD`, `REVIEW` or `POOR`, cut from `positioned_fraction` at the two tier thresholds,
+  which are themselves hashed parameters (D54, D55).
 
 ## `parameters.json`
 
@@ -143,9 +156,9 @@ threshold columns in `trials.csv`**: the kinematics block (`speedWindowFrames`,
 `gapFilling.enabled`, and the whole `tracking` subtree are hashed but are not columns. When two
 cohorts have different hashes and identical threshold columns, the difference is in here.
 
-It is not, however, the whole of what decided the numbers. The trial-censoring switch, the five
-strategy-rule thresholds and the two quality-tier thresholds are not fields of `Parameters` in this
-version, so they appear here no more than they appear in the columns or the hash. See Rule 4.
+It is the whole of what decided the numbers. The trial-censoring switch, the five strategy-rule
+thresholds and the two quality-tier thresholds are fields of `Parameters` (D55), so they are in
+here and under the hash even though none of them is a column in `trials.csv`. See Rule 4.
 
 An export made before any analysis ran contains the literal `{}`.
 
@@ -194,12 +207,13 @@ number.
    parameters before reporting the difference in results — a change in
    `hole_investigation_radius_factor` moves every error count in the cohort.
 
-   Matching hashes are not a guarantee. In this version the trial-censoring switch, the five
-   strategy-rule numbers and the two quality-tier thresholds sit outside `Parameters` altogether:
-   they are in none of the hash, the columns or `parameters.json`. Two exports can
-   therefore carry the same `parameters_hash` and still disagree on `strategy`, `tier` and a
-   censored `total_latency_s`. `tool_version` is the only handle on them, so when hashes match but
-   strategy or tier disagree, compare tool versions and say that these thresholds are not covered.
+   Matching hashes still are not a guarantee, but the gap is narrower than the columns suggest.
+   The trial-censoring switch, the five strategy-rule numbers and the two quality-tier thresholds
+   are fields of `Parameters` (D55): they are under the hash and in `parameters.json`, but they are
+   **not** among the eleven threshold columns. So two exports that agree on all eleven columns can
+   still differ in hash, and the difference is in `parameters.json` — check there before blaming
+   the data. What the hash still cannot cover is a change in the code between two `tool_version`
+   values, so when hashes match and results disagree, compare tool versions.
 
 5. **`events.csv` is investigations and escape entries only.** Do not infer tracking failures from
    its absences; they are in `quality.csv` as gaps.
@@ -225,7 +239,8 @@ say which), separately for `ok` trials and for all trials, so the reader can see
 with counts not just percentages, and a `strategy_source` column so overridden calls are visible.
 With small n, give counts alone and resist the percentage.
 
-**Quality triage.** Sort `quality.csv` by `tier`, then `tracked_fraction` ascending. For each video
+**Quality triage.** Sort `quality.csv` by `tier`, then `positioned_fraction` ascending — that is the
+number the tier is cut from, and the one that says whether a position exists at all. For each video
 needing attention, say _why_ in one line, from the numbers: a high `not_detected_fraction` means
 the animal was not found; a high `ambiguous_fraction` means more than one candidate; a high
 `low_confidence_fraction` means it was found but not cleanly resolved, which still yields
@@ -266,10 +281,10 @@ random,auto,true,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,1d7e4a02c9b5
 `quality.csv`, all three rows:
 
 ```
-session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,gap_count,longest_gap_s,…,tier,…
-Barnes cohort A,video-test50,0.9762,0.0065,0.0036,0.0137,1,1.137,…,GOOD,…
-Barnes cohort A,video-test51,0.9069,0.0729,0.0094,0.0108,2,3.403,…,GOOD,…
-Barnes cohort A,video-test53,0.8652,0.1127,0.011,0.011,2,1.767,…,REVIEW,…
+session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,…,tier,…
+Barnes cohort A,video-test50,0.9762,0.0065,0.0036,0.0137,0.9899,0.9899,1,1,1.137,…,GOOD,…
+Barnes cohort A,video-test51,0.9069,0.0729,0.0094,0.0108,0.9177,0.9177,0.8,2,3.403,…,GOOD,…
+Barnes cohort A,video-test53,0.8652,0.1127,0.011,0.011,0.8762,0.8762,0.8333,2,1.767,…,REVIEW,…
 ```
 
 Asked _"summarise this cohort"_, a correct answer looks like this:
