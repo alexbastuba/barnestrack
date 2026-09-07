@@ -58,7 +58,13 @@ const FAILING_IMPACTS = new Set(['serious', 'critical']);
  * rule on another step, or a second offending node under the same rule all
  * still fail. Delete an entry when its defect is fixed.
  */
-const KNOWN_VIOLATIONS = new Set(['Maze:scrollable-region-focusable:.table-scroll']);
+const KNOWN_VIOLATIONS = new Set([
+  // The selector is axe's, not ours: it names a node by the shortest selector
+  // unique in the document, so this key grew from `.table-scroll` when chunk 6
+  // gave that class to the review step and the quality panel too. A key that no
+  // longer matches fails the scan on a recorded defect as though it were new.
+  'Maze:scrollable-region-focusable:.maze-step > .mirror > .table-scroll',
+]);
 
 const servers: ChildProcess[] = [];
 

@@ -319,11 +319,16 @@ the absence of a button matching `/Export bundle/i` — chunk 7b's Review export
 it once 7b is merged. The spec's `mountPanel()` helper now reuses the panel the Videos step mounts
 rather than appending a second one, which would have matched every `.example-*` locator twice.
 
-**Two things the spec's own guards leave for chunk 9c-b.** Its `KNOWN_VIOLATIONS` key for the
-recorded maze-step defect is the bare `.table-scroll`, and chunk 6 gave that class to the review
-step and the quality panel too, so `axe-core` now names the node
-`.maze-step > .mirror > .table-scroll` and the scan fails on a defect it is meant to allow — a
-one-string fix, reproduced at `6885937` before chunk 9c-a's first commit and recorded in
-`docs/known-limitations.md`. And the axe loop still covers Videos, Maze and Track only, with a
-comment saying the Review step is a placeholder until chunk 6; chunk 6 has landed, so the step with
-the most markup in the application is the one step never scanned.
+**The axe allowlist key was re-pinned.** `KNOWN_VIOLATIONS` keyed the recorded maze-step defect as
+the bare `.table-scroll`; chunk 6 gave that class to the review step and the quality panel too, so
+`axe-core` began naming the node `.maze-step > .mirror > .table-scroll` and the scan failed on a
+defect it is meant to allow. Reproduced at `6885937`, before chunk 9c-a's first commit, so it was
+never this chunk's — but it is a one-string fix and the spec is already inside chunk 9c-a's
+exception, so it was made here. The run is back to 9 passed / 1 skipped, with the maze node
+reported and then logged as "a recorded defect …, not a regression".
+
+**One thing the spec still leaves for chunk 10.** The axe loop covers Videos, Maze and Track only,
+under a comment saying the Review step is a placeholder until chunk 6. Chunk 6 has landed, so the
+step with the most markup in the application is the one step never scanned. Adding it is not a
+one-line change — the Review step needs a video selected and an analysis on screen before a scan
+means anything, and whatever it reports will need triaging against `docs/known-limitations.md`.
