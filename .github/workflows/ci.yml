@@ -24,3 +24,44 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Separate job with no `needs:`, so a browser failure never turns `build` red
+  # (D36). It is not marked continue-on-error: an always-green job would hide
+  # the result this is here to record.
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # The spec serves the built dist/ as well as the dev server.
+      - run: npm run build
+
+      # `channel: 'chrome'` drives the installed Google Chrome, never a
+      # downloaded browser, so a runner without it skips rather than fails.
+      - name: Find Google Chrome
+        id: chrome
+        run: |
+          if command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Google Chrome is not installed on this runner; the browser smoke test was skipped."
+          fi
+
+      - if: steps.chrome.outputs.present == 'true'
+        run: npx playwright test tests/browser/app-smoke.spec.ts
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
