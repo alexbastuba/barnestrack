@@ -104,6 +104,15 @@ session it is found (D39).
   tracker produces (one frame per sample), and `timelineModel` refuses a track where they differ
   rather than misaddress it, but an imported track (D42) whose indices are not positions will need
   the conversion the analysis layer already has (`framePosition`) at the UI boundary.
+- **Play shows the second frame of a tied-timestamp pair.** `Space` maps wall-clock time to the
+  last frame at or before that time, so where two frames share a presentation timestamp (D45: all
+  three sample videos have such pairs) the first of the pair is never displayed during play. The
+  arrows and the frame field still address both frames; nothing measured depends on it.
+- **The nose-judged event fraction counts every event, not only those inside the trial window.**
+  `noseJudgedEventFraction` divides over all investigations and entries in the event list, while
+  the other D54 numbers are trial-windowed. No path produces an event outside the trial today
+  (user-added events are clipped to it), so the number cannot differ yet; if an annotation-only
+  event outside the window is ever kept, this fraction should exclude it.
 - **The hole select's type-ahead relabels on every keystroke.** Typing `13` into the "Hole" select
   changes it to hole 1 and then to hole 13, and each change is applied; the two coalesce into one
   correction entry, but the recompute runs twice and the announcement reads "moved from hole 1 to
