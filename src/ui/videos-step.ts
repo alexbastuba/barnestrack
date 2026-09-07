@@ -7,6 +7,7 @@
  * hashing the bytes both happen locally, and the card says so (D2).
  */
 import type { VideoDescriptor, VideoMetadata } from '../contracts/session.js';
+import { mountExampleCohortPanel } from '../demo/example-cohort-ui.js';
 import { inspectFile, REENCODE_HINT } from '../session/intake.js';
 import type { VideoId } from '../session/stored.js';
 import { byteSourceFromBlob } from '../video/byte-source.js';
@@ -367,6 +368,26 @@ export function createVideosStep(context: AppContext): Step {
   function capitalise(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
+
+  // ---- the demo state (D33) --------------------------------------------------
+
+  /*
+   * Mounted here, at the end of the constructor, rather than where `pickers` is
+   * built: the panel calls `onChange` once while it is being constructed, and
+   * `cards`, `lastEpoch` and the rest of the rendering block are `const`/`let`
+   * declarations above `render`, so mounting earlier would run `render()`
+   * inside their temporal dead zone.
+   *
+   * It goes inside `.pickers`, under the drop hint and above the video list, so
+   * it is one Tab away from the file pickers and needs no `tabindex`. The panel
+   * writes its outcomes to the shell's one live region rather than a second one
+   * of its own (D37), and `onChange` covers the cases where the store does not
+   * change — cancelled, already loaded — since `store.subscribe` in the shell
+   * already re-renders every step and the header when it does.
+   */
+  pickers.append(
+    mountExampleCohortPanel({ store, announce: context.announce, onChange: render }),
+  );
 
   return {
     id: 'videos',
