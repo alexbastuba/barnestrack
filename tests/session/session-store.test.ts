@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import { findByFingerprint } from '../../src/session/attach.js';
 import { DEFAULT_SESSION_NAME, SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
@@ -129,6 +130,77 @@ describe('SessionStore', () => {
     expect(store.current.name).toBe('cohort3 day1');
     expect(store.videos).toHaveLength(3);
     expect(store.mazeClickCount('vid_01')).toBe(0);
+  });
+});
+
+describe('parameters (D51, D55)', () => {
+  it('are the defaults until edited, and the working set is remembered across a reload but not stamped', async () => {
+    const { store, storage } = newStore();
+    store.addVideo(test50);
+    expect(store.parameters).toEqual(DEFAULT_PARAMETERS);
+    expect(store.current.parameters).toBeNull();
+
+    store.setParameters({ ...DEFAULT_PARAMETERS, trialCutoff_s: 120 });
+    expect(store.parameters.trialCutoff_s).toBe(120);
+    expect(store.current.parameters).toBeNull();
+    await store.flush();
+
+    const restored = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
+    await restored.restore();
+    expect(restored.parameters.trialCutoff_s).toBe(120);
+    expect(restored.current.parameters).toBeNull();
+  });
+
+  it('ensureParameters stamps the working set once; later edits go into the session file', () => {
+    const { store } = newStore();
+    store.addVideo(test50);
+    store.setTrackingParameters({ ...DEFAULT_PARAMETERS.tracking, minBlobArea_cm2: 6.5 });
+    const stamped = store.ensureParameters();
+    expect(store.current.parameters).toBe(stamped);
+    expect(stamped.tracking.minBlobArea_cm2).toBe(6.5);
+    expect(store.ensureParameters()).toBe(stamped);
+
+    store.setParameters({ ...stamped, noseConfidenceCutoff: 0.6 });
+    expect(store.current.parameters?.noseConfidenceCutoff).toBe(0.6);
+    expect(store.current.parameters?.tracking.minBlobArea_cm2).toBe(6.5);
+    expect(store.trackingParameters.minBlobArea_cm2).toBe(6.5);
+  });
+
+  it('refuses an invalid set, so nothing invalid is ever hashed', () => {
+    const { store } = newStore();
+    expect(() =>
+      store.setParameters({ ...DEFAULT_PARAMETERS, noseConfidenceCutoff: 2 }),
+    ).toThrow('noseConfidenceCutoff');
+    expect(store.parameters.noseConfidenceCutoff).toBe(0.5);
+  });
+
+  it('folds a record written with only a tracking block into the working set', async () => {
+    const storage = new MemorySessionStorage();
+    const { store } = newStore();
+    store.addVideo(test50);
+    await store.flush();
+    const legacy = { ...store.toStoredSession(), parameters: null };
+    legacy.trackingParameters = { ...DEFAULT_PARAMETERS.tracking, minBlobArea_cm2: 7 };
+    await storage.save(legacy);
+
+    const restored = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
+    expect(await restored.restore()).toBe(true);
+    expect(restored.trackingParameters.minBlobArea_cm2).toBe(7);
+    expect(restored.parameters.trialCutoff_s).toBe(DEFAULT_PARAMETERS.trialCutoff_s);
+  });
+
+  it('sets corrections and the derived cache per video without touching the automatic layer', () => {
+    const { store } = newStore();
+    store.replaceSession(fullSession());
+    const before = store.analysisFor('vid_01')!;
+    store.setCorrections('vid_01', { entries: [] });
+    expect(store.analysisFor('vid_01')!.auto).toBe(before.auto);
+    expect(store.analysisFor('vid_01')!.corrections.entries).toEqual([]);
+    store.setDerivedLayer('vid_01', null);
+    expect(store.analysisFor('vid_01')!.derived).toBeNull();
+    expect(store.analysisFor('vid_01')!.auto).toBe(before.auto);
+    store.setCorrections('vid_99', { entries: [] });
+    expect(store.analysisFor('vid_99')).toBeUndefined();
   });
 });
 

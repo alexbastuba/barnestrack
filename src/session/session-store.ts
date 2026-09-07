@@ -10,13 +10,16 @@
  * remembered in the autosave record and not written into a downloaded file.
  *
  * Nothing here mutates an `auto` layer: this store only ever replaces whole
- * descriptors, the maze map, and metadata.
+ * descriptors, the maze map, metadata, a corrections layer and the derived
+ * cache.
  */
-import { DEFAULT_TRACKING_PARAMETERS } from '../analysis/tracker/params.js';
+import { DEFAULT_PARAMETERS, assertValidParameters } from '../analysis/parameters.js';
 import type { MazeMapFile, SimilarityTransform } from '../contracts/mazeMap.js';
-import type { TrackingParameters } from '../contracts/parameters.js';
+import type { Parameters, TrackingParameters } from '../contracts/parameters.js';
 import type {
   AutoLayer,
+  CorrectionsLayer,
+  DerivedLayer,
   SessionFile,
   VideoAnalysis,
   VideoDescriptor,
@@ -64,7 +67,8 @@ export interface SessionStoreOptions {
 export class SessionStore {
   private session: SessionFile;
   private draftMazeMap: MazeMapFile | null = null;
-  private workingTrackingParameters: TrackingParameters | null = null;
+  /** The parameters in force before the first analysis stamps them (D51). */
+  private workingParameters: Parameters | null = null;
   private mazeClicks: Record<VideoId, number> = {};
   /** Bumped whenever the whole session is replaced, so views can drop cached state. */
   private sessionEpoch = 0;
@@ -130,8 +134,13 @@ export class SessionStore {
     this.session = record.file;
     this.draftMazeMap = record.draftMazeMap;
     this.mazeClicks = { ...record.mazeClicks };
-    // Records written before this field existed simply have no override.
-    this.workingTrackingParameters = record.trackingParameters ?? null;
+    // Records written before the full working set existed carried only the
+    // tracking block; older still, nothing. Neither reverts an edited threshold.
+    this.workingParameters =
+      record.parameters ??
+      (record.trackingParameters
+        ? { ...DEFAULT_PARAMETERS, tracking: record.trackingParameters }
+        : null);
     this.sessionEpoch += 1;
     this.emit();
     return true;
@@ -142,7 +151,7 @@ export class SessionStore {
     this.closeAttachments();
     this.session = session;
     this.draftMazeMap = null;
-    this.workingTrackingParameters = null;
+    this.workingParameters = null;
     this.mazeClicks = {};
     this.sessionEpoch += 1;
     this.changed();
@@ -153,7 +162,7 @@ export class SessionStore {
     this.closeAttachments();
     this.session = createSessionFile(DEFAULT_SESSION_NAME, this.toolVersion);
     this.draftMazeMap = null;
-    this.workingTrackingParameters = null;
+    this.workingParameters = null;
     this.mazeClicks = {};
     this.sessionEpoch += 1;
     this.cancelPendingSave();
@@ -255,19 +264,77 @@ export class SessionStore {
   }
 
   /**
-   * The tracking parameters in force for the next run. D51 stamps
-   * `SessionFile.parameters` at the first *analysis* run, not the first
-   * tracking run, so until that lands these live in the autosave record
-   * beside the maze draft and the click count — remembered across a reload,
-   * not written into a downloaded session file.
+   * Replaces one video's corrections layer (D9, D25). The automatic layer is
+   * never touched; the derived cache is left for the caller to recompute.
    */
+  setCorrections(videoId: VideoId, corrections: CorrectionsLayer): void {
+    const existing = this.session.analyses[videoId];
+    if (!existing) return;
+    this.session.analyses = {
+      ...this.session.analyses,
+      [videoId]: { ...existing, corrections },
+    };
+    this.changed();
+  }
+
+  /**
+   * Writes the derived cache for one video (D52, D55). Only ever a cache: it is
+   * recomputed from `auto ⊕ corrections` on load and never treated as the truth.
+   */
+  setDerivedLayer(videoId: VideoId, derived: DerivedLayer | null): void {
+    const existing = this.session.analyses[videoId];
+    if (!existing) return;
+    this.session.analyses = {
+      ...this.session.analyses,
+      [videoId]: { ...existing, derived },
+    };
+    this.changed();
+  }
+
+  // ---- parameters (D51, D55) -------------------------------------------------
+
+  /**
+   * The parameters in force: the session file's once the first analysis run
+   * has stamped them (D51), the working set edited before that, else the
+   * defaults.
+   */
+  get parameters(): Parameters {
+    return this.session.parameters ?? this.workingParameters ?? DEFAULT_PARAMETERS;
+  }
+
+  /**
+   * Replaces the whole parameter set. Into the session file once stamped, into
+   * the working set (remembered across a reload, not written into a downloaded
+   * file) before that. An invalid set is refused, so nothing invalid is hashed.
+   */
+  setParameters(next: Parameters): void {
+    assertValidParameters(next);
+    if (this.session.parameters !== null) this.session.parameters = next;
+    else this.workingParameters = next;
+    this.changed();
+  }
+
+  /**
+   * D51: the first analysis run stamps the parameters in force into the
+   * session file, so every derived layer and export from then on names the set
+   * it was made with. A no-op once stamped.
+   */
+  ensureParameters(): Parameters {
+    if (this.session.parameters === null) {
+      this.session.parameters = this.parameters;
+      this.workingParameters = null;
+      this.changed();
+    }
+    return this.session.parameters;
+  }
+
+  /** The tracking block of the parameters in force for the next run. */
   get trackingParameters(): TrackingParameters {
-    return this.workingTrackingParameters ?? DEFAULT_TRACKING_PARAMETERS;
+    return this.parameters.tracking;
   }
 
   setTrackingParameters(tracking: TrackingParameters): void {
-    this.workingTrackingParameters = tracking;
-    this.changed();
+    this.setParameters({ ...this.parameters, tracking });
   }
 
   // ---- maze -----------------------------------------------------------------
@@ -310,7 +377,7 @@ export class SessionStore {
       file: this.session,
       draftMazeMap: this.draftMazeMap,
       mazeClicks: { ...this.mazeClicks },
-      trackingParameters: this.workingTrackingParameters,
+      parameters: this.workingParameters,
       savedAt: new Date().toISOString(),
     };
   }

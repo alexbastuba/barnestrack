@@ -65,13 +65,12 @@ session it is found (D39).
   holes near the far platform edge are seen obliquely as small crescents). A baked-in animal of at
   least hole size away from the rim is flagged (unit-tested); on the sample videos there was nothing
   to flag.
-- **Edited tracking parameters are not in the session file.** D51 stamps `SessionFile.parameters` at
-  the first *analysis* run, not the first tracking run, so until the analysis engine lands there is
-  nowhere in the contract for a tracking threshold the user changed to live. It is kept in the
-  browser's autosave record instead, beside the maze draft and the click count: it survives a reload
-  but a session file saved, reset and loaded again comes back at the defaults. The automatic layer's
-  `parametersHash` still records *which* parameters produced it, so a mismatch is detectable even
-  though the values themselves are not yet in the file. Closes when chunk 5 stamps `parameters`.
+- **Parameters edited before the first analysis are not in the session file.** D51 stamps
+  `SessionFile.parameters` at the first analysis run, so a threshold changed before any video has
+  been analysed lives in the browser's autosave record, beside the maze draft and the click count:
+  it survives a reload, but a session file saved, reset and loaded again before any analysis comes
+  back at the defaults. Once a video has been analysed every edit goes into the file. The
+  automatic layer's `parametersHash` records which tracking parameters produced it either way.
 - **A reload during a tracking pass loses the pass, silently.** No run state is persisted, so a video
   whose pass was interrupted by a reload comes back simply "not tracked" rather than saying that a
   run was interrupted. The guarantee that matters holds — the automatic layer is written once, at the

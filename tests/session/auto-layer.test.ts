@@ -141,11 +141,14 @@ describe('working tracking parameters', () => {
     expect(reloaded.trackingParameters.minBlobArea_cm2).toBe(6.5);
   });
 
-  it('is not written into the portable session file, which has no home for it yet (D51)', () => {
+  it('is not written into the portable session file until the first analysis stamps it (D51)', () => {
     const store = storeWithOneVideo();
     store.setTrackingParameters({ ...DEFAULT_TRACKING_PARAMETERS, minBlobArea_cm2: 6.5 });
     expect(store.current.parameters).toBeNull();
     expect(serializeSessionFile(store.current)).not.toContain('6.5');
+    store.ensureParameters();
+    expect(store.current.parameters?.tracking.minBlobArea_cm2).toBe(6.5);
+    expect(serializeSessionFile(store.current)).toContain('6.5');
   });
 });
 

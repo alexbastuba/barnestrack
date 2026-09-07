@@ -9,7 +9,7 @@
  * session file.
  */
 import type { MazeMapFile } from '../contracts/mazeMap.js';
-import type { TrackingParameters } from '../contracts/parameters.js';
+import type { Parameters, TrackingParameters } from '../contracts/parameters.js';
 import type { SessionFile } from '../contracts/session.js';
 
 /** `VideoDescriptor.id`, and the key of `SessionFile.analyses`. */
@@ -28,15 +28,18 @@ export interface StoredSession {
   /** Maze-step clicks spent per video. Not part of the session file contract. */
   mazeClicks: Record<VideoId, number>;
   /**
-   * The tracking parameters in force for the next run, or null while they are
-   * still the defaults. D51 stamps `SessionFile.parameters` at the first
-   * *analysis* run, not the first tracking run, so until the analysis engine
-   * lands there is nowhere in the contract for an edited tracking parameter to
-   * live. Remembered here so a reload does not silently revert a threshold the
-   * user changed; the auto layer's `parametersHash` still records which
-   * parameters produced it.
+   * The parameters in force before the first analysis run stamps them into
+   * `SessionFile.parameters` (D51), or null while they are still the defaults.
+   * Remembered here so a reload does not silently revert a threshold the user
+   * changed before analysing anything; once stamped, the session file carries
+   * them and this is null.
    */
-  trackingParameters: TrackingParameters | null;
+  parameters: Parameters | null;
+  /**
+   * Records written by earlier builds carried only the tracking block here.
+   * Read on restore and folded into `parameters`; never written again.
+   */
+  trackingParameters?: TrackingParameters | null;
   /** ISO 8601, when this record was written. */
   savedAt: string;
 }
