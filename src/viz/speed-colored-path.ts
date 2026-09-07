@@ -4,7 +4,7 @@
  * (O9, O11), and the scale tops out at the 95th percentile so a single jump
  * cannot flatten the whole figure — the bar says so.
  */
-import { VIRIDIS } from './colormaps.js';
+import { colormapByName } from './colormaps.js';
 import { centroidPath, percentile, speedsCmPerS, trialLabel, trialSource } from './data.js';
 import { drawColorBar, drawLegend, formatNumber } from './figure.js';
 import { targetLabel } from './maze-backdrop.js';
@@ -38,6 +38,7 @@ export const speedColoredPathFigure: FigureSpec = {
   scope: 'trial',
   defaultSize: SIZE,
   unavailable: trialUnavailable,
+  options: ['colormap'],
 
   draw(ctx, data, opts) {
     drawSpatialFigure(
@@ -49,14 +50,15 @@ export const speedColoredPathFigure: FigureSpec = {
         const computed = speedOf(data);
         if (!computed) return;
         const top = Math.max(1, computed.top);
-        drawColouredPath(frame, view, computed.path, computed.speeds, VIRIDIS, {
+        const map = colormapByName(opts.colormap, 'viridis');
+        drawColouredPath(frame, view, computed.path, computed.speeds, map, {
           min: 0,
           max: top,
         });
 
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {
-          map: VIRIDIS,
+          map,
           min: 0,
           max: top,
           label: `Speed (cm/s), scale to the ${SCALE_PERCENTILE * 100}th percentile`,
@@ -71,15 +73,15 @@ export const speedColoredPathFigure: FigureSpec = {
     );
   },
 
-  describe(data): FigureDescription {
+  describe(data, options): FigureDescription {
     const computed = speedOf(data);
     if (!computed) return { title: TITLE, summary: NO_DATA_SUMMARY, columns: ['Detail'], rows: [] };
     const { source, speeds } = computed;
     const finite = speeds.filter((speed) => Number.isFinite(speed));
+    const map = colormapByName(options?.colormap, 'viridis');
     return {
       title: `${TITLE} — ${trialLabel(source.descriptor)}`,
-      summary:
-        'The body centroid coloured by speed in cm/s on a viridis scale, computed over a centred window using each frame’s own timestamp.',
+      summary: `The body centroid coloured by speed in cm/s on the ${map.name} scale, computed over a centred window using each frame’s own timestamp.`,
       columns: ['Quantity', 'Value'],
       rows: [
         ['Mean speed (cm/s)', source.analysis.derived.metrics.meanSpeed_cmPerS],

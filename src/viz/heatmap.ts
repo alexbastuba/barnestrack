@@ -8,32 +8,48 @@
  * others (D7, O11). Cells with nothing in them are left as platform, so an
  * empty region reads as empty rather than as the bottom of the scale.
  */
-import { CIVIDIS, colormapCss, reverseColormap } from './colormaps.js';
+import { colormapByName, colormapCss, reverseColormap } from './colormaps.js';
+import type { Colormap, ColormapName } from './colormaps.js';
 import type { TrialSource } from './data.js';
 import { centroidPath, trialLabel, trialSource } from './data.js';
 import { drawColorBar, drawLegend, formatNumber } from './figure.js';
 import { drawHoleRing, drawPlatform, targetLabel } from './maze-backdrop.js';
 import { drawSpatialFigure, NO_DATA_SUMMARY, trialUnavailable } from './trial-figure.js';
-import type { FigureData, FigureDescription, FigureSpec } from './types.js';
+import type { FigureData, FigureDescription, FigureOptions, FigureSpec } from './types.js';
 
 const SIZE = { width: 470, height: 500 };
 const TITLE = 'Occupancy heatmap';
 /**
- * Heatmap bin size, cm. It is printed on the figure and in `describe()`, so it
- * belongs in `Parameters` and therefore in `parameters.json` and
- * `parameters_hash` — otherwise a heatmap cannot be reproduced from an export
- * alone. TODO(chunk 5): move it into the parameter set (needs a contract field,
- * so it needs Alex's sign-off and a schema bump).
+ * Heatmap bin size, cm — the default, and a figure option the user can change.
+ *
+ * Chunk 8 left a TODO here to move it into `Parameters`, so that it would reach
+ * `parameters.json` and `parameters_hash`. D53 settled it the other way: the bin
+ * size changes no number in `trials.csv` or `events.csv`, only pixels, so it is
+ * a figure option and must *not* enter the hash — a different bin size must not
+ * make two otherwise identical analyses look like different runs. It travels in
+ * the figure's caption, its description table and its PNG filename instead, so
+ * a heatmap is still reproducible from what is printed on it.
  */
 export const DEFAULT_CELL_CM = 4;
 
+/** The bin sizes the UI offers; any positive number works. */
+export const CELL_CM_RANGE = { min: 1, max: 12, step: 1 };
+
 /**
- * Cividis read from light to dark, so an empty cell is the lightest thing on
- * the platform and a busy one the darkest. Read the usual way round, the
- * busiest cells would be almost as pale as the platform they sit on — the one
- * place a perceptually uniform map still needs turning around.
+ * The occupancy map is read from light to dark, so an empty cell is the
+ * lightest thing on the platform and a busy one the darkest. Read the usual way
+ * round, the busiest cells would be almost as pale as the platform they sit on
+ * — the one place a perceptually uniform map still needs turning around.
  */
-const OCCUPANCY_MAP = reverseColormap(CIVIDIS);
+function occupancyMap(name: ColormapName | undefined): Colormap {
+  return reverseColormap(colormapByName(name, 'cividis'));
+}
+
+/** The bin size in force: the option when it is a usable number, else the default. */
+export function cellSizeCm(options: FigureOptions | undefined): number {
+  const chosen = options?.heatmapCellSize_cm;
+  return typeof chosen === 'number' && Number.isFinite(chosen) && chosen > 0 ? chosen : DEFAULT_CELL_CM;
+}
 
 export interface OccupancyGrid {
   cellSize_cm: number;
@@ -121,6 +137,7 @@ function clampIndex(value: number, span: number): number {
 }
 
 export const heatmapFigure: FigureSpec = {
+  options: ['colormap', 'heatmapCellSize_cm'],
   id: 'heatmap',
   title: TITLE,
   scope: 'trial',
@@ -139,7 +156,8 @@ export const heatmapFigure: FigureSpec = {
         // The disc is never repainted, or it would cover its own data.
         drawPlatform(frame, view, { background: opts.background });
 
-        const grid = occupancyGrid(source);
+        const grid = occupancyGrid(source, cellSizeCm(opts));
+        const map = occupancyMap(opts.colormap);
         // reduce, not a spread: the cell count grows as 1/cellSize² and a fine
         // grid would put tens of thousands of arguments on one call.
         const hottest = grid.seconds.reduce((most, value) => Math.max(most, value), 0);
@@ -153,7 +171,7 @@ export const heatmapFigure: FigureSpec = {
           for (let column = 0; column < grid.columns; column++) {
             const value = grid.seconds[row * grid.columns + column]!;
             if (value <= 0) continue;
-            ctx.fillStyle = colormapCss(OCCUPANCY_MAP, hottest > 0 ? value / hottest : 0);
+            ctx.fillStyle = colormapCss(map, hottest > 0 ? value / hottest : 0);
             ctx.fillRect(
               view.centre.x + (column * grid.cellSize_cm - grid.radius_cm) * view.cmScale,
               view.centre.y + (row * grid.cellSize_cm - grid.radius_cm) * view.cmScale,
@@ -168,7 +186,7 @@ export const heatmapFigure: FigureSpec = {
 
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {
-          map: OCCUPANCY_MAP,
+          map,
           min: 0,
           max: Math.round(hottest * 10) / 10,
           label: `Time in a ${grid.cellSize_cm} cm cell (s)`,
@@ -192,19 +210,20 @@ export const heatmapFigure: FigureSpec = {
     );
   },
 
-  describe(data): FigureDescription {
-    return describeHeatmap(data);
+  describe(data, options): FigureDescription {
+    return describeHeatmap(data, options);
   },
 };
 
-function describeHeatmap(data: FigureData): FigureDescription {
+function describeHeatmap(data: FigureData, options?: FigureOptions): FigureDescription {
   const source = trialSource(data);
   if (!source) return { title: TITLE, summary: NO_DATA_SUMMARY, columns: ['Detail'], rows: [] };
-  const grid = occupancyGrid(source);
+  const grid = occupancyGrid(source, cellSizeCm(options));
+  const map = occupancyMap(options?.colormap);
   const occupied = grid.counts.filter((count) => count > 0).length;
   return {
     title: `${TITLE} — ${trialLabel(source.descriptor)}`,
-    summary: `Seconds spent in each ${grid.cellSize_cm} cm cell of the platform, on the cividis scale read light to dark so a busy cell is the darkest thing on the platform, with the hole ring over the top.`,
+    summary: `Seconds spent in each ${grid.cellSize_cm} cm cell of the platform, on the ${map.name} scale so a busy cell is the darkest thing on the platform, with the hole ring over the top.`,
     columns: ['Quantity', 'Value'],
     rows: [
       ['Cell size (cm)', grid.cellSize_cm],

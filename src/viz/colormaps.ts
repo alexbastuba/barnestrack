@@ -16,6 +16,22 @@ export interface Colormap {
 export const VIRIDIS: Colormap = { name: 'viridis', anchors: VIRIDIS_ANCHORS };
 export const CIVIDIS: Colormap = { name: 'cividis', anchors: CIVIDIS_ANCHORS };
 
+/** The two maps D32 names, as a figure option the user can choose between (D53). */
+export type ColormapName = 'viridis' | 'cividis';
+
+export const COLORMAPS: Record<ColormapName, Colormap> = { viridis: VIRIDIS, cividis: CIVIDIS };
+
+export const COLORMAP_NAMES: readonly ColormapName[] = ['viridis', 'cividis'];
+
+/**
+ * The chosen map, or the figure's own default when nothing is chosen — each
+ * figure keeps the default it shipped with, so an untouched control changes no
+ * pixel of what chunk 8 drew.
+ */
+export function colormapByName(name: ColormapName | undefined, fallback: ColormapName): Colormap {
+  return COLORMAPS[name ?? fallback];
+}
+
 /**
  * The same map read from the other end. An occupancy heatmap wants more time to
  * mean more ink, so that a busy cell cannot be mistaken for the empty platform

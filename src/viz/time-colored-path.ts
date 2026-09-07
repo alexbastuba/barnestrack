@@ -5,7 +5,7 @@
  * hue: viridis rises in lightness from start to finish, so it still reads dark
  * to light on a grayscale printer.
  */
-import { VIRIDIS } from './colormaps.js';
+import { colormapByName } from './colormaps.js';
 import { centroidPath, trialLabel, trialSource } from './data.js';
 import { drawColorBar, drawLegend } from './figure.js';
 import { targetLabel } from './maze-backdrop.js';
@@ -26,8 +26,10 @@ export const timeColoredPathFigure: FigureSpec = {
   scope: 'trial',
   defaultSize: SIZE,
   unavailable: trialUnavailable,
+  options: ['colormap'],
 
   draw(ctx, data, opts) {
+    const map = colormapByName(opts.colormap, 'viridis');
     drawSpatialFigure(
       ctx,
       data,
@@ -42,13 +44,13 @@ export const timeColoredPathFigure: FigureSpec = {
           view,
           path,
           path.map((point) => point.t_s),
-          VIRIDIS,
+          map,
           { min: first, max: last },
         );
 
         const bottom = frame.plot.y + frame.plot.height;
         drawColorBar(frame, {
-          map: VIRIDIS,
+          map,
           // Absolute clip times, because the scale runs from the first tracked
           // frame to the last — which is not frame zero when tracking starts late.
           min: Math.round(first * 10) / 10,
@@ -65,9 +67,10 @@ export const timeColoredPathFigure: FigureSpec = {
     );
   },
 
-  describe(data): FigureDescription {
+  describe(data, options): FigureDescription {
     const source = trialSource(data);
     if (!source) return { title: TITLE, summary: NO_DATA_SUMMARY, columns: ['Detail'], rows: [] };
+    const map = colormapByName(options?.colormap, 'viridis');
     const path = centroidPath(source.analysis);
     const first = path[0]?.t_s ?? 0;
     const last = path[path.length - 1]?.t_s ?? 0;
@@ -81,8 +84,7 @@ export const timeColoredPathFigure: FigureSpec = {
     });
     return {
       title: `${TITLE} — ${trialLabel(source.descriptor)}`,
-      summary:
-        'The body centroid coloured by elapsed time on a viridis scale: dark at the start of the clip, light at the end.',
+      summary: `The body centroid coloured by elapsed time on the ${map.name} scale: dark at the start of the clip, light at the end.`,
       columns: ['Point in the clip', 'Where the animal was'],
       rows: [
         ['Start', `${first.toFixed(1)} s, nearest hole ${nearestHoleIndex(source, path[0])}`],

@@ -7,10 +7,29 @@
  * draws comes from its `FigureData` and its `FigureOpts`.
  */
 import type { SessionFile } from '../contracts/session.js';
+import type { ColormapName } from './colormaps.js';
 
 export type ThemeName = 'light' | 'print';
 
-export interface FigureOpts {
+/**
+ * D53 figure options: settings that change only how a figure is drawn. They are
+ * never fields of `Parameters`, so they never enter `parametersHash` or an
+ * export's parameter columns — anything that changes a number in `trials.csv`
+ * or `events.csv` is a parameter, anything that changes only pixels is one of
+ * these. They travel in the figure's caption, its description table and its
+ * export filename instead, so a figure is still reproducible from what is
+ * printed on it.
+ *
+ * Every field is optional and every figure keeps the default it shipped with,
+ * so an untouched control draws exactly what chunk 8 drew.
+ */
+export interface FigureOptions {
+  colormap?: ColormapName;
+  /** Occupancy heatmap bin size in cm; `heatmap.ts` holds the 4 cm default. */
+  heatmapCellSize_cm?: number;
+}
+
+export interface FigureOpts extends FigureOptions {
   /**
    * Multiplier applied to the whole drawing. The canvas is sized
    * `width * scale` by `height * scale`; figures lay out in logical units and
@@ -78,5 +97,16 @@ export interface FigureSpec {
    */
   unavailable(data: FigureData): string | null;
   draw(ctx: CanvasRenderingContext2D, data: FigureData, opts: FigureOpts): void;
-  describe(data: FigureData): FigureDescription;
+  /**
+   * The same content as text (D37). It takes the figure options because the
+   * table must say what the canvas beside it shows: a mirror that reports the
+   * 4 cm default while the canvas is drawn at 6 cm is worse than no mirror.
+   */
+  describe(data: FigureData, options?: FigureOptions): FigureDescription;
+  /**
+   * The D53 options this figure's drawing actually reads. They go into its PNG
+   * filename, so two exports under different options cannot collide or be told
+   * apart only by their pixels. Absent for a figure that reads none.
+   */
+  options?: readonly (keyof FigureOptions)[];
 }

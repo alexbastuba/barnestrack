@@ -31,7 +31,7 @@ export function figureById(id: string): FigureSpec | undefined {
 }
 
 export { groupComparison, groupComparisonFigure } from './group-comparison.js';
-export { heatmapFigure, occupancyGrid } from './heatmap.js';
+export { CELL_CM_RANGE, DEFAULT_CELL_CM, cellSizeCm, heatmapFigure, occupancyGrid } from './heatmap.js';
 export { holeRasterFigure, rasterGeometry } from './hole-raster.js';
 export { learningCurveFigure, learningCurveSeries } from './learning-curve.js';
 export { quadrantOverlayFigure } from './quadrant-overlay.js';
@@ -41,14 +41,25 @@ export { timeColoredPathFigure } from './time-colored-path.js';
 export { trajectoryFigure } from './trajectory.js';
 
 export { DEFAULT_METRIC, METRIC_LABELS, NO_METADATA_MESSAGE } from './cohort.js';
-export { CIVIDIS, luminanceMonotone, sampleColormap, VIRIDIS } from './colormaps.js';
-export { analysedTrials, centroidPath, trialLabel, trialSource } from './data.js';
+export {
+  CIVIDIS,
+  COLORMAP_NAMES,
+  COLORMAPS,
+  colormapByName,
+  luminanceMonotone,
+  sampleColormap,
+  VIRIDIS,
+} from './colormaps.js';
+export type { Colormap, ColormapName } from './colormaps.js';
+export { analysedTrials, centroidPath, isAnalysed, trialLabel, trialSource } from './data.js';
+export type { AnalysedVideo, TrialSource } from './data.js';
 export { figurePngName, renderFigureToPng } from './figure-export.js';
 export { paletteFor, seriesColour } from './theme.js';
 export type { Palette } from './theme.js';
 export type {
   FigureData,
   FigureDescription,
+  FigureOptions,
   FigureOpts,
   FigureSize,
   FigureSpec,
