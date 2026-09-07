@@ -17,10 +17,13 @@ import { describe, expect, it } from 'vitest';
 import { SESSION_SCHEMA_VERSION } from '../../src/contracts/session.js';
 import { parseSessionDocument } from '../../src/session/session-file.js';
 import { fingerprintsMatch } from '../../src/session/attach.js';
+import { hashParameters } from '../../src/session/parameters-hash.js';
+import { trialRows } from '../../src/export/rows.js';
 import {
   EXAMPLE_SESSION_NAME,
   SAMPLE_FINGERPRINTS,
   buildExampleSession,
+  hashProblems,
 } from '../../scripts/build-example-bundle.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -86,6 +89,27 @@ describe('the committed example bundle', () => {
       expect(analysis, `no analysis for ${video.filename}`).toBeDefined();
       expect(analysis!.auto.frames.length).toBeGreaterThan(0);
     }
+  });
+
+  it('stamps hashes that are the hashes of the parameters it carries', () => {
+    const parsed = parseSessionDocument(committedSessionText());
+    if (!parsed.ok) throw new Error(parsed.message);
+
+    // Not a restatement of the builder: this recomputes from the shipped
+    // document with the app's own hasher. A fabricated hash makes trials.csv
+    // disagree with the parameters.json in the same export (D11, D12, D51).
+    expect(hashProblems(parsed.session)).toEqual([]);
+  });
+
+  it('exports a parameters hash that reconciles with its own parameters', () => {
+    const parsed = parseSessionDocument(committedSessionText());
+    if (!parsed.ok) throw new Error(parsed.message);
+    const parameters = parsed.session.parameters;
+    if (parameters === null) throw new Error('the example cohort has no parameters');
+
+    const stamped = [...new Set(trialRows(parsed.session).map((row) => row.parametersHash))];
+
+    expect(stamped).toEqual([hashParameters(parameters)]);
   });
 
   it('matches what the builder produces now, so the artifact is not stale', async () => {

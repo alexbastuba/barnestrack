@@ -131,6 +131,12 @@ export async function fetchExampleSession(
  */
 export function isSameExampleCohort(current: SessionFile, bundle: SessionFile): boolean {
   if (current.name !== bundle.name) return false;
+  // A rebuilt bundle is a different cohort even with the same three videos.
+  // Without this, someone who loaded the synthetic cohort before the demo take
+  // would click "Load example cohort", be told it is already loaded, and keep
+  // the old numbers forever — the videos and the name are identical across a
+  // rebuild, and only the tool version moves.
+  if (current.toolVersion !== bundle.toolVersion) return false;
   if (current.videos.length !== bundle.videos.length) return false;
   return current.videos.every((video, position) => {
     const other = bundle.videos[position];

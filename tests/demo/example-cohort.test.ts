@@ -189,6 +189,15 @@ describe('loadExampleCohort', () => {
 });
 
 describe('isSameExampleCohort', () => {
+  it('treats a rebuilt bundle as new, so the real take reaches a returning user', async () => {
+    const bundle = await fetchExampleSession(options());
+    // Monday's take: same three videos, same name, new outputs and tool version.
+    const rebuilt = { ...bundle, toolVersion: 'barnestrack v0.2.0 (deadbee)' };
+
+    expect(isSameExampleCohort(bundle, rebuilt)).toBe(false);
+    expect(isSameExampleCohort(bundle, bundle)).toBe(true);
+  });
+
   it('is false when the content differs even though the name matches', async () => {
     const bundle = await fetchExampleSession(options());
     const renamed = {

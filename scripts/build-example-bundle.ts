@@ -23,6 +23,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SessionFile, VideoDescriptor, VideoFingerprint } from '../src/contracts/session.js';
 import { parseSessionDocument, serializeSessionFile } from '../src/session/session-file.js';
+import { hashParameters, hashTrackingParameters } from '../src/session/parameters-hash.js';
 import { fingerprintVideo } from '../src/video/fingerprint.js';
 import { parseMp4Index } from '../src/video/mp4-index.js';
 import { syntheticSession } from '../tests/fixtures/synthetic-analysis.js';
@@ -119,14 +120,86 @@ function withRealFingerprints(
   });
 }
 
+/**
+ * Restamps the parameter hashes so they are the hashes of the parameters the
+ * bundle actually carries.
+ *
+ * The fixture ships constants (`FIXTURE_TRACKING_HASH`, `FIXTURE_PARAMETERS_HASH`)
+ * that are not the hash of anything. Shipping those would mean a `trials.csv`
+ * exported from the demo disagreeing with the `parameters.json` in the same
+ * bundle, which is the reconciliation D11 and D12 exist to provide; and chunk 6
+ * comparing `auto.parametersHash` against the tracking hash, as D51 says the key
+ * is for, would decide the cohort needs a re-track it can never run with no
+ * video attached. Same argument as the fingerprints above: derivable from data
+ * the bundle already holds, so derive it.
+ */
+function withRealHashes(session: SessionFile): SessionFile {
+  const parameters = session.parameters;
+  if (parameters === null) {
+    throw new Error('build-example-bundle: the source session has no parameters to hash.');
+  }
+  const trackingHash = hashTrackingParameters(parameters.tracking);
+  const fullHash = hashParameters(parameters);
+
+  const analyses: SessionFile['analyses'] = {};
+  for (const [videoId, analysis] of Object.entries(session.analyses)) {
+    analyses[videoId] = {
+      ...analysis,
+      auto: { ...analysis.auto, parametersHash: trackingHash },
+      derived:
+        analysis.derived === null
+          ? null
+          : {
+              ...analysis.derived,
+              quality: { ...analysis.derived.quality, parametersHash: fullHash },
+            },
+    };
+  }
+  return { ...session, analyses };
+}
+
+/** Exported so the bundle test asserts the same property the build does. */
+export function hashProblems(session: SessionFile): string[] {
+  const parameters = session.parameters;
+  if (parameters === null) return ['the session carries no parameters'];
+
+  const trackingHash = hashTrackingParameters(parameters.tracking);
+  const fullHash = hashParameters(parameters);
+  const problems: string[] = [];
+
+  for (const [videoId, analysis] of Object.entries(session.analyses)) {
+    if (analysis.auto.parametersHash !== trackingHash) {
+      problems.push(
+        `${videoId}: auto.parametersHash is ${analysis.auto.parametersHash}, ` +
+          `but parameters.tracking hashes to ${trackingHash}`,
+      );
+    }
+    const quality = analysis.derived?.quality;
+    if (quality !== undefined && quality.parametersHash !== fullHash) {
+      problems.push(
+        `${videoId}: derived.quality.parametersHash is ${quality.parametersHash}, ` +
+          `but parameters hashes to ${fullHash}`,
+      );
+    }
+  }
+  return problems;
+}
+
+function assertHashesAreReal(session: SessionFile): void {
+  const problems = hashProblems(session);
+  if (problems.length > 0) {
+    throw new Error(`build-example-bundle: unreconcilable hashes —\n  ${problems.join('\n  ')}`);
+  }
+}
+
 export async function buildExampleSession(): Promise<SessionFile> {
   const source = sourceSession();
   const fingerprints = await realFingerprints();
-  return {
+  return withRealHashes({
     ...source,
     name: EXAMPLE_SESSION_NAME,
     videos: withRealFingerprints(source.videos, fingerprints),
-  };
+  });
 }
 
 async function main(): Promise<void> {
@@ -139,6 +212,10 @@ async function main(): Promise<void> {
   if (!parsed.ok) {
     throw new Error(`build-example-bundle: the generated session is not valid — ${parsed.message}`);
   }
+
+  // Guards the real take as much as this one: a hash that is not the hash of
+  // the parameters beside it makes every export unreconcilable (D11, D12, D51).
+  assertHashesAreReal(session);
 
   const gzipped = gzipSync(Buffer.from(text, 'utf-8'), { level: 9 });
   mkdirSync(dirname(OUT_PATH), { recursive: true });
