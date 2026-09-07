@@ -225,6 +225,7 @@ export function createVideosStep(context: AppContext): Step {
       lastEpoch = store.epoch;
       rejections.length = 0;
       notes.length = 0;
+      remountExamplePanel();
     }
     const ids = store.videos.map((v) => v.id);
     if (ids.length !== cards.size || ids.some((id) => !cards.has(id))) {
@@ -372,22 +373,51 @@ export function createVideosStep(context: AppContext): Step {
   // ---- the demo state (D33) --------------------------------------------------
 
   /*
-   * Mounted here, at the end of the constructor, rather than where `pickers` is
-   * built: the panel calls `onChange` once while it is being constructed, and
-   * `cards`, `lastEpoch` and the rest of the rendering block are `const`/`let`
-   * declarations above `render`, so mounting earlier would run `render()`
-   * inside their temporal dead zone.
+   * The panel decides for itself — on construction, and after each of its own
+   * actions — whether to show its banner, its provenance line and its fetch
+   * button, by reading the store rather than being told. Nothing re-runs that
+   * when the session is replaced from somewhere else: the autosave restoring an
+   * example cohort on reload, "Load session file" in the header, or Reset. The
+   * bug is visible: load the example, reload the page, and the banner
+   * explaining how to attach a video file is gone.
+   *
+   * A fresh mount is the whole fix, since a new panel reads the new session,
+   * and `store.epoch` changes on exactly those three paths and no other — so
+   * `render()` above already knows when to do it.
+   *
+   * The one case it must not do it in is the panel's own load, which replaces
+   * the session while the user's focus is on the panel's button and while the
+   * panel is still inside `onLoad`. Tearing it out there would drop focus to
+   * <body> mid-flow and leave the panel's own `finally` writing to a detached
+   * node. The panel updates itself on that path, so while it holds focus it is
+   * left alone (D37).
+   */
+  function remountExamplePanel(): void {
+    if (examplePanel.contains(document.activeElement)) return;
+    const replacement = newExamplePanel();
+    examplePanel.replaceWith(replacement);
+    examplePanel = replacement;
+  }
+
+  function newExamplePanel(): HTMLElement {
+    return mountExampleCohortPanel({ store, announce: context.announce, onChange: render });
+  }
+
+  /*
+   * Constructed here, at the end, rather than where `pickers` is built: the
+   * panel fires `onChange` once while constructing, and `render` reads `cards`
+   * and `lastEpoch`, which are declared above it — mounting earlier ran
+   * `render()` inside their temporal dead zone.
    *
    * It goes inside `.pickers`, under the drop hint and above the video list, so
-   * it is one Tab away from the file pickers and needs no `tabindex`. The panel
-   * writes its outcomes to the shell's one live region rather than a second one
-   * of its own (D37), and `onChange` covers the cases where the store does not
-   * change — cancelled, already loaded — since `store.subscribe` in the shell
-   * already re-renders every step and the header when it does.
+   * it is one Tab from the file pickers and needs no `tabindex` of its own. The
+   * panel writes its outcomes to the shell's single live region rather than a
+   * second one (D37), and `onChange` covers the outcomes that leave the store
+   * alone — cancelled, already loaded. When the store does change, the shell's
+   * `store.subscribe` re-renders every step and the header anyway.
    */
-  pickers.append(
-    mountExampleCohortPanel({ store, announce: context.announce, onChange: render }),
-  );
+  let examplePanel = newExamplePanel();
+  pickers.append(examplePanel);
 
   return {
     id: 'videos',

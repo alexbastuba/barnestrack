@@ -217,6 +217,17 @@ session it is found (D39).
   should be contained by landmarks", against `.stepper`, on Videos, Maze and Track) are moderate
   and below the failing threshold; they are listed on every run.
 
+  **That allowlist key is stale, so the scan fails on this recorded defect as though it were new.**
+  `axe-core` names a node by the shortest selector that is unique in the document. When chunk 9b
+  wrote the key, `.table-scroll` was unique; chunk 6 then gave the same class to the review step and
+  the quality panel, so axe now reports `.maze-step > .mirror > .table-scroll` and the key no longer
+  matches. Verified pre-existing: `npx playwright test tests/browser/app-smoke.spec.ts -g "has no
+  serious or critical"` fails with exactly this selector in a worktree checked out at `6885937`,
+  before chunk 9c-a's first commit. The fix is one string —
+  `Maze:scrollable-region-focusable:.maze-step > .mirror > .table-scroll` — and it is left to the
+  owner of `tests/browser/app-smoke.spec.ts`, whose edit budget for chunk 9c-a was spent on the two
+  changes the mount forced. Fixing the container itself makes both lines moot.
+
 ## Excluded scope
 
 - **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at

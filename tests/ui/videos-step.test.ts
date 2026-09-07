@@ -12,15 +12,19 @@
  * offline in `tests/demo/` and in Chrome in `tests/browser/app-smoke.spec.ts`.
  */
 import { describe, expect, it } from 'vitest';
+import type { SessionFile, VideoDescriptor } from '../../src/contracts/session.js';
+import { EXAMPLE_SESSION_NAME } from '../../src/demo/example-cohort.js';
 import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
+import { createSessionFile } from '../../src/session/session-file.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import type { AppContext } from '../../src/ui/step.js';
+import type { Step } from '../../src/ui/step.js';
 import { createVideosStep } from '../../src/ui/videos-step.js';
 
 const TOOL_VERSION = 'barnestrack v0.0.0 (test)';
 
-function makeStep(): { body: HTMLElement; announced: string[]; store: SessionStore } {
+function makeStep(): { step: Step; body: HTMLElement; announced: string[]; store: SessionStore } {
   const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION);
   const announced: string[] = [];
   const context: AppContext = {
@@ -29,7 +33,21 @@ function makeStep(): { body: HTMLElement; announced: string[]; store: SessionSto
     announce: (message) => announced.push(message),
     showStep: () => {},
   };
-  return { body: createVideosStep(context).body, announced, store };
+  const step = createVideosStep(context);
+  return { step, body: step.body, announced, store };
+}
+
+/** The shape `replaceSession` sees when an example cohort arrives from anywhere. */
+function exampleSessionFile(): SessionFile {
+  const video: VideoDescriptor = {
+    id: 'video-test53',
+    filename: 'test53.mp4',
+    fingerprint: { byteLength: 496_723, durationSeconds: 30.2, frameCount: 905, sha256: 'a'.repeat(64) },
+    referenceResolution: { width: 640, height: 480 },
+    mazeTransform: { translateX: 0, translateY: 0, rotationDeg: 0, scale: 1 },
+    metadata: {},
+  };
+  return { ...createSessionFile(EXAMPLE_SESSION_NAME, TOOL_VERSION), videos: [video] };
 }
 
 describe('the Videos step mounts the example cohort panel', () => {
@@ -64,6 +82,44 @@ describe('the Videos step mounts the example cohort panel', () => {
     for (const selector of ['.example-banner', '.example-provenance', '.example-fetch-row']) {
       expect(body.querySelector<HTMLElement>(selector)?.hidden, selector).toBe(true);
     }
+  });
+
+  it('catches up when the session is replaced from outside the panel', () => {
+    // The autosave restoring an example cohort on reload, "Load session file"
+    // in the header, and Reset all replace the session without the panel's
+    // handlers running. Before the remount, the banner explaining how to attach
+    // a video stayed hidden through all three.
+    const { step, body, store } = makeStep();
+    expect(body.querySelector<HTMLElement>('.example-banner')?.hidden).toBe(true);
+
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+
+    expect(body.querySelectorAll('.example-cohort')).toHaveLength(1);
+    expect(body.querySelector<HTMLElement>('.example-banner')?.hidden).toBe(false);
+    expect(body.querySelector<HTMLElement>('.example-provenance')?.hidden).toBe(false);
+    expect(body.querySelector<HTMLElement>('.example-fetch-row')?.hidden).toBe(false);
+  });
+
+  it('leaves the panel in place while it holds focus', () => {
+    // The panel's own load replaces the session from inside `onLoad`, with
+    // focus on its button. Replacing it there would drop focus to <body>
+    // mid-flow and leave the panel writing to a detached node (D37).
+    const { step, body, store } = makeStep();
+    document.body.append(body);
+    const load = [...body.querySelectorAll('button')].find(
+      (button) => button.textContent === LOAD_BUTTON_LABEL,
+    );
+    const panelBefore = body.querySelector('.example-cohort');
+    load?.focus();
+    expect(panelBefore?.contains(document.activeElement)).toBe(true);
+
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+
+    expect(body.querySelector('.example-cohort')).toBe(panelBefore);
+    expect(document.activeElement).toBe(load);
+    body.remove();
   });
 
   it('gives the panel the shell live region rather than one of its own', () => {

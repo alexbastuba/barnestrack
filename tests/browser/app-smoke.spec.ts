@@ -433,8 +433,6 @@ test.describe('the whole demo flow through the shipped UI', () => {
     await page.getByRole('tab', { name: /Review/ }).click();
     const reviewPanel = page.locator('#panel-review');
     await expect(reviewPanel).toBeVisible();
-    await expect(reviewPanel.locator('.empty')).toHaveCount(0);
-    await expect(reviewPanel.locator('canvas').first()).toBeVisible();
 
     // Everything from here is chunk 7b's: the parameters panel to retune, the
     // live event count to watch, and the export button — which 7b ships as
@@ -450,6 +448,9 @@ test.describe('the whole demo flow through the shipped UI', () => {
           '7b is merged.',
       );
     }
+
+    await expect(reviewPanel.locator('.empty')).toHaveCount(0);
+    await expect(reviewPanel.locator('canvas').first()).toBeVisible();
 
     // A threshold change moves the event count (D20).
     const eventCount = reviewPanel.locator('[data-testid="event-count"]').first();
