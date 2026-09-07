@@ -1,9 +1,10 @@
 /**
  * The range each analysis parameter's slider spans, and why.
  *
- * This is the counterpart of `src/session/tracking-parameter-bounds.ts` for the
- * sixteen parameters `derive()` consumes, and it borrows that file's shape and
- * its `clampToBound` rather than inventing a second one.
+ * This is the counterpart of `TRACKING_PARAMETER_BOUNDS` in
+ * `src/analysis/tracker/params.ts` for the parameters `derive()` consumes, and
+ * it borrows that table's shape and its `clampToBound` rather than inventing a
+ * second one.
  *
  * One difference matters. A tracking bound is authoritative: a value outside it
  * is clamped and the clamped value is what the pass runs with. These bounds are
@@ -15,13 +16,17 @@
  * a number that shapes what the user can reach by dragging is still a number
  * someone has to be able to argue with.
  *
- * `gapFilling.enabled` is absent because it is a checkbox, not a slider; the
- * type says so, so it cannot be forgotten by accident.
+ * `gapFilling.enabled` and `trialCensoring.censorToCutoff` are absent because
+ * they are checkboxes, not sliders; the type says so, so neither can be
+ * forgotten by accident.
  */
 import type { AnalysisParameterPath } from '../../analysis/parameters.js';
-import type { ParameterBound } from '../../session/tracking-parameter-bounds.js';
+import type { ParameterBound } from '../../analysis/tracker/params.js';
 
-export type SliderParameterPath = Exclude<AnalysisParameterPath, 'gapFilling.enabled'>;
+export type SliderParameterPath = Exclude<
+  AnalysisParameterPath,
+  'gapFilling.enabled' | 'trialCensoring.censorToCutoff'
+>;
 
 /**
  * Keyed by every numeric analysis parameter. `Record` rather than a partial
@@ -132,6 +137,55 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     step: '5',
     reason:
       'A mouse does not sustain a metre a second; below 10 cm/s ordinary walking would be marked an outlier, and 500 is far past any real movement, where the rule stops firing at all.',
+  },
+  'strategy.spatialMaxErrors': {
+    min: 0,
+    max: 10,
+    step: '1',
+    reason:
+      'Zero makes spatial mean a faultless first approach and nothing else; past ten errors a trial that visited half the ring would still be called spatial, which is the case the rule exists to exclude (O7).',
+  },
+  'strategy.spatialMaxHoleDistance': {
+    min: 1,
+    max: 10,
+    step: '1',
+    reason:
+      'One hole either side is the tightest neighbourhood that still admits an error; ten holes is half a 20-hole ring, where the constraint excludes nothing (O7).',
+  },
+  'strategy.spatialMaxCentreCrossings': {
+    min: 0,
+    max: 5,
+    step: '1',
+    reason:
+      'Zero forbids any return through the centre before the target, which is the strictest reading of a direct approach; past five the count no longer separates a spatial search from a random one (O7).',
+  },
+  'strategy.serialMinRun': {
+    min: 2,
+    max: 10,
+    step: '1',
+    reason:
+      'Two adjacent holes in a row is a coincidence rather than a strategy, so that is the floor; ten consecutive adjacent holes is half the ring and almost no trial would qualify (O7).',
+  },
+  'strategy.centreZoneRadiusFraction': {
+    min: 0.1,
+    max: 0.9,
+    step: '0.05',
+    reason:
+      'Below a tenth of the platform radius the centre zone is smaller than the animal and is never entered; past 0.9 it reaches the hole ring and every move between two holes counts as a centre crossing (O7).',
+  },
+  'quality.goodMinPositionedFraction': {
+    min: 0.5,
+    max: 1,
+    step: '0.01',
+    reason:
+      'Below half the trial positioned, GOOD would claim more than the track supports; at 1 a single dropped frame denies a video the tier, so GOOD becomes unreachable (D30).',
+  },
+  'quality.poorMaxPositionedFraction': {
+    min: 0,
+    max: 1,
+    step: '0.01',
+    reason:
+      'Zero means no video is ever POOR; the top of the range is the whole of it because the constraint that matters — staying at or below the GOOD threshold — is enforced by `validateParameters`, not by the track (D30).',
   },
 };
 
