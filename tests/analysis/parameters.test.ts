@@ -109,7 +109,10 @@ describe('definitions', () => {
     }
     // the strategy rules cite Gawel et al. 2019, Table 1 rather than D58
     expect(PARAMETER_DEFINITIONS['strategy.serialMinRun']).toContain('Gawel et al. 2019, Table 1');
-    expect(PARAMETER_DECISIONS['strategy.serialMinRun']).toBe('O7');
+    // the decision each default *now* comes from: O7 and O10 were superseded by D58 and D60, and
+    // the panel must not send a reader to a superseded entry
+    expect(PARAMETER_DECISIONS['strategy.serialMinRun']).toBe('D58');
+    expect(PARAMETER_DECISIONS['gapFilling.enabled']).toBe('D60');
     expect(PARAMETER_DECISIONS['quality.goodMinPositionedFraction']).toBe('D30');
     expect(PARAMETER_DECISIONS['trialCensoring.censorToCutoff']).toBe('O5');
   });

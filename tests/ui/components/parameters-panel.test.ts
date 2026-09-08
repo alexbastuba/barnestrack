@@ -433,7 +433,7 @@ describe('the diff badge', () => {
     );
     const badge = container.querySelector('.diff-badge')!;
     expect(badge.textContent).toContain('−7 investigations');
-    expect(badge.textContent).toContain('strategy serial → random');
+    expect(badge.textContent).toContain('strategy unchanged');
     panel.destroy();
   });
 

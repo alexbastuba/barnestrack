@@ -81,16 +81,11 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
-`npm test` runs 1,090 unit tests. Most cover the pure layers — metrics, event detection,
-cleaning, strategy, maze geometry, the export writers, the session file and the MP4 parser; a
-smaller set covers the DOM-free parts of the interface. Sixteen skip
-without `BARNESTRACK_SAMPLE_DIR` (below); fifteen of those are the sample-video tests and one skips
-for its own reason, so pointing that variable at the clips leaves a single skip. At the time of
-writing four fail: three in
-`tests/ui/components/describe-diff.test.ts` and one in `parameters-panel.test.ts`, all pinning
-numbers and a strategy class that the search-strategy and gap-filling defaults changed on
-2026-09-07. They are the interface chunk's to re-pin and are listed here rather than quietly
-excluded.
+`npm test` runs 1,090 unit tests, all passing. Most cover the pure layers — metrics, event
+detection, cleaning, strategy, maze geometry, the export writers, the session file and the MP4
+parser; a smaller set covers the DOM-free parts of the interface. Sixteen skip without
+`BARNESTRACK_SAMPLE_DIR` (below); fifteen of those are the sample-video tests and one skips for its
+own reason, so pointing that variable at the clips leaves a single skip and 1,089 passing.
 
 Two optional extras:
 

@@ -352,7 +352,7 @@ describe('describeDiff over a real re-derivation', () => {
     expect(sentence).toContain(
       `total errors ${before.metrics.totalErrors} → ${after.metrics.totalErrors}`,
     );
-    expect(sentence).toContain('strategy serial → random');
+    expect(sentence).toContain('strategy unchanged');
   });
 
   it('reports the quadrant time, which only the quadrant span moves', () => {
@@ -364,7 +364,7 @@ describe('describeDiff over a real re-derivation', () => {
       targetQuadrant: { holeSpan: 9.5 },
     }));
     expect(after.metrics.targetQuadrantTime_s).toBeGreaterThan(before.metrics.targetQuadrantTime_s);
-    expect(describeDiff(before, after)).toContain('target quadrant time 78.21 s → 178.37 s');
+    expect(describeDiff(before, after)).toContain('target quadrant time 78.11 s → 178.27 s');
   });
 
   it('reports the smoothed path and the mean speed, which only the filter width moves', () => {
@@ -373,7 +373,7 @@ describe('describeDiff over a real re-derivation', () => {
       kinematicsSmoothingWindowFrames: 31,
     }));
     const sentence = describeDiff(before, after);
-    expect(sentence).toContain('smoothed path length 391.30 cm → 254.94 cm');
+    expect(sentence).toContain('smoothed path length 390.91 cm → 254.87 cm');
     expect(sentence).toContain('mean speed 2.19 cm/s → 1.43 cm/s');
   });
 

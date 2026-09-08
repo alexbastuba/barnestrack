@@ -20,6 +20,22 @@ session it is found (D39).
   is honest; the exported number is not obviously wrong to a reader who does not open the card.
   Smallest fix: flag when the marked frame's last positioned event point is within the entry radius
   of a hole that is not the target, naming that hole — a second branch beside the one D57 added.
+- **The two halves of the definitions panel read differently.** Since chunk 10a the 24 parameter
+  definitions end in their unit alone, while every metric definition still ends in a decision id —
+  "…never from frame 0 (seconds; O5)." — because `tests/ui/review-format.test.ts` pins
+  `METRIC_DEFINITIONS[key]` to `/\(.+; [OD]\d+\)\.$/` and that file belongs to the interface
+  chunk. A user reading the panel sees this project's internal numbering on one half and not the
+  other. Smallest fix: strip the suffixes from `METRIC_DEFINITIONS`, give `METRIC_DECISIONS` an
+  explicit table as `PARAMETER_DECISIONS` now has, and re-point that assertion.
+- **`gapFilling.enabled` is not a `trials.csv` column, though `gap_fill_max_duration_s` is.** D60
+  made the on/off switch the load-bearing one — filling is off by default — and the column set
+  carries only the ceiling it would apply if it were on. Two cohorts differing solely in that
+  setting are distinguishable by `parameters_hash` and by `parameters.json`, both of which travel
+  in every export, so nothing is unreconcilable; but a reader comparing threshold columns alone
+  sees identical rows. Not fixed here because a new column means regenerating
+  `skills/barnestrack-cohort/SKILL.md` and its binding test for a value the hash already covers.
+  Smallest fix: a `gap_fill_enabled` bool column in `thresholdColumns()`
+  (`src/export/rows.ts`) and `TRIAL_COLUMN_META`, plus that regeneration.
 - **Every maze nudge re-derives the whole cohort, from a step the user is not looking at.** The app
   shell refreshes every step on every store notification, and the Review step re-derives whatever
   the store invalidated so its figures and its export line are not left claiming that analysed
