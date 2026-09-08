@@ -1104,7 +1104,7 @@ export function createReviewStep(context: AppContext): Step {
         selectedEvent()?.holeIndex?.toString() ?? holeSelect.value,
       );
     }
-    timeline.setModel(model, store.parameters.noseConfidenceCutoff);
+    timeline.setModel(model);
     timeline.setPlayhead(playhead);
     timeline.setSelection(selectedEventId, selectedEdge);
     renderPanels();

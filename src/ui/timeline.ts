@@ -2,11 +2,11 @@
 // Copyright (c) 2025, Talmo Lab at the Salk Institute.
 /**
  * The review timeline (D24, D25, D26): stacked tracks on one shared frame
- * axis — detection state, nose confidence, events, corrections, trial
- * markers — with a zoom window, an overview strip, and a playhead. Clicking
- * any track seeks; dragging an event's edge retimes it; dragging the
- * trial-start marker moves it. Everything drawn is repeated in the DOM
- * tables of the review step (D37).
+ * axis — detection state, events, corrections, trial markers — with a zoom
+ * window, an overview strip, and a playhead. Dragging anywhere on the tracks
+ * scrubs; dragging an event's edge retimes it; dragging the trial-start marker
+ * moves it; Shift-dragging pans. Everything drawn is repeated in the DOM
+ * tables of the review step and named in the legend beneath it (D37).
  *
  * Borrowed from event-annotator: rows as a pure function of a flat event list,
  * segments and playhead in the same coordinate space, and painting a range
@@ -19,6 +19,8 @@ import { fillHatched } from '../viz/figure.js';
 import { button, el, uniqueId } from './dom.js';
 import { ACCENT, DANGER, INK, INK_SOFT } from './overlay-draw.js';
 import {
+  EVENT_BAR_BOTTOM,
+  EVENT_BAR_TOP,
   MIN_MARK_PX,
   OVERVIEW_HEIGHT,
   TIMELINE_HEIGHT,
@@ -32,6 +34,7 @@ import {
   fullWindow,
   markRect,
   panWindow,
+  sliverRect,
   spanRect,
   timeTicks,
   trackAt,
@@ -42,6 +45,7 @@ import {
   type TimelineWindow,
   type TrackLayout,
 } from './timeline-geometry.js';
+import { planEventLabels, type LabelCandidate } from './timeline-labels.js';
 import { eventAtFrame, stateAtFrame, type EventBar, type TimelineModel } from './timeline-model.js';
 
 export type EventEdge = 'start' | 'end';
@@ -58,6 +62,12 @@ export interface TimelineCallbacks {
 
 /** How near (px) a pointer must be to an edge or a marker to grab it. */
 const GRAB_PX = 6;
+
+/** One device pixel, in the CSS pixels the canvas transform draws in. */
+function devicePixels(): number {
+  const ratio = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  return 1 / ratio;
+}
 const OVERVIEW_TOP = TRACKS_HEIGHT + 4;
 
 type Drag =
@@ -71,6 +81,35 @@ const STATE_WORD: Record<string, string> = {
   ambiguous: 'ambiguous',
   not_detected: 'not detected',
 };
+
+/**
+ * What every pattern on the canvas means, in words (D26, D37). It is DOM
+ * rather than something painted into the canvas, so a screen reader reaches it
+ * and it wraps at 200 % zoom; the swatches carry the same fill *and* the same
+ * hatch as the marks they stand for, so the list reads in grayscale too.
+ */
+const LEGEND_KEYS: readonly { swatch: string; label: string }[] = [
+  { swatch: 'tracked', label: 'tracked' },
+  { swatch: 'low', label: 'low confidence' },
+  { swatch: 'ambiguous', label: 'ambiguous' },
+  { swatch: 'lost', label: 'not detected' },
+  { swatch: 'filled', label: 'filled by cleaning' },
+  { swatch: 'corrected', label: 'corrected by hand' },
+  { swatch: 'trial', label: 'trial start / end' },
+];
+
+function timelineLegend(): HTMLElement {
+  return el(
+    'ul',
+    { class: 'timeline-legend', attrs: { 'aria-label': 'What the timeline’s marks mean' } },
+    LEGEND_KEYS.map((key) =>
+      el('li', {}, [
+        el('span', { class: `legend-swatch legend-${key.swatch}`, attrs: { 'aria-hidden': 'true' } }),
+        el('span', { text: key.label }),
+      ]),
+    ),
+  );
+}
 
 export class Timeline {
   readonly element: HTMLElement;
@@ -106,7 +145,7 @@ export class Timeline {
           role: 'group',
           tabindex: '0',
           'aria-label':
-            'Timeline: detection state, nose confidence, events, corrections and trial markers on one time axis. The tables below repeat everything drawn here.',
+            'Timeline: detection state, events, corrections and trial markers on one time axis. Drag to scrub, Shift-drag to pan. The legend under it names every mark and the tables below repeat everything drawn here.',
         },
       },
       [this.canvas],
@@ -136,7 +175,7 @@ export class Timeline {
       ]),
     ]);
 
-    this.element = el('div', { class: 'timeline' }, [this.surface, controls]);
+    this.element = el('div', { class: 'timeline' }, [this.surface, controls, timelineLegend()]);
 
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -166,10 +205,9 @@ export class Timeline {
     return this.playhead;
   }
 
-  setModel(model: TimelineModel | null, noseCutoff: number): void {
+  setModel(model: TimelineModel | null): void {
     const sameLength = this.model !== null && model !== null && this.model.frameCount === model.frameCount;
     this.model = model;
-    this.noseCutoff = noseCutoff;
     if (!model) {
       this.window = { first: 0, last: 0 };
     } else if (!sameLength) {
@@ -281,9 +319,11 @@ export class Timeline {
     }
     this.drawAxis(ctx, model, w, width, TRACKS[0]!);
     this.drawStates(ctx, model, w, width, TRACKS[1]!);
-    this.drawNose(ctx, model, w, width, TRACKS[2]!);
-    this.drawEvents(ctx, model, w, width, TRACKS[3]!);
-    this.drawCorrections(ctx, model, w, width, TRACKS[4]!);
+    // Under the bars, deliberately: a full-height mark drawn over a one-frame
+    // correction would hide it, and D25 wants that correction visible at any zoom.
+    this.drawNotDetected(ctx, model, w, width);
+    this.drawEvents(ctx, model, w, width, TRACKS[2]!);
+    this.drawCorrections(ctx, model, w, width, TRACKS[3]!);
     this.drawMarkers(ctx, model, w, width);
     this.drawOverview(ctx, model, width);
     this.drawPlayhead(ctx, w, width);
@@ -321,14 +361,29 @@ export class Timeline {
   }
 
   private drawStates(ctx: CanvasRenderingContext2D, model: TimelineModel, w: TimelineWindow, width: number, track: TrackLayout): void {
+    // No word inside the bar: the row is half its old height and the legend
+    // under the timeline names every pattern in text (D26, D37).
     for (const run of model.stateRuns) {
       const rect = spanRect(run.startFrame, run.endFrame, w, width, track.y, track.height);
       if (!rect) continue;
       this.paintState(ctx, run.state, rect);
-      const word = STATE_WORD[run.state] ?? run.state;
-      if (this.fits(ctx, word, rect.width)) {
-        this.text(ctx, word, rect.x + 3, rect.y + 3, false, run.state === 'not_detected' ? '#ffffff' : INK);
-      }
+    }
+  }
+
+  /**
+   * A lost frame, at any zoom. Every `not_detected` run is also drawn as a
+   * sliver crossing all four rows in the alarm colour with a hatch, never
+   * narrower than one device pixel — at whole-clip zoom a single lost frame is
+   * a fraction of a pixel wide and would otherwise round away to nothing.
+   */
+  private drawNotDetected(ctx: CanvasRenderingContext2D, model: TimelineModel, w: TimelineWindow, width: number): void {
+    for (const run of model.stateRuns) {
+      if (run.state !== 'not_detected') continue;
+      const rect = sliverRect(run.startFrame, run.endFrame, w, width, TRACKS_HEIGHT, devicePixels());
+      if (!rect) continue;
+      ctx.fillStyle = DANGER;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      fillHatched(ctx, rect, '#ffffff', 3);
     }
   }
 
@@ -350,62 +405,21 @@ export class Timeline {
         fillHatched(ctx, rect, INK, 3);
         break;
       default:
-        ctx.fillStyle = INK;
+        // not_detected: the alarm colour, matching the full-height sliver, so
+        // the row and the sliver are one thing rather than two appearances.
+        ctx.fillStyle = DANGER;
         ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+        fillHatched(ctx, rect, '#ffffff', 3);
     }
-  }
-
-  private drawNose(ctx: CanvasRenderingContext2D, model: TimelineModel, w: TimelineWindow, width: number, track: TrackLayout): void {
-    // one bar per pixel column: the highest confidence of the frames in it; a corrected nose is a diamond
-    const span = windowSpan(w);
-    const columns = Math.max(1, Math.floor(width));
-    const perColumn = span / columns;
-    const bottom = track.y + track.height;
-    ctx.fillStyle = INK_SOFT;
-    for (let c = 0; c < columns; c++) {
-      const f0 = Math.floor(w.first + c * perColumn);
-      const f1 = Math.min(w.last, Math.floor(w.first + (c + 1) * perColumn));
-      let best = Number.NaN;
-      for (let f = f0; f <= f1; f++) {
-        const v = model.noseConfidence[f]!;
-        if (Number.isNaN(v)) continue;
-        if (Number.isNaN(best) || v > best) best = v;
-      }
-      if (Number.isNaN(best)) continue;
-      const h = Math.max(1, best * (track.height - 4));
-      ctx.fillRect(c, bottom - h, Math.max(1, width / columns), h);
-    }
-    // the cutoff (O16): dashed line with its value
-    const cutY = bottom - this.noseCutoff * (track.height - 4);
-    ctx.strokeStyle = DANGER;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.moveTo(0, cutY + 0.5);
-    ctx.lineTo(width, cutY + 0.5);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    this.text(ctx, `nose confidence · cutoff ${this.noseCutoff}`, 3, track.y + 1, false, INK_SOFT);
-    for (let f = w.first; f <= w.last; f++) {
-      if (model.noseCorrected[f] !== 1) continue;
-      const rect = markRect(f, w, width, track.y + 2, 8);
-      if (!rect) continue;
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1.5;
-      const cx = rect.x + rect.width / 2;
-      ctx.beginPath();
-      ctx.moveTo(cx, rect.y);
-      ctx.lineTo(cx + 4, rect.y + 4);
-      ctx.lineTo(cx, rect.y + 8);
-      ctx.lineTo(cx - 4, rect.y + 4);
-      ctx.closePath();
-      ctx.stroke();
-    }
-    ctx.lineWidth = 1;
   }
 
   private drawEvents(ctx: CanvasRenderingContext2D, model: TimelineModel, w: TimelineWindow, width: number, track: TrackLayout): void {
+    const barTop = track.y + EVENT_BAR_TOP;
+    const barHeight = track.height - EVENT_BAR_TOP - EVENT_BAR_BOTTOM;
+    const candidates: LabelCandidate[] = [];
+    const colours = new Map<string, string>();
     for (const ev of model.events) {
-      const rect = spanRect(ev.startFrame, ev.endFrame, w, width, track.y + 3, track.height - 6);
+      const rect = spanRect(ev.startFrame, ev.endFrame, w, width, barTop, barHeight);
       if (!rect) continue;
       const selected = ev.id === this.selectedEventId;
       // fill: investigations light, the target's investigation with a double border, the entry dark,
@@ -428,16 +442,38 @@ export class Timeline {
         ctx.strokeRect(rect.x + 3.5, rect.y + 3.5, Math.max(1, rect.width - 7), Math.max(1, rect.height - 7));
       }
       ctx.lineWidth = 1;
-      const label = `${ev.unlikely ? '! ' : ''}${ev.label}${ev.corrected ? ' user' : ''}`;
-      const short = ev.corrected ? `${ev.label}·u` : ev.label;
-      const colour = ev.kind === 'escape_entry' ? '#ffffff' : INK;
-      if (this.fits(ctx, label, rect.width)) this.text(ctx, label, rect.x + 3, rect.y + 6, true, colour);
-      else if (this.fits(ctx, short, rect.width)) this.text(ctx, short, rect.x + 3, rect.y + 6, true, colour);
+      candidates.push({
+        id: ev.id,
+        x: rect.x,
+        width: rect.width,
+        full: `${ev.unlikely ? '! ' : ''}${ev.label}${ev.corrected ? ' user' : ''}`,
+        bare: ev.label,
+      });
+      colours.set(ev.id, ev.kind === 'escape_entry' ? '#ffffff' : INK);
       if (selected && this.selectedEdge) {
         const x = this.selectedEdge === 'start' ? rect.x : rect.x + rect.width;
         ctx.fillStyle = ACCENT;
         ctx.fillRect(x - 1.5, rect.y - 2, 3, rect.height + 4);
       }
+    }
+    // Labels last, so a leader crossing a neighbouring bar is still readable.
+    const measure = (text: string, strong: boolean): number => {
+      ctx.font = `${strong ? '600 ' : ''}11px system-ui, sans-serif`;
+      return ctx.measureText(text).width;
+    };
+    for (const placement of planEventLabels(candidates, measure, { width })) {
+      const colour = colours.get(placement.id) ?? INK;
+      if (placement.kind === 'inside') {
+        this.text(ctx, placement.text, placement.x, barTop + 6, true, colour);
+        continue;
+      }
+      // Above the bar, with a tick down to the frames it names.
+      this.text(ctx, placement.text, placement.x, track.y + 1, true, INK);
+      ctx.strokeStyle = INK_SOFT;
+      ctx.beginPath();
+      ctx.moveTo(placement.barX + 0.5, track.y + 13);
+      ctx.lineTo(placement.barX + 0.5, barTop);
+      ctx.stroke();
     }
     // a live drag preview
     if (this.drag?.kind === 'edge') {

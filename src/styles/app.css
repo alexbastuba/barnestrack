@@ -1100,6 +1100,70 @@ label {
   min-width: 12rem;
 }
 
+/*
+ * What the timeline's marks mean, in words beside a swatch that carries the
+ * same fill and the same hatch as the mark itself (D26, D37) — so the row
+ * patterns no longer have to spell themselves out inside a 10 px bar.
+ */
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.375rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.timeline-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.legend-swatch {
+  width: 1.25rem;
+  height: 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  flex: none;
+}
+
+.legend-tracked {
+  background: var(--accent-soft);
+}
+
+.legend-low {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--paper-soft) 0 3px,
+    var(--ink-soft) 3px 4px
+  );
+}
+
+.legend-ambiguous {
+  background: repeating-linear-gradient(45deg, var(--line) 0 2px, var(--ink) 2px 3px);
+}
+
+.legend-lost {
+  background: repeating-linear-gradient(45deg, var(--danger) 0 2px, #ffffff 2px 3px);
+}
+
+.legend-filled {
+  background: var(--paper);
+  border-style: dashed;
+}
+
+.legend-corrected {
+  background: repeating-linear-gradient(45deg, var(--paper) 0 3px, var(--accent) 3px 4px);
+  border-color: var(--accent);
+}
+
+.legend-trial {
+  background: linear-gradient(90deg, var(--ok) 0 3px, var(--paper) 3px calc(100% - 3px), var(--ok) calc(100% - 3px) 100%);
+}
+
 .zoom-readout {
   font-size: 0.875rem;
   color: var(--ink-soft);

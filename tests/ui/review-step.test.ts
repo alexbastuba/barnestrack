@@ -279,3 +279,37 @@ describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
     expect(quality.textContent).toContain(afterReport.tier);
   });
 });
+
+describe('the timeline legend', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('names every pattern the timeline draws, in words beside a swatch', () => {
+    const step = mount().step;
+    const legend = step.body.querySelector('.timeline-legend')!;
+    expect(legend).not.toBeNull();
+    const entries = [...legend.querySelectorAll('li')].map((li) => li.textContent);
+    expect(entries).toEqual([
+      'tracked',
+      'low confidence',
+      'ambiguous',
+      'not detected',
+      'filled by cleaning',
+      'corrected by hand',
+      'trial start / end',
+    ]);
+    // Every word has a swatch, and no swatch is announced twice.
+    for (const li of legend.querySelectorAll('li')) {
+      const swatch = li.querySelector('.legend-swatch')!;
+      expect(swatch.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('sits inside the timeline, under the canvas and its controls', () => {
+    const step = mount().step;
+    const timeline = step.body.querySelector('.timeline')!;
+    expect(timeline.querySelector('.timeline-legend')).not.toBeNull();
+    expect(timeline.lastElementChild!.classList.contains('timeline-legend')).toBe(true);
+  });
+});
