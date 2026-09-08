@@ -11,12 +11,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PARAMETERS,
-  PARAMETER_DECISIONS,
   PARAMETER_DEFINITIONS,
   parameterAt,
   parameterPaths,
   validateParameters,
 } from '../../../src/analysis/parameters.js';
+import { formatParameterValue } from '../../../src/ui/components/format.js';
 import type { Parameters } from '../../../src/contracts/parameters.js';
 import {
   ANALYSIS_PARAMETER_BOUNDS,
@@ -78,10 +78,22 @@ describe('every parameter is on screen with its definition', () => {
     for (const path of paths) {
       expect(text, `${path} has no control label`).toContain(labelForPath(path));
       expect(text, `${path} has no definition`).toContain(PARAMETER_DEFINITIONS[path]);
-      const decision = PARAMETER_DECISIONS[path];
-      if (decision) {
-        expect(text, `${path} does not name its decision`).toContain(`decision ${decision}`);
-      }
+      expect(text, `${path} does not name its default`).toContain(
+        `Default ${formatParameterValue(parameterAt(DEFAULT_PARAMETERS, path))}`,
+      );
+    }
+  });
+
+  it('never shows this project’s own decision ids', () => {
+    mount();
+    // Internal bookkeeping: "Default 1.5 · decision O1" and "Hole investigation
+    // (O1)" told a neuroscientist nothing they could act on. A definition whose
+    // source is a paper names the paper in its own sentence instead.
+    const text = container.textContent ?? '';
+    expect(text).not.toMatch(/decision [OD]\d+/);
+    expect(text).not.toMatch(/decision not recorded/);
+    for (const legend of container.querySelectorAll('legend, summary')) {
+      expect(legend.textContent, 'a block title carries a decision id').not.toMatch(/\([OD]\d+\)/);
     }
   });
 
