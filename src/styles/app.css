@@ -693,11 +693,22 @@ label {
   margin-bottom: 0.75rem;
 }
 
+/*
+ * One stage on every step, sized from the video rather than from the panel:
+ * its own aspect ratio, never taller than 60 % of the viewport, centred. A
+ * fixed 26rem box letterboxed every clip and, at 70vh, left no room for the
+ * toolbar and the timeline on the same screen. `--stage-aspect` is set by
+ * CanvasView when a source arrives; 4/3 is what the sample rig films at and
+ * holds the box's shape before the first frame decodes.
+ */
 .viewport {
   position: relative;
   overflow: hidden;
-  height: 26rem;
-  max-height: 70vh;
+  height: auto;
+  aspect-ratio: var(--stage-aspect, 4 / 3);
+  max-width: 100%;
+  margin-inline: auto;
+  max-height: 60vh;
   background: #101315;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -1071,6 +1082,33 @@ label {
   gap: 0.375rem 0.5rem;
   align-items: stretch;
   margin: 0.5rem 0;
+}
+
+/*
+ * The correction workflow on one screen. Stacked, the video, the toolbar and
+ * the timeline do not fit a laptop viewport together, so a correction means
+ * scrolling between the frame and the bar that named it. Past 1200 px the
+ * toolbar moves into a column beside the video and its groups stack; the
+ * timeline stays full width below both. Narrower than that, this is today's
+ * layout — the wrapper is a plain block and the children are in source order.
+ */
+@media (min-width: 1200px) {
+  .review-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    gap: var(--gap);
+    align-items: start;
+  }
+
+  .review-stage .review-tools {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    margin: 0;
+  }
+
+  .review-stage .tool-group {
+    width: 100%;
+  }
 }
 
 .tool-group {

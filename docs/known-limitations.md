@@ -311,6 +311,17 @@ session it is found (D39).
   anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
   gated on this count, so it can enable a step early; it never blocks one wrongly.
 
+- **The Review step still does not fit one 1400 × 866 screen.** Chunk 10b put the correction
+  toolbar in a column beside the video past 1200 px, which takes its ~150 px row out of the vertical
+  stack, and capped the stage at 60 vh sized to the clip's own aspect. Measured in Chrome at
+  1400 × 866 on the example cohort: the video/toolbar row starts at y = 744 and is 623 px tall, so
+  the timeline is below the fold. The 744 px above it is the app header (212), the stepper (47), the
+  step heading (25), the "what this step does" paragraph (72), the Definitions disclosure (38), the
+  video selector row (55), the unattached-video note (36), the status line (21) and the scrubber
+  (59). Reaching one screen needs the step's preamble to collapse once the user is working and the
+  stage to drop to roughly 35 vh — both changes to what the page always shows, which is a design
+  call rather than a layout fix, so the measurement is recorded rather than chased.
+
 ## Excluded scope
 
 - **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at

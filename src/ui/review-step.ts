@@ -1078,10 +1078,11 @@ export function createReviewStep(context: AppContext): Step {
       timing,
     ]),
     note,
-    toolbar,
     status,
     scrubber.element,
-    canvasView.element,
+    // Video and toolbar side by side on a wide screen, stacked below 1200 px
+    // (app.css). The timeline stays outside, full width, on its own row.
+    el('div', { class: 'review-stage' }, [canvasView.element, toolbar]),
     queueBar,
     timeline.element,
     legend,

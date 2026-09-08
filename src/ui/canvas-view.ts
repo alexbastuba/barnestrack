@@ -123,6 +123,11 @@ export class CanvasView {
     this.frame.height = height;
     this.frame.style.width = `${width}px`;
     this.frame.style.height = `${height}px`;
+    // The stage takes the clip's own shape rather than a fixed box that
+    // letterboxes it; the height cap lives in the stylesheet.
+    if (width > 0 && height > 0) {
+      this.viewport.style.setProperty('--stage-aspect', `${width} / ${height}`);
+    }
     this.fit();
   }
 
