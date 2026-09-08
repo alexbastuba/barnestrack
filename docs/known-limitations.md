@@ -141,9 +141,10 @@ session it is found (D39).
   entry-shaped at all is an O4 question. The same rule reads a hand-marked "not visible" range of
   a second or more beside a non-target hole as entry-shaped too (test51, frames 300–320 inside the
   hole-12 visit): the visit stays one flagged investigation rather than splitting at the gap.
-  D59 widened this: a run that reaches the last frame of the clip is entry-shaped whatever its
-  duration, so test51's 0.93 s dwell at hole 19 now carries the flag too. Two of the three sample
-  clips are therefore `review` for a dwell rather than for a tracking problem.
+  D59 does not widen this: its "no minimum duration" exemption is scoped to the target hole, so a
+  short run at a non-target hole that happens to reach the last frame of the clip is not
+  entry-shaped and raises nothing. Only test53, whose run lasts 2.37 s and clears the minimum on
+  duration alone, carries the flag on the sample data.
 - **The O7 empty search still classifies as spatial under Gawel's rules.** A trial with no
   investigation and no target visit satisfies the spatial rule's three limits vacuously — 0 errors
   ≤ 2, max hole distance 0 ≤ 1, 0 crossings ≤ 0 — and D58's tighter numbers do not change that.

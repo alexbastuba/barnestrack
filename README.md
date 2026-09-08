@@ -306,12 +306,13 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   hole that map calls the target.** O4 reads an entry as a loss of detection at the target hole,
   and in these recordings the animal's rear stays visible while its head is in a hole, so a
   position is still produced. Two clips do end with the animal's head in a hole, and since D59 —
-  a run continuing to the last frame of the clip needs no minimum duration — both are read as
-  persistent escape entries when the map names the hole they actually entered, with total
-  latencies of 22.83 s (test53) and 44.04 s (test51) from trial starts at 5.00 s
-  (`prototypes/analysis/RESULTS.md`, signature checks). Under the
-  chunk-3 map, whose target is hole 7, those runs are instead investigations flagged "physically
-  unlikely — review", which is the rule saying honestly that the animal went into the wrong hole.
+  a run at the target hole continuing to the last frame of the clip needs no minimum duration —
+  both are read as persistent escape entries when the map names the hole they actually entered,
+  with total latencies of 22.83 s (test53) and 44.04 s (test51) from trial starts at 5.00 s
+  (`prototypes/analysis/RESULTS.md`, signature checks). Under the chunk-3 map, whose target is
+  hole 7, neither hole is the target: test53's 2.37 s run is long enough to be entry-shaped anyway
+  and is flagged "physically unlikely — review", while test51's 0.93 s run is not, and stays an
+  ordinary investigation.
   What is still missing is Gawel's actual criterion, the whole body inside the hole; the tracker's
   blob has no per-frame mask, so the tool uses the loss of detection as its proxy and says so.
 - **The nose is experimental.** On these re-encoded clips the tail is often below the foreground

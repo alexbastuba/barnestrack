@@ -14,7 +14,7 @@ Four defaults changed (`docs/decisions.md` D58–D61):
 | decision | change | effect on these clips |
 | --- | --- | --- |
 | **D58** search strategy | Gawel et al. 2019, Table 1: errors ≤ 2, error holes ≤ 1 from the target, 0 centre crossings, serial run ≥ 2 and not counting the target or the holes beside it | **test50 spatial → random**; test51 and test53 stay serial (their runs are 13→12→11 and 4→3→2, none adjacent to target 7) |
-| **D59** an entry to the end of the clip needs no minimum duration | `longEnough` is `toEnd \|\| duration ≥ 1.0 s` | **test51's 0.93 s run at hole 19 is now entry-shaped.** Under the recorded map (target 7) that makes its last investigation *physically unlikely — review*; under the signature check (target 19) it is a **persistent escape entry, `escaped` true, total latency 44.04 s** — the first sample clip in which this tool detects an escape |
+| **D59** an entry to the end of the clip needs no minimum duration, **at the target hole** | `longEnough` is `(toEnd && at the target) \|\| duration ≥ 1.0 s` | **test51's 0.93 s run at hole 19 is entry-shaped when hole 19 is the target.** Under the recorded map (target 7) it is not, so this clip is unchanged; under the signature check (target 19) the same run is a **persistent escape entry, `escaped` true, total latency 44.04 s** — the first sample clip in which this tool detects an escape |
 | **D60** gap filling off | `gapFilling.enabled` false | nothing: all three clips already had 0 filled frames |
 | **D61** path efficiency | Illouz et al. 2020, Fig. 1C: first→last positioned frame of the trial window ÷ smoothed path over that window | reported values move (0.02 / 0.30 / 0.16); a reported feature, not a rule input, so no classification changes |
 
@@ -126,15 +126,17 @@ the trial changed; the definition did.
 | filled frames · outliers · unfilled gaps | 0 · 0 · 1 (the cylinder frames, unbounded) |
 | quality gaps in the trial · longest | 0 · 0.00 s |
 | timebase: duplicates · drops · drift | 24 · 23 · −0.067 s (drift from the MP4 index) |
-| review flags | **`physically_unlikely_entry` @ frame 684** (new under D59); `stale_auto_layer` |
+| review flags | `stale_auto_layer` (the harness's placeholder tracking hash, above) |
 
-**D59 changes this clip.** The head-in-hole run at hole 19 is frames 726–740: 15 frames at
-14.985 fps, 0.93 s first-to-last, still under `escapeEntry.minDuration_s` = 1.0 s — but it reaches
-the last frame of the video, so it is entry-shaped whatever its duration. Hole 19 is not the target
-under the recorded map, so the last investigation (frames 684–740) is now flagged *physically
-unlikely — review* exactly as test53's is. The run's partial blobs sit 1.8 cm from the hole centre,
-inside the 2.5 cm entry radius; it was the duration convention alone that excluded it before, and
-D59 is what removed that exclusion.
+**D59 changes this clip only under a map that names hole 19.** The head-in-hole run at hole 19 is
+frames 726–740: 15 frames at 14.985 fps, 0.93 s first-to-last, under `escapeEntry.minDuration_s`
+= 1.0 s. It reaches the last frame of the video, so D59's exemption is in play — but D59 scopes that
+exemption to the target hole ("a run at the target hole … which continues to the last frame"), and
+hole 19 is not the target under the recorded map. So this table is unchanged from the chunk-6 run:
+the run stays the tail of an ordinary investigation and nothing is flagged. Move the target to 19
+(signature check below) and the same run becomes a persistent escape entry. Its partial blobs sit
+1.8 cm from the hole centre, inside the 2.5 cm entry radius; the duration convention alone excluded
+it before, and D59 removes that exclusion where the escape box actually is.
 
 The serial run is 13→12→11, and under D58 none of those holes is adjacent to target 7, so all three
 count.
@@ -165,7 +167,8 @@ count.
 Unchanged from the chunk-6 run: the last investigation (hole 2, frames 736–904) contains an
 entry-shaped run — 72 partial frames 833–904, 2.37 s to the end of the video, within 2.5 cm of
 hole 2 — and hole 2 is not the target under the recorded map, so the investigation is flagged
-"physically unlikely — review". The serial run is 4→3→2.
+"physically unlikely — review". That run lasts 2.37 s and so clears the 1.0 s minimum on its own
+duration; D59's target-scoped exemption does not enter into it. The serial run is 4→3→2.
 
 ## Signature checks (test-only: the target moved to the hole the animal ends at)
 

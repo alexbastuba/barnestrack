@@ -346,13 +346,20 @@ function classifyRun(
       },
     };
   }
-  // D59: a run that continues to the last frame of the clip needs no minimum duration. Protocol
-  // keeps the animal in the box until the trial is ended, so such a run cannot be a head-poke —
-  // and there is no later evidence that could ever contradict it.
-  const longEnough = run.toEnd || run.durationSeconds >= p.escapeEntry.minDuration_s;
+  // D59: "a run **at the target hole** … which continues to the last frame of the clip is an escape
+  // entry regardless of `escapeEntry.minDuration_s`". Protocol keeps the animal in the box until the
+  // trial is ended, so such a run cannot be a head-poke, and no later frame could contradict it.
+  //
+  // The exemption is scoped to the target because that reasoning is: away from the escape box there
+  // is no protocol keeping the animal anywhere, so a run that merely happens to touch the last frame
+  // says nothing. Unscoped, one dropped trailing frame — routine in re-encoded video — was enough to
+  // emit a 0.000 s tracking failure on the open platform, or to raise `physically_unlikely_entry` at
+  // a non-target hole and send the trial to review.
+  const atTarget = hole === g.targetIndex;
+  const longEnough = (run.toEnd && atTarget) || run.durationSeconds >= p.escapeEntry.minDuration_s;
   const entryShaped = hole >= 0 && longEnough && (run.reappear < 0 || reappearNearSameHole);
   if (entryShaped) {
-    if (hole === g.targetIndex) {
+    if (atTarget) {
       const persistent = run.toEnd || run.durationSeconds >= p.escapeEntry.persistCutoff_s;
       return {
         ...base,

@@ -239,23 +239,52 @@ describe('losses of detection (O4, D19)', () => {
     expect(notAtEnd.auto.endReason).toBe('end_of_video');
   });
 
-  it('makes a short loss away from every hole that reaches the last frame a tracking failure (D59)', () => {
-    // The consequence of D59 outside the target: `longEnough` is duration-or-to-the-end for every
-    // reading of a run, so a 0.9 s loss in the open that ends the clip is now reported as a
-    // tracking failure rather than passing unremarked. Honest, and the quality report says so.
+  it('keeps the to-the-end exemption at the target: a short loss in the open is not an event (D59)', () => {
+    // D59 scopes the exemption to the target hole. Away from the escape box there is no protocol
+    // keeping the animal anywhere, so a short loss that merely happens to touch the last frame
+    // says nothing and stays below the minimum duration. Unscoped, this emitted a tracking failure
+    // — and a single dropped trailing frame emitted one of 0.000 s.
     const away = holePoint(g, 3, 6);
+    const script = (seconds: number): Segment[] => [
+      { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
+      { kind: 'dwell', seconds: 0.5 },
+      { kind: 'lost', seconds },
+    ];
+    expect(kinds(run(script(0.9), { fps: 30 }).auto.events)).toEqual([]);
+    // one dropped frame at the end of the clip
+    expect(kinds(run(script(1 / 30), { fps: 30 }).auto.events)).toEqual([]);
+    // the same loss past the minimum duration is still a tracking failure, as it always was
+    expect(kinds(run(script(1.5), { fps: 30 }).auto.events)).toEqual(['tracking_failure@null']);
+  });
+
+  it('does not read a short to-the-end run at a non-target hole as an entry (D59)', () => {
+    // A 0.2 s run of partial detections at hole 3 that reaches the last frame: below the 1.0 s
+    // minimum and not at the target, so it is neither an escape entry nor entry-shaped, and
+    // nothing is flagged physically unlikely.
     const { auto } = run(
       [
-        { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
-        { kind: 'dwell', seconds: 0.5 },
-        { kind: 'lost', seconds: 0.9 },
+        { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+        { kind: 'dwell', hole: 3, seconds: 0.5 },
+        { kind: 'dwell', hole: 3, seconds: 0.2, state: 'low_confidence', reason: 'small_blob' },
       ],
       { fps: 30 },
     );
-    expect(kinds(auto.events)).toEqual(['tracking_failure@null']);
-    expect(auto.events[0]!.durationSeconds).toBeLessThan(
-      DEFAULT_PARAMETERS.escapeEntry.minDuration_s,
+    expect(kinds(auto.events)).toEqual(['investigation@3']);
+    expect(auto.events[0]!.evidence).not.toContain('Physically unlikely');
+    expect(auto.flags).toEqual([]);
+    expect(auto.persistentEscapeStartFrame).toBeNull();
+
+    // the same run at the target *is* an entry, however short, which is what D59 says
+    const atTarget = run(
+      [
+        { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+        { kind: 'dwell', hole: 7, seconds: 0.5 },
+        { kind: 'dwell', hole: 7, seconds: 0.2, state: 'low_confidence', reason: 'small_blob' },
+      ],
+      { fps: 30 },
     );
+    expect(kinds(atTarget.auto.events)).toEqual(['investigation@7', 'escape_entry@7']);
+    expect(atTarget.auto.endReason).toBe('escape');
   });
 
   it('reads a loss at the target of at least three seconds as persistent even when the animal reappears later', () => {

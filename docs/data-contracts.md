@@ -435,8 +435,10 @@ consumer in this repository — the XLSX writer, the cohort skill, the readme sh
 columns by header name, not by position. The argument against, which is not disposed of: unlike the
 session file, an export *is* reachable in the deployed build, so a 35-column and a 36-column
 `trials.csv` can both exist stamped `schema_version 1`, and a reader who split on commas by index
-would silently misread the older one. **Alex's call**; a bump to 2 is the standing rule and is one
-line here plus `src/contracts/exportRows.ts`.
+would silently misread the older one. **The conclusion is that 1 stands**: `target_hole` is purely
+additive, every consumer keys on header names, and every row already carries `tool_version` and
+`parameters_hash`, which distinguish the two files for anyone reconciling them. A version bump
+signals a breaking change, and there is none here.
 
 ### `trials.csv` — one row per trial
 
