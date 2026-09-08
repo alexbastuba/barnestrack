@@ -336,6 +336,10 @@ function logoMark(): SVGSVGElement {
   svg.setAttribute('height', '32');
   svg.setAttribute('class', 'logo');
   svg.setAttribute('role', 'img');
+  // Both the label and the <title>, byte-identical: the title is what an SVG
+  // reader looks for, the aria-label is what an accessibility tree check looks
+  // for, and neither on its own satisfies both (D37, D41).
+  svg.setAttribute('aria-label', 'BarnesTrack');
   const title = document.createElementNS(ns, 'title');
   title.textContent = 'BarnesTrack';
   svg.append(title);

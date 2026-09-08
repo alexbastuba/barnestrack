@@ -7,6 +7,7 @@
  * hashing the bytes both happen locally, and the card says so (D2).
  */
 import type { VideoDescriptor, VideoMetadata } from '../contracts/session.js';
+import { mountExampleCohortPanel } from '../demo/example-cohort-ui.js';
 import { inspectFile, REENCODE_HINT } from '../session/intake.js';
 import type { VideoId } from '../session/stored.js';
 import { byteSourceFromBlob } from '../video/byte-source.js';
@@ -224,6 +225,7 @@ export function createVideosStep(context: AppContext): Step {
       lastEpoch = store.epoch;
       rejections.length = 0;
       notes.length = 0;
+      remountExamplePanel();
     }
     const ids = store.videos.map((v) => v.id);
     if (ids.length !== cards.size || ids.some((id) => !cards.has(id))) {
@@ -367,6 +369,65 @@ export function createVideosStep(context: AppContext): Step {
   function capitalise(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
+
+  // ---- the demo state (D33) --------------------------------------------------
+
+  /*
+   * The panel decides for itself — on construction, and after each of its own
+   * actions — whether to show its banner, its provenance line and its fetch
+   * button, by reading the store rather than being told. Nothing re-runs that
+   * when the session is replaced from somewhere else: the autosave restoring an
+   * example cohort on reload, "Load session file" in the header, or Reset. The
+   * bug is visible: load the example, reload the page, and the banner
+   * explaining how to attach a video file is gone.
+   *
+   * A fresh mount is the whole fix, since a new panel reads the new session,
+   * and `store.epoch` changes on exactly those three paths and no other — so
+   * `render()` above already knows when to do it.
+   *
+   * The one case it must not do it in is the panel's own load, which replaces
+   * the session from inside `onLoad` and then writes the outcome to its status
+   * line in the `finally`. Tearing it out there sends that sentence to a
+   * detached node, so the panel on the page ends up with an empty status line
+   * while the shell's live region announces the outcome — the on-screen half of
+   * D37 silently missing.
+   *
+   * Focus alone does not identify that case. `onLoad` disables the button
+   * before it awaits, and a browser blurs a button it has just disabled, so by
+   * the time the 500 kB bundle has been fetched and parsed the active element
+   * is <body> even when the user started from that button. What does identify
+   * it is the disabled button itself: the panel disables its control for
+   * exactly the duration of an action and re-enables it in the same `finally`
+   * that refreshes the panel. So a disabled control means the panel is mid-flow
+   * and will update itself.
+   */
+  function remountExamplePanel(): void {
+    if (examplePanel.contains(document.activeElement)) return;
+    if (examplePanel.querySelector('button:disabled') !== null) return;
+    const replacement = newExamplePanel();
+    examplePanel.replaceWith(replacement);
+    examplePanel = replacement;
+  }
+
+  function newExamplePanel(): HTMLElement {
+    return mountExampleCohortPanel({ store, announce: context.announce, onChange: render });
+  }
+
+  /*
+   * Constructed here, at the end, rather than where `pickers` is built: the
+   * panel fires `onChange` once while constructing, and `render` reads `cards`
+   * and `lastEpoch`, which are declared above it — mounting earlier ran
+   * `render()` inside their temporal dead zone.
+   *
+   * It goes inside `.pickers`, under the drop hint and above the video list, so
+   * it is one Tab from the file pickers and needs no `tabindex` of its own. The
+   * panel writes its outcomes to the shell's single live region rather than a
+   * second one (D37), and `onChange` covers the outcomes that leave the store
+   * alone — cancelled, already loaded. When the store does change, the shell's
+   * `store.subscribe` re-renders every step and the header anyway.
+   */
+  let examplePanel = newExamplePanel();
+  pickers.append(examplePanel);
 
   return {
     id: 'videos',

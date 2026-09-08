@@ -16,9 +16,11 @@ on or is derived from (D38).
     device-pixel-ratio backing store — `src/ui/canvas-view.ts`, `src/maze/view-transform.ts`.
   - Borrowed, from `slp-viewer`: the worker-side demux/decode core — `src/video/track-worker.ts`,
     `src/video/decoder.ts`, `src/video/mp4-index.ts`.
+  - Borrowed, from `event-annotator`: the row model and the paint-style editing operations —
+    `src/session/corrections.ts`, `src/ui/timeline-model.ts`, `src/ui/timeline.ts`,
+    `src/ui/review-step.ts`.
   - Ideas only, no code: quality tiers (`quality-review-tool`), re-encode guidance
-    (`encoding-helper`), and `event-annotator`, considered for the event list's row model and edit
-    operations; no code used as of this commit.
+    (`encoding-helper`).
   - Not used: `webcam-pose-tracking`, `pose-subspace-analysis`, `salk-signature`.
 - **Source:** https://github.com/talmolab/vibes, commit `d9410fa`.
 - **Licence:** BSD 3-Clause.
