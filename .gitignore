@@ -9,3 +9,7 @@ notes/
 test-results/
 playwright-report/
 prototypes/tracker/out/
+
+# Written deliberately in the last chunk of the project; until then a `git add -A`
+# must not sweep the draft in. Remove this line when it is committed on purpose.
+AI_NOTES.md
