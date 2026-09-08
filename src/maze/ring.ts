@@ -129,7 +129,11 @@ export function targetClickOutcome(
 ): TargetClickOutcome {
   if (currentTarget === null) return { kind: 'set', holeIndex: clickedIndex };
   if (currentTarget === clickedIndex) return { kind: 'unchanged' };
-  const holes = clickedIndex - currentTarget;
+  // The short way round: turning 18 of 20 holes forward and 2 back land the
+  // ring in the same place, and 2 is what the user watches happen — so it is
+  // also what the announcement must say (D37).
+  const half = Math.floor(n / 2);
+  const holes = ((((clickedIndex - currentTarget) % n) + n + half) % n) - half;
   return { kind: 'turn', holes, degrees: (holes * 360) / n };
 }
 

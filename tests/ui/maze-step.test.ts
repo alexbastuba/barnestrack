@@ -112,6 +112,33 @@ describe('clicking the target hole (D49)', () => {
     return { x: m.platform.cx + radius * Math.cos(angle), y: m.platform.cy + radius * Math.sin(angle) };
   }
 
+  it('names the shared target on the first click of a map nobody has finished', () => {
+    document.body.replaceChildren();
+    // No map at all: the one created from the rim clicks carries `target: 0` as
+    // the contract's placeholder, and the first target click must name a hole
+    // rather than turn the ring onto hole 0.
+    const { step, store } = mount({ ...session(), mazeMap: null });
+    const circle = mazeMap().platform;
+
+    pressButton(step, 'Click 3 points on the platform edge');
+    for (const angle of [0, 120, 240]) {
+      const radians = (angle * Math.PI) / 180;
+      clickAt(step, {
+        x: circle.cx + circle.r * Math.cos(radians),
+        y: circle.cy + circle.r * Math.sin(radians),
+      });
+    }
+    expect(store.workingMazeMap).not.toBeNull();
+    expect(store.workingMazeMap!.target.holeIndex).toBe(0);
+
+    pressButton(step, 'Click the target hole');
+    clickAt(step, holePoint(6));
+
+    expect(store.workingMazeMap!.target.holeIndex).toBe(6);
+    // Naming the number is not a rotation: this video's placement is untouched.
+    expect(store.current.videos[0]!.mazeTransform.rotationDeg).toBe(0);
+  });
+
   it('names the shared target on the first click and turns only the second video’s ring on the next', () => {
     document.body.replaceChildren();
     const { step, store } = mount(session([video(), second()]));

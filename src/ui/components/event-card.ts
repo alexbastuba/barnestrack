@@ -150,8 +150,9 @@ export function createEventCard(
       ' ',
       // A kept event is the user's, but it says the same thing the tool did.
       // The word is there for the same reason "user" is: never colour alone.
-      corrected && isConfirmed(event) ? el('span', { class: 'badge badge-ok', text: 'confirmed' }) : false,
-      ' ',
+      ...(corrected && isConfirmed(event)
+        ? [el('span', { class: 'badge badge-ok', text: 'confirmed' }), ' ']
+        : []),
     ]);
 
     // Spans, not a <dl>: a button may contain phrasing content only, and its

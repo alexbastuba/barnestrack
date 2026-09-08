@@ -36,9 +36,9 @@ The work is four steps, and the page says the same thing at the top of each one:
    and everything is recomputed from both." A timeline of the trial with every correction on it, the
    evidence behind each event, a metrics card and a quality summary. Six of the thresholds are
    editable there with a live recompute of what changing one does; the full parameters panel, the
-   figures and the export bundle land in a later release. An event that is right as it stands is
-   kept with one key (K): it is recorded as the user's, with no change to its values, and leaves the
-   list of events to check.
+   figures and the export bundle land in a later release. An investigation that is right as it
+   stands is kept with one key (K): it is recorded as the user's, with the same hole and frames the
+   tool found, and leaves the list of events to check.
 
 Three things shape everything else:
 

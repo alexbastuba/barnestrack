@@ -449,7 +449,24 @@ export function createReviewStep(context: AppContext): Step {
       context.announce('Nothing to check on this video.');
       return;
     }
-    const ev = analysis.events.find((candidate) => candidate.id === next);
+    // Nothing is scrolled: the user is looking at the video, and the strip
+    // under it now says which event this is. Scrolling the event card into
+    // view took the page away from the frame the decision is made on.
+    selectQueued(next, true);
+  }
+
+  /**
+   * Selects a queued event by id, seeks to it and — unless the caller has
+   * already said something — announces where it sits in the queue.
+   *
+   * The announcement is the position alone. The strip is a live region and has
+   * just said which event this is; saying it again here in different words made
+   * one keypress two utterances for a screen-reader user. `keepSelected` passes
+   * `false` for the same reason: its own commit message has just been spoken.
+   */
+  function selectQueued(eventId: string, announce: boolean): void {
+    const ids = queue();
+    const ev = analysis?.events.find((candidate) => candidate.id === eventId);
     if (!ev) return;
     selectedEventId = ev.id;
     selectedEdge = null;
@@ -457,14 +474,7 @@ export function createReviewStep(context: AppContext): Step {
     seek(positionOfFrame(ev.startFrame), false);
     renderEventsTable();
     renderQueue();
-    // Nothing is scrolled: the user is looking at the video, and the strip
-    // under it now says which event this is. Scrolling the event card into
-    // view took the page away from the frame the decision is made on.
-    //
-    // The announcement is the position alone. The strip is a live region and
-    // has just said which event this is; saying it again here in different
-    // words made one keypress two utterances for a screen-reader user.
-    context.announce(`${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`);
+    if (announce) context.announce(`${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`);
   }
 
   /**
@@ -502,7 +512,12 @@ export function createReviewStep(context: AppContext): Step {
     queueNext.disabled = count === 0;
 
     const ev = selectedEvent();
-    keepButton.disabled = ev === null || analysis === null;
+    // Investigations only: see `keepSelected`.
+    keepButton.disabled = ev === null || analysis === null || ev.kind !== 'investigation';
+    keepButton.title =
+      ev !== null && ev.kind !== 'investigation'
+        ? `An ${KIND_WORDS[ev.kind]} cannot be kept: confirming it would recompute the distances it was judged on.`
+        : '';
     const line = ev
       ? describeCurrentEvent(ev)
       : `${describeQueue(count)} — press ] or click an event on the timeline`;
@@ -563,6 +578,18 @@ export function createReviewStep(context: AppContext): Step {
       context.announce('Select an event first (click a bar on the timeline, or press E).');
       return;
     }
+    if (ev.kind !== 'investigation') {
+      // The confirmation is an edit, and an edit is re-measured over its span.
+      // On an escape entry or a tracking failure — spans that are mostly
+      // unpositioned — that re-measurement does not reproduce the automatic
+      // `point_used` and distances, so "confirmed, no change" would be a lie in
+      // `events.csv`. Refused until the engine can carry those through
+      // (docs/known-limitations.md).
+      context.announce(
+        `Only an investigation can be kept as it is. Keeping this ${KIND_WORDS[ev.kind]} would recompute the point and the distances it was judged on, so the exported numbers would change under a note saying they had not.`,
+      );
+      return;
+    }
     // Taken *before* the commit: afterwards this event is no longer in the
     // queue, and `stepQueue` would restart at the head rather than move on.
     const following = stepQueue(queue(), ev.id, 1);
@@ -579,21 +606,7 @@ export function createReviewStep(context: AppContext): Step {
       context.announce('Kept. Nothing left to check on this video.');
       return;
     }
-    selectQueued(following);
-  }
-
-  /** Selects a queued event by id, seeks to it and says where it sits in the queue. */
-  function selectQueued(eventId: string): void {
-    const ids = queue();
-    const ev = analysis?.events.find((candidate) => candidate.id === eventId);
-    if (!ev) return;
-    selectedEventId = ev.id;
-    selectedEdge = null;
-    timeline.setSelection(ev.id, null);
-    seek(positionOfFrame(ev.startFrame), false);
-    renderEventsTable();
-    renderQueue();
-    context.announce(`${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`);
+    selectQueued(following, false);
   }
 
   function deleteSelected(): void {
@@ -1516,9 +1529,11 @@ export function createReviewStep(context: AppContext): Step {
         el('td', {
           text:
             ev.source === 'corrected'
-              ? ev.autoShadow
-                ? `user (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
-                : 'user'
+              ? isConfirmed(ev)
+                ? 'user · confirmed, no change'
+                : ev.autoShadow
+                  ? `user (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
+                  : 'user'
               : 'auto',
         }),
         el('td', { text: unlikely.has(ev.id) ? 'physically unlikely — review' : '' }),

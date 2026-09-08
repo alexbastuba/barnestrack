@@ -184,6 +184,17 @@ describe('targetClickOutcome (D49)', () => {
     expect(targetClickOutcome(20, 13, 7)).toEqual({ kind: 'turn', holes: -6, degrees: -108 });
   });
 
+  it('names the short way round, which is the turn the user watches', () => {
+    // 1 → 19 is two holes backwards, not eighteen forwards; the ring lands in
+    // the same place either way, and the announcement says what was seen.
+    expect(targetClickOutcome(20, 1, 19)).toEqual({ kind: 'turn', holes: -2, degrees: -36 });
+    expect(targetClickOutcome(20, 19, 1)).toEqual({ kind: 'turn', holes: 2, degrees: 36 });
+    // Half a ring is unambiguous either way; it must still be a whole number of holes.
+    const half = targetClickOutcome(20, 0, 10);
+    expect(half.kind).toBe('turn');
+    if (half.kind === 'turn') expect(Math.abs(half.degrees)).toBeCloseTo(180, 9);
+  });
+
   it('turns by a multiple of one hole spacing, whatever the hole count', () => {
     for (const n of [12, 18, 20, 40]) {
       const outcome = targetClickOutcome(n, 2, 5);

@@ -14,6 +14,7 @@ import {
   addEvent,
   clearPoint,
   clearRange,
+  confirmEvent,
   correctionsAtFrame,
   deleteEvent,
   describeCorrection,
@@ -217,6 +218,58 @@ describe('event corrections', () => {
     const reverted = revertEvent(retimed, target.id);
     expect(reverted.entries).toHaveLength(0);
     expect(run(script, reverted).events).toEqual(before.events);
+  });
+
+  it('confirm an event as it stands: the user’s, the same values, and revertable', () => {
+    const before = run(script, NO_CORRECTIONS);
+    const target = before.events.find((e) => e.holeIndex === 5)!;
+    const kept = confirmEvent(
+      frozen(NO_CORRECTIONS),
+      target.id,
+      { holeIndex: target.holeIndex, startFrame: target.startFrame, endFrame: target.endFrame },
+      meta(),
+    );
+    expect(kept.entries).toHaveLength(1);
+    expect(kept.entries[0]).toMatchObject({
+      kind: 'event',
+      action: 'edit',
+      eventId: target.id,
+      source: 'user',
+      holeIndex: target.holeIndex,
+      startFrame: target.startFrame,
+      endFrame: target.endFrame,
+    });
+
+    const after = run(script, frozen(kept));
+    const confirmed = after.events.find((e) => e.id === target.id)!;
+    expect(confirmed.source).toBe('corrected');
+    expect(confirmed.holeIndex).toBe(target.holeIndex);
+    expect(confirmed.startFrame).toBe(target.startFrame);
+    expect(confirmed.endFrame).toBe(target.endFrame);
+    // The automatic values are kept beside it, and equal to it: that equality
+    // is what the UI reads back as "confirmed" — there is no stored flag.
+    expect(confirmed.autoShadow).toEqual({
+      holeIndex: target.holeIndex,
+      startFrame: target.startFrame,
+      endFrame: target.endFrame,
+    });
+    // An investigation is re-measured over the same span, so its numbers stand.
+    expect(confirmed.pointUsed).toBe(target.pointUsed);
+    expect(confirmed.minNoseDistance_cm).toEqual(target.minNoseDistance_cm);
+
+    expect(run(script, revertEvent(kept, target.id)).events).toEqual(before.events);
+  });
+
+  it('confirms an event with no hole without inventing one', () => {
+    const before = run(script, NO_CORRECTIONS);
+    const target = before.events.find((e) => e.holeIndex === 5)!;
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      target.id,
+      { holeIndex: null, startFrame: target.startFrame, endFrame: target.endFrame },
+      meta(),
+    );
+    expect(kept.entries[0]).not.toHaveProperty('holeIndex');
   });
 
   it('delete an automatic event, which lowers the error count, and revert it', () => {

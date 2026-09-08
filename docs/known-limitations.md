@@ -7,6 +7,22 @@ session it is found (D39).
 
 ## Defects
 
+- **Only an investigation can be kept, because a confirmation is re-measured.** `Keep (K)` writes an
+  event `edit`, and `applyEventCorrections` re-measures an edited event over its span: it recomputes
+  `point_used`, `min_nose_distance_cm`, `min_centroid_distance_cm` and the evidence sentence. On a
+  span that is mostly unpositioned — an escape entry or a tracking failure — that does not reproduce
+  the automatic values. Measured on the fixture cohort: keeping `auto-escape_entry-h7-f851`
+  (test53) moved `point_used` from `nose` to `centroid`, `min_nose_distance_cm` from 1.11 to null
+  and `min_centroid_distance_cm` to NaN, and dropped `nose_judged_event_fraction` from 1 to 0.857 —
+  under a note saying nothing had changed, and with D11's shadow columns covering only the hole and
+  the frames. Keep is therefore refused on those two kinds (the button is disabled and says why).
+  Even on an investigation the evidence sentence is replaced by the correction's own, so a
+  bout-merge explanation is lost from the card and from `events.csv`. The fix is in
+  `src/analysis/events.ts`: carry the target's point, distances and evidence through when an edit
+  changes neither hole nor frames.
+- **`correction_count` counts a confirmation as a correction.** A user who walks a queue of thirty
+  good investigations and keeps each one exports `correction_count = 30` in `trials.csv`, which
+  reads as thirty hand edits (D11, D26). Separating them needs the `confirmed` marker below.
 - **"Keep" is stored as an edit whose values are the automatic ones, not as a `confirmed` flag.**
   The D9 correction contract has no way to say "I looked and it is right", and adding one is a
   schema change, so `Keep (K)` writes an event `edit` carrying the event's own hole and frames. The
@@ -222,13 +238,19 @@ session it is found (D39).
   correction entry, but the recompute runs twice and the announcement reads "moved from hole 1 to
   hole 13". Picking the option with the arrows or the mouse avoids it. A fix would apply on blur or
   after a short pause.
-- **A parameter change can orphan an event correction.** Event corrections address automatic
+- **A parameter change — or turning a video's ring — can orphan an event correction.** Event corrections address automatic
   events by an id made of kind, hole and start frame, matched by exact id only since A3 (see
   `docs/data-contracts.md` §6). A change that moves an event away from the frame named in the id,
   or removes it, orphans the correction: an orphaned edit stays pinned as a corrected event
   without `autoShadow`, and if its span overlaps an automatic event both ids are named in an
   `orphaned_correction` review flag; an orphaned delete is reported as a review flag and the
-  automatic event stands. Unpinning is the user's action of removing the correction.
+  automatic event stands. Unpinning is the user's action of removing the correction. Turning a
+  video's ring is the second trigger and was added by the D49 target click: renumbering that
+  video's holes renames every automatic event on it (`auto-investigation-h6-f173` becomes
+  `…-h7-…`), so every event correction on that video is orphaned at once and one physical visit can
+  be counted twice — once as the pinned correction, once as the automatic event under its new
+  number. The Maze step's announcement now says how many corrections that affects; nothing rewrites
+  them.
 - **Repeat visits split at the merge-gap boundary.** Bouts at the same hole 0.53 s apart are two
   investigations under the 0.5 s default (test51, hole 12): the repeat-visit count is sensitive to
   the merge gap near its own value. The gap is a visible O1 parameter.

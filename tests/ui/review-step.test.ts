@@ -597,6 +597,26 @@ describe('the review queue', () => {
     expect(count()).toBe(describeQueue(before.length));
   });
 
+  it('refuses to keep an escape entry or a tracking failure, whose numbers would be recomputed', () => {
+    const video = harness.store.videos[0]!;
+    const other = harness.store
+      .analysisFor(video.id)!
+      .derived!.events.find((e) => e.kind !== 'investigation');
+    expect(other, 'the fixture has no non-investigation event').toBeDefined();
+
+    // Selecting it the way the mirror table does.
+    const row = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-events-mirror th button')].find(
+      (b) => b.getAttribute('aria-label')?.includes(`frame ${other!.startFrame}`),
+    )!;
+    row.click();
+
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Keep (K)',
+    )!;
+    expect(keep.disabled).toBe(true);
+    expect(keep.title).toContain('cannot be kept');
+  });
+
   it('names the count per video in the selector', () => {
     const select = harness.step.body.querySelector('.review-top select')!;
     const options = [...select.querySelectorAll('option')].map((o) => o.textContent);

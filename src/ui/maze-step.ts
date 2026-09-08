@@ -319,8 +319,16 @@ export function createMazeStep(context: AppContext): Step {
     turnRing(outcome.degrees);
     selection = { kind: 'hole', holeIndex: shared.target.holeIndex };
     const holes = Math.abs(outcome.holes);
+    // Turning the ring renumbers every hole in this video, and an event
+    // correction names its event by an id carrying the old hole number (A3), so
+    // say so rather than let the corrections quietly become orphans.
+    const corrections = store.analysisFor(video.id)?.corrections.entries.filter((e) => e.kind === 'event').length ?? 0;
+    const warning =
+      corrections > 0
+        ? ` ${corrections} event correction${corrections === 1 ? '' : 's'} on this video name holes by their old numbers and will be listed as no longer matching — check them on the Review step.`
+        : '';
     context.announce(
-      `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.`,
+      `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.${warning}`,
     );
   }
 
@@ -796,7 +804,7 @@ export function createMazeStep(context: AppContext): Step {
     'Target hole number',
     {
       min: '0',
-      hint: 'The shared number, the same hole in every video. Clicking a hole turns this video’s ring instead, so the number keeps its meaning.',
+      hint: 'The shared number, the same in every video; which physical hole carries it is per video. Clicking a hole turns this video’s ring instead, so the number keeps its meaning.',
     },
     (v) => {
       const map = sharedMap();
