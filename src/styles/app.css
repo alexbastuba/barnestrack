@@ -1065,6 +1065,31 @@ label {
 }
 
 /* The timeline (D24): a canvas the tables below repeat (D37). */
+/*
+ * The review queue sits directly above the timeline: how much of this video is
+ * still nobody's decision, and the two buttons that walk it.
+ */
+.review-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.queue-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.review-queue .hint {
+  flex: 1 1 18rem;
+}
+
 .timeline {
   margin: 0.75rem 0;
 }

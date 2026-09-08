@@ -19,6 +19,8 @@ export type ReviewAction =
   | 'end'
   | 'prev-flag'
   | 'next-flag'
+  | 'prev-flagged-event'
+  | 'next-flagged-event'
   | 'prev-event'
   | 'next-event'
   | 'focus-frame-field'
@@ -82,8 +84,14 @@ export const REVIEW_KEYS: readonly KeyBinding[] = [
   { keys: ['arrowright'], shift: true, when: 'no-point-tool', action: 'step-forward-10', legend: 'Shift + →', description: 'Ten frames forward' },
   { keys: ['home'], shift: false, when: 'always', action: 'home', legend: 'Home', description: 'First frame' },
   { keys: ['end'], shift: false, when: 'always', action: 'end', legend: 'End', description: 'Last frame' },
-  { keys: ['['], shift: false, when: 'always', action: 'prev-flag', legend: '[', description: 'Previous flagged run (a gap, an uncertain stretch or a review flag)' },
-  { keys: [']'], shift: false, when: 'always', action: 'next-flag', legend: ']', description: 'Next flagged run' },
+  // The queue first: an event to check is the unit of the review work, and the
+  // frame-level runs are the finer-grained pass over the same evidence. Shift
+  // takes the runs; `{` and `}` are what Shift with those keys produces on a US
+  // layout, and `[` and `]` on the layouts that shift them differently.
+  { keys: ['[', '{'], shift: true, when: 'always', action: 'prev-flag', legend: 'Shift + [', description: 'Previous flagged run (a gap, an uncertain stretch or a review flag)' },
+  { keys: [']', '}'], shift: true, when: 'always', action: 'next-flag', legend: 'Shift + ]', description: 'Next flagged run' },
+  { keys: ['['], shift: false, when: 'always', action: 'prev-flagged-event', legend: '[', description: 'Previous event to check, selected and seeked to' },
+  { keys: [']'], shift: false, when: 'always', action: 'next-flagged-event', legend: ']', description: 'Next event to check, selected and seeked to' },
   { keys: ['e'], shift: false, when: 'always', action: 'next-event', legend: 'E', description: 'Next event' },
   { keys: ['e'], shift: true, when: 'always', action: 'prev-event', legend: 'Shift + E', description: 'Previous event' },
   { keys: ['f'], shift: false, when: 'always', action: 'focus-frame-field', legend: 'F', description: 'Go to the frame-number field' },

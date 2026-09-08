@@ -14,7 +14,9 @@ import { hashParameters } from '../../src/analysis/parameters.js';
 import { CHANGE_DEBOUNCE_MS } from '../../src/ui/components/index.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
-import { markRange } from '../../src/session/corrections.js';
+import { editEvent, markRange } from '../../src/session/corrections.js';
+import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
+import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { createReviewStep } from '../../src/ui/review-step.js';
@@ -382,6 +384,92 @@ describe('dragging on the timeline', () => {
 function harnessFrameCount(step: Step): number {
   return Number(step.body.querySelector<HTMLInputElement>('.frame-range')!.max) + 1;
 }
+
+describe('the review queue', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    harness = mount();
+  });
+
+  const count = (): string => harness.step.body.querySelector('.queue-count')!.textContent!;
+  const queued = (): string[] => {
+    const video = harness.store.videos[0]!;
+    const derived = harness.store.analysisFor(video.id)!.derived!;
+    return eventsToCheck(derived.events, [], stateRuns(derived.cleanedTrack));
+  };
+
+  it('counts the events that want a human, above the timeline', () => {
+    const bar = harness.step.body.querySelector('.review-queue')!;
+    expect(bar).not.toBeNull();
+    // It is above the timeline, not inside it.
+    expect(bar.nextElementSibling!.classList.contains('timeline')).toBe(true);
+    expect(count()).toBe(describeQueue(queued().length));
+    expect(queued().length).toBeGreaterThan(0);
+  });
+
+  it('selects and seeks to a flagged event on Next flagged', () => {
+    const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Next flagged',
+    )!;
+    expect(next.disabled).toBe(false);
+    next.click();
+
+    const video = harness.store.videos[0]!;
+    const derived = harness.store.analysisFor(video.id)!.derived!;
+    const first = derived.events.find((e) => e.id === queued()[0])!;
+    expect(playheadFrame(harness.step)).toBe(first.startFrame);
+    // The card list marks the same event as the timeline's selection.
+    const selected = harness.step.body.querySelector('#review-events-mirror tr.is-selected');
+    expect(selected).not.toBeNull();
+  });
+
+  it('walks the queue forwards and backwards', () => {
+    const buttons = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')];
+    const previous = buttons.find((b) => b.textContent === 'Previous flagged')!;
+    const next = buttons.find((b) => b.textContent === 'Next flagged')!;
+    next.click();
+    const firstFrame = playheadFrame(harness.step);
+    next.click();
+    expect(playheadFrame(harness.step)).not.toBe(firstFrame);
+    previous.click();
+    expect(playheadFrame(harness.step)).toBe(firstFrame);
+  });
+
+  it('drops the count by one when an event in the queue is corrected', () => {
+    const video = harness.store.videos[0]!;
+    const before = queued();
+    expect(before.length).toBeGreaterThan(0);
+    const target = harness.store.analysisFor(video.id)!.derived!.events.find(
+      (e) => e.id === before[0],
+    )!;
+
+    // Relabelling through the same op the toolbar's hole buttons use.
+    const layer = harness.store.analysisFor(video.id)!.corrections;
+    harness.store.setCorrections(
+      video.id,
+      editEvent(
+        layer,
+        target.id,
+        { holeIndex: (target.holeIndex ?? 0) + 1 },
+        { id: 'test-relabel', timestamp: '2026-09-07T12:00:00.000Z' },
+      ),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    expect(queued().length).toBe(before.length - 1);
+    expect(count()).toBe(describeQueue(before.length - 1));
+  });
+
+  it('names the count per video in the selector', () => {
+    const select = harness.step.body.querySelector('.review-top select')!;
+    const options = [...select.querySelectorAll('option')].map((o) => o.textContent);
+    expect(options.length).toBeGreaterThan(1);
+    for (const label of options) expect(label).toMatch(/ — (nothing to check|\d+ events? to check)$/);
+  });
+});
 
 describe('the timeline legend', () => {
   beforeEach(() => {
