@@ -337,9 +337,10 @@ test.describe('the example cohort, driven through the loader module', () => {
     await loadExampleViaModule(page);
     await mountPanel(page);
 
-    // Its own controls, with the banner and fetch row showing.
+    // Its own controls, with the banner showing. The per-clip fetch button is
+    // gone: chunk 10b folded consent and all three downloads into one dialog.
     await expect(page.locator('.example-banner')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Fetch test53\.mp4/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: LOAD_BUTTON_LABEL })).toBeVisible();
 
     const failures = reportViolations('Videos+panel', await scanForViolations(page));
     expect(failures, `serious/critical violations: ${JSON.stringify(failures, null, 2)}`).toEqual(
@@ -362,6 +363,9 @@ test.describe('the example cohort, driven through the loader module', () => {
     await mountPanel(page);
 
     await page.getByRole('button', { name: LOAD_BUTTON_LABEL }).click();
+    // Chunk 10b: the load button opens the network-consent dialog first (D2),
+    // and the replace confirmation follows it.
+    await page.locator('.example-dialog .primary').click();
     const confirm = page.locator('.example-cohort .confirm');
     await expect(confirm).toBeVisible();
 
@@ -427,6 +431,8 @@ test.describe('the whole demo flow through the shipped UI', () => {
       );
     }
     await loadButton.click();
+    // Chunk 10b: consent to the one network request before it is made (D2).
+    await page.locator('.example-dialog .primary').click();
     await expect(page.locator('.video-card')).toHaveCount(3);
     await expect(page.locator('.video-card .badge')).toHaveText([
       'video not attached',

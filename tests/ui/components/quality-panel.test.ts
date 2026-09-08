@@ -64,7 +64,9 @@ describe('the three D54 numbers, read from the quality report', () => {
     const text = container.querySelector('.quality-figures')!.textContent ?? '';
     expect(text).toContain('Positioned (trial window)');
     expect(text).toContain('Positioned (whole clip)');
-    expect(text).toContain('the headline the tier is judged on (D54)');
+    expect(text).toContain('the headline the tier is judged on');
+    // Decision references stay in the comments, off the screen.
+    expect(text).not.toContain('(D54)');
   });
 
   it('prints the report’s own fields rather than deriving them again', () => {
@@ -90,7 +92,8 @@ describe('the three D54 numbers, read from the quality report', () => {
     const nose = judged.filter((event) => event.pointUsed === 'nose').length;
     const text = container.textContent ?? '';
     expect(text).toContain('Events judged on the nose');
-    expect(text).toContain(`${nose} of ${judged.length} (O16)`);
+    expect(text).toContain(`${nose} of ${judged.length}`);
+    expect(text).not.toContain('(O16)');
     expect(judged.length).toBeLessThan(f.analysis.events.length);
   });
 

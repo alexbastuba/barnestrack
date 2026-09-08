@@ -78,7 +78,7 @@ const BLOCK_LABELS: Record<string, string> = {
 };
 
 const TRACKING_NOTE =
-  'These are set on the Track step. Changing one needs a new tracking pass — the automatic track is keyed by their hash (D51) — so they are shown here for reference and cannot be edited from this step.';
+  'These are set on the Track step. Changing one needs a new tracking pass — the automatic track is keyed by their hash — so they are shown here for reference and cannot be edited from this step.';
 
 /** The top-level block a leaf path belongs to. */
 function blockOf(path: ParameterPath): string {
@@ -204,7 +204,7 @@ export function createParametersPanel(
     el('h3', { id: headingId, text: 'Parameters' }),
     el('p', {
       class: 'what',
-      text: 'Every threshold that decides a number. Change one and the events, metrics and quality report are recomputed from the same track — nothing is patched, everything is re-derived (D20).',
+      text: 'Every threshold that decides a number. Change one and the events, metrics and quality report are recomputed from the same track — nothing is patched, everything is re-derived.',
     }),
   );
 

@@ -49,7 +49,7 @@ export function createEventList(
     el('h3', { id: headingId, text: 'Events' }),
     el('p', {
       class: 'what',
-      text: 'Each event with the evidence it was decided on: where the animal was, how long it stayed, which point the distance was judged on, and — for a loss of detection — what happened either side of it (D19). Selecting an event moves the video to its first frame.',
+      text: 'Each event with the evidence it was decided on: where the animal was, how long it stayed, which point the distance was judged on, and — for a loss of detection — what happened either side of it. Selecting an event moves the video to its first frame.',
     }),
   );
 

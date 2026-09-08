@@ -178,12 +178,12 @@ export function createTrackStep(context: AppContext): Step {
         el('li', {
           text:
             'Automatic values are never overwritten: a correction is stored beside the automatic ' +
-            'layer and everything downstream is recomputed (D9, D25).',
+            'layer and everything downstream is recomputed.',
         }),
         el('li', {
           text:
             'A frame the tracker could not resolve stays visibly missing; nothing is interpolated ' +
-            'silently (D16).',
+            'silently.',
         }),
         el('li', {
           text:

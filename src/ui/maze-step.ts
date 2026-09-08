@@ -676,7 +676,7 @@ export function createMazeStep(context: AppContext): Step {
     render();
   });
 
-  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20 (O8).' }, (v) => {
+  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20.' }, (v) => {
     const n = Math.round(v);
     const before = sharedMap();
     updateMap((m) => ({
@@ -1055,7 +1055,7 @@ export function createMazeStep(context: AppContext): Step {
         el('dd', {
           text:
             'A least-squares circle through the rim points you click — three is enough — or typed ' +
-            'centre and radius. Stored in native video pixels, so zoom and pan never change it (D13, D15).',
+            'centre and radius. Stored in native video pixels, so zoom and pan never change it.',
         }),
         el('dt', { text: 'Hole ring' }),
         el('dd', {
@@ -1063,27 +1063,27 @@ export function createMazeStep(context: AppContext): Step {
             `Holes are generated, not clicked: a count (default ${DEFAULT_HOLE_COUNT}), a ring radius as a ` +
             `fraction of the platform radius (default ${DEFAULT_RING_RATIO}) and one angle. Clicking any hole sets ` +
             'that angle so the whole ring lines up. A single hole can be nudged when a maze is ' +
-            'genuinely irregular; nudged holes are marked with an asterisk (O8).',
+            'genuinely irregular; nudged holes are marked with an asterisk.',
         }),
         el('dt', { text: 'Target hole' }),
         el('dd', {
           text:
             'The escape hole. It is drawn with a double ring and the label "T", not by colour alone, ' +
-            'and it is listed in the table below (D26, D37).',
+            'and it is listed in the table below.',
         }),
         el('dt', { text: 'Calibration' }),
         el('dd', {
           text:
             'The platform diameter in centimetres is the one measurement BarnesTrack needs from you. ' +
             'Every distance threshold is stored in centimetres and converted per video from it, so ' +
-            'nothing downstream is computed until it is entered (D14, D44, O8).',
+            'nothing downstream is computed until it is entered.',
         }),
         el('dt', { text: 'Reusing the map' }),
         el('dd', {
           text:
             'One map is shared by the session. "Apply from" places it in another video by scaling for ' +
             'resolution; "Adjust" refits it from three rim clicks by translation and scale, keeping ' +
-            'the ring angle, the target and any nudges (D10, D29).',
+            'the ring angle, the target and any nudges.',
         }),
         el('dt', { text: 'Keyboard' }),
         el('dd', {

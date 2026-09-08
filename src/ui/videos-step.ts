@@ -452,30 +452,30 @@ export function createVideosStep(context: AppContext): Step {
         el('dd', {
           text:
             'The number of pictures in the file’s own sample table, in presentation order. ' +
-            'This is what "frame N" means everywhere in BarnesTrack (D7).',
+            'This is what "frame N" means everywhere in BarnesTrack.',
         }),
         el('dt', { text: 'Frame rate' }),
         el('dd', {
           text:
             'Read from the file’s own timebase and shown for orientation only. Every ' +
             'measurement uses each frame’s recorded timestamp, never frame ÷ frame rate, ' +
-            'because these clips drop and duplicate frames (D7, O11).',
+            'because these clips drop and duplicate frames.',
         }),
         el('dt', { text: 'Accepted files' }),
         el('dd', {
-          text: `MP4 containing 8-bit 4:2:0 H.264 (AVC) video (O13). Anything else is listed under "Not loaded" with the reason and this re-encode command: ${REENCODE_HINT}`,
+          text: `MP4 containing 8-bit 4:2:0 H.264 (AVC) video. Anything else is listed under "Not loaded" with the reason and this re-encode command: ${REENCODE_HINT}`,
         }),
         el('dt', { text: 'Cohort metadata' }),
         el('dd', {
           text:
             'Animal, day, trial and group are typed in, never guessed from the filename, and they ' +
-            'become columns in every export (O12).',
+            'become columns in every export.',
         }),
         el('dt', { text: 'Re-attaching' }),
         el('dd', {
           text:
             'Videos are matched by content (file size, then a SHA-256 of the bytes), never by name, ' +
-            'so a renamed copy re-attaches and a different file with a familiar name does not (D27).',
+            'so a renamed copy re-attaches and a different file with a familiar name does not.',
         }),
       ]),
     ],

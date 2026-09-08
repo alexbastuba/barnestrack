@@ -1624,9 +1624,9 @@ export function createReviewStep(context: AppContext): Step {
       'Every correction is stored beside the automatic values and everything is recomputed from both.',
     definitions: () => [
       el('ul', {}, [
-        el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item (D9, D20, D25).' }),
-        el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user" (D16, D26).' }),
-        el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate (D7).' }),
+        el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item.' }),
+        el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user".' }),
+        el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate.' }),
         el('li', { text: 'Every threshold and metric shows its definition and the decision it comes from beside its control.' }),
       ]),
     ],

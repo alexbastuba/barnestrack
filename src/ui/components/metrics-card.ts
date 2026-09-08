@@ -141,42 +141,42 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: formatTimeAndFrame(metrics.trialStart_s, startFrame),
       frame: startFrame,
       definition:
-        'The first frame tracked confidently, mouse-sized and inside the platform, after every oversized-foreground frame that precedes it — the start cylinder or the experimenter\u2019s hand. No acclimation delay is subtracted, and the proposal can be moved by hand (O5).',
-      note: trial.startSource === 'corrected' ? 'set by hand' : 'proposed automatically (O5)',
+        'The first frame tracked confidently, mouse-sized and inside the platform, after every oversized-foreground frame that precedes it — the start cylinder or the experimenter\u2019s hand. No acclimation delay is subtracted, and the proposal can be moved by hand.',
+      note: trial.startSource === 'corrected' ? 'set by hand' : 'proposed automatically',
     },
     {
       name: 'Trial end',
       value: formatTimeAndFrame(trial.endTime_s, endFrame),
       frame: endFrame,
-      definition: `The trial ended because ${END_REASON_WORDS[trial.endReason] ?? trial.endReason} (O4, O5).`,
+      definition: `The trial ended because ${END_REASON_WORDS[trial.endReason] ?? trial.endReason}.`,
     },
     {
       name: 'Primary latency',
       value: formatSeconds(metrics.primaryLatency_s),
       frame: target?.startFrame ?? null,
       definition:
-        'Trial start to the first target event of either kind — the first investigation of the target hole (O3), or the escape entry when the animal went in without a detected investigation, so primary latency never exceeds total latency. Blank when the target is never reached.',
+        'Trial start to the first target event of either kind — the first investigation of the target hole, or the escape entry when the animal went in without a detected investigation, so primary latency never exceeds total latency. Blank when the target is never reached.',
     },
     {
       name: 'Total latency',
       value: formatSeconds(metrics.totalLatency_s),
       frame: escape?.startFrame ?? null,
       definition:
-        'Trial start to the first lost frame of the escape entry that ended the trial. Blank when the trial was cut off before an escape (O4, O5).',
+        'Trial start to the first lost frame of the escape entry that ended the trial. Blank when the trial was cut off before an escape.',
     },
     {
       name: 'Primary errors',
       value: formatCount(metrics.primaryErrors),
       frame: target?.startFrame ?? null,
       definition:
-        'Investigations of non-target holes before the first target investigation, repeat visits included (O2).',
+        'Investigations of non-target holes before the first target investigation, repeat visits included.',
     },
     {
       name: 'Total errors',
       value: formatCount(metrics.totalErrors),
       frame: startFrame,
       definition:
-        'Investigations of non-target holes over the whole trial, repeat visits included; the target is never an error (O2).',
+        'Investigations of non-target holes over the whole trial, repeat visits included; the target is never an error.',
     },
     {
       name: 'Path length (raw)',
@@ -190,7 +190,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: formatCm(metrics.pathLengthSmoothed_cm),
       frame: startFrame,
       definition:
-        'The same sum over the median-filtered centroid positions, which is the path length the mean speed is computed from (O9).',
+        'The same sum over the median-filtered centroid positions, which is the path length the mean speed is computed from.',
       also: PARAMETER_DEFINITIONS.kinematicsSmoothingWindowFrames,
     },
     {
@@ -198,14 +198,14 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: formatSpeed(metrics.meanSpeed_cmPerS),
       frame: startFrame,
       definition:
-        'Smoothed path length divided by the time actually covered by consecutive positioned frames — not by the trial duration, so gaps do not depress it (O9).',
+        'Smoothed path length divided by the time actually covered by consecutive positioned frames — not by the trial duration, so gaps do not depress it.',
     },
     {
       name: 'Target quadrant time',
       value: formatSeconds(metrics.targetQuadrantTime_s),
       frame: startFrame,
       definition:
-        'Time inside the target quadrant during the trial, summed over the frames whose centroid lies in the sector (O6).',
+        'Time inside the target quadrant during the trial, summed over the frames whose centroid lies in the sector.',
       also: PARAMETER_DEFINITIONS['targetQuadrant.holeSpan'],
       note: `${formatPercent(kinematics.targetQuadrantFraction)} of the tracked time`,
     },
@@ -214,7 +214,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: metrics.escaped ? 'yes' : 'no',
       frame: escape?.startFrame ?? null,
       definition:
-        'Whether a persistent escape-box entry was detected. False when the trial was cut off instead (O4, O5).',
+        'Whether a persistent escape-box entry was detected. False when the trial was cut off instead.',
     },
     {
       name: 'Status',
@@ -229,14 +229,14 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       value: formatPercent(metrics.trackedFraction),
       frame: startFrame,
       definition:
-        'Fraction of the frames between trial start and trial end whose detection state is tracked. Judged over the trial window, not the whole clip (D54).',
+        'Fraction of the frames between trial start and trial end whose detection state is tracked. Judged over the trial window, not the whole clip.',
     },
     {
       name: 'Corrections applied',
       value: formatCount(metrics.correctionCount),
       frame: null,
       definition:
-        'How many human corrections this trial carries. Corrections are additive: the automatic layer is never overwritten (D9, D25).',
+        'How many human corrections this trial carries. Corrections are additive: the automatic layer is never overwritten.',
       note: `${analysis.correctionsApplied.point} point, ${analysis.correctionsApplied.range} range, ${analysis.correctionsApplied.event} event`,
     },
   ];

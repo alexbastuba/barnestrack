@@ -201,7 +201,7 @@ export function createReviewFigures(
 
   const optionsNote = el('p', {
     class: 'hint',
-    text: 'These change how a figure is drawn, never a number. They are figure options, not parameters, so they are not in the parameters hash or the export (D53); each figure names the ones it uses in its caption and in the PNG’s filename.',
+    text: 'These change how a figure is drawn, never a number. They are figure options, not parameters, so they are not in the parameters hash or the export; each figure names the ones it uses in its caption and in the PNG’s filename.',
   });
 
   const trialHeading = el('h4', { text: 'This video' });
