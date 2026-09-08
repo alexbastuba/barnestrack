@@ -110,8 +110,14 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   });
   const consentConfirm = button('Load the example and fetch the clips', () => {
     closeConsent();
-    void onLoad();
+    void onLoad(true);
   }, { class: 'primary' });
+  // D33 keeps the results reachable with no network at all: the bundle is
+  // local, and this is the button that delivers what the line above promises.
+  const consentResultsOnly = button('Load the results only', () => {
+    closeConsent();
+    void onLoad(false);
+  }, { class: 'example-results-only' });
   consentDialog.append(
     el('h3', { id: consentTitleId, text: 'Load the example cohort?' }),
     el('p', { text: FETCH_BUTTON_HINT }),
@@ -124,10 +130,11 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     ),
     el('p', {
       class: 'hint',
-      text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. The results load either way; without the files there are no frames to correct.`,
+      text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" makes no network request at all; without the files there are no frames to correct.`,
     }),
     el('div', { class: 'example-dialog-actions' }, [
       button('Cancel', () => closeConsent(), {}),
+      consentResultsOnly,
       consentConfirm,
     ]),
   );
@@ -210,7 +217,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     });
   }
 
-  async function onLoad(): Promise<void> {
+  async function onLoad(withClips: boolean): Promise<void> {
     loadButton.disabled = true;
     say('Loading the example cohort…');
     let loaded = false;
@@ -247,7 +254,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     // The user consented to both in one dialog, so the clips follow the bundle
     // without a second press. The results are already on screen while they
     // download, and a failure here leaves them there.
-    if (loaded) await fetchAllClips();
+    if (loaded && withClips) await fetchAllClips();
   }
 
   /**
@@ -293,10 +300,13 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     }
 
     const verified = `${attachedCount} of ${SAMPLE_CLIPS.length} clips verified and attached`;
+    // Distinct sentences only: offline, all three fail the same way, and three
+    // copies of one sentence is a 470-character announcement (D37).
+    const distinct = [...new Set(failures)];
     say(
-      failures.length === 0
+      distinct.length === 0
         ? `${verified} — frames and corrections are available.`
-        : `${verified}. ${failures.join(' ')}`,
+        : `${verified}. ${distinct.join(' ')}`,
     );
     refresh();
   }

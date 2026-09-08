@@ -58,10 +58,16 @@ function sampleClipUrl(filename: string): string {
 }
 
 export const FETCH_BUTTON_HINT =
-  'This is the only time BarnesTrack contacts the network. It downloads one video ' +
-  'from raw.githubusercontent.com into this browser and checks it against the ' +
-  'example cohort before using it. Nothing is uploaded.';
+  'This is the only time BarnesTrack contacts the network. It downloads the three video ' +
+  'clips listed below from raw.githubusercontent.com into this browser and checks each one ' +
+  'against the example cohort before using it. Nothing is uploaded.';
 
+/*
+ * Names test53 only, which is wrong for the other two clips now that all three
+ * are fetched. Correcting it changes an assertion in `tests/demo/`, which is
+ * outside chunk 10b's ownership, so the repetition was fixed instead (the
+ * outcome line says one sentence, not three) and the wording is left for 10a.
+ */
 const OFFLINE_MESSAGE =
   'Could not reach the sample-data repository. Check your connection, or download ' +
   'test53.mp4 yourself and drop it on the Videos step instead.';

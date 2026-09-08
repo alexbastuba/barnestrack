@@ -1101,7 +1101,7 @@ export function createMazeStep(context: AppContext): Step {
     blocked: () =>
       store.videos.length === 0 ? 'load at least one video on the Videos step first' : null,
     done: () => mazeMissing(store) === null,
-    doneLabel: () => 'maze confirmed',
+    doneLabel: () => 'maze set',
     refresh: render,
     onShow: () => {
       canvasView.fit();

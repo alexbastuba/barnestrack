@@ -322,6 +322,26 @@ session it is found (D39).
   stage to drop to roughly 35 vh — both changes to what the page always shows, which is a design
   call rather than a layout fix, so the measurement is recorded rather than chased.
 
+- **Six more `.table-scroll` containers are still unreachable from the keyboard, one of them a live
+  serious failure.** Chunk 10b added `scrollRegion()` to `src/ui/dom.ts` and used it for the maze
+  step's mirror, which is the node the browser-smoke allowlist named. The identical containers at
+  `src/ui/components/quality-panel.ts:228, 282, 359`, `src/ui/review-step.ts:984, 1039, 1291` and
+  `src/ui/review-figures.ts:221` were left as they are. axe on the running Review step reports
+  `scrollable-region-focusable` (serious) against `.quality-strip > .mirror > .table-scroll`; it does
+  not fail the smoke run because the axe loop covers Videos, Maze and Track only, and adding the
+  Review step to that loop was out of this chunk's scope. The fix is one line per site — swap the
+  `el('div', { class: 'table-scroll' }, …)` for `scrollRegion(label, …)`.
+- **"N events to check" queues nearly every event.** `eventsToCheck` in `src/ui/review-queue.ts`
+  puts an event in the queue when a review flag names it *or* any frame of its span is
+  `low_confidence`, `ambiguous` or `not_detected`. D48 makes `partial_at_rim` / `small_blob` the
+  ordinary state of a mouse with its head in a hole, which is exactly where an investigation is, so
+  a single such frame queues the event. Measured on the example cohort: 15 of 16 events on test50,
+  5 and 6 on test51 and test53. The only way out of the queue is `source === 'corrected'`, and there
+  is no "reviewed, leave automatic" action, so clearing it means writing correction entries for
+  events that may be right — a false provenance record under D25 and D26. The rule wants either a
+  materiality threshold (uncertain frames as a share of the span) or an explicit "keep automatic"
+  mark; both are operational definitions and need Alex.
+
 ## Excluded scope
 
 - **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at

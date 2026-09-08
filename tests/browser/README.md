@@ -42,9 +42,11 @@ BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
   and 9c land the Review step and mount the "Load example cohort" button; the skip message names
   the missing mount. The axe scan covers every step that renders (Videos, Maze, Track) and fails on
   `serious`/`critical` only; `KNOWN_VIOLATIONS` is **empty** since chunk 10b fixed the maze step's
-  scroll container, so any serious or critical finding fails the run. It makes no network request: the
-  fetch verifier is covered offline in `tests/demo/fetch-sample-clip.test.ts`, and the one live
-  check there is opt-in through `BARNESTRACK_NET_TEST=1` (D2).
+  scroll container, so any serious or critical finding fails the run. It makes no network request:
+  the shipped-UI flow refuses `raw.githubusercontent.com` with `page.route(…, abort)` before it
+  clicks through the consent dialog, the fetch verifier is covered offline in
+  `tests/demo/fetch-sample-clip.test.ts`, and the one live check there is opt-in through
+  `BARNESTRACK_NET_TEST=1` (D2).
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 

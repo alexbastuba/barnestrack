@@ -417,6 +417,10 @@ test.describe('the whole demo flow through the shipped UI', () => {
   test.skip(!distBuilt, 'no dist/ — run `npm run build` first');
 
   test('load, review, retune, export, reload', async ({ page }) => {
+    // The consent dialog's Confirm fetches all three clips from GitHub. This
+    // suite must not depend on the network (D2), so the requests are refused
+    // here; the offline path is covered in tests/ui/example-cohort-dialog.test.ts.
+    await page.route('https://raw.githubusercontent.com/**', (route) => route.abort());
     await page.goto(PREVIEW_URL);
     await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
     await clearStoredSession(page);

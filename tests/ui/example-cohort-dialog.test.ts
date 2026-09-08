@@ -138,6 +138,26 @@ describe('the network-consent dialog', () => {
     expect(said).toEqual([]);
   });
 
+  it('loads the results with no network request at all on "Load the results only" (D33)', async () => {
+    const { panel, store, clipRequests, said } = mount();
+    loadButton(panel).click();
+    const resultsOnly = panel.querySelector<HTMLButtonElement>('.example-results-only')!;
+    expect(resultsOnly.textContent).toBe('Load the results only');
+    resultsOnly.click();
+
+    await vi.waitFor(() => expect(store.videos).toHaveLength(3));
+    // The demo state is reachable offline, which is what D33 asks for.
+    expect(clipRequests).toEqual([]);
+    expect(said.some((message) => message.includes('Example cohort loaded'))).toBe(true);
+  });
+
+  it('says in the consent notice that three clips are downloaded, not one', () => {
+    const { panel } = mount();
+    const text = dialog(panel).textContent ?? '';
+    expect(text).toContain('downloads the three video clips listed below');
+    expect(text).not.toContain('downloads one video');
+  });
+
   it('loads the bundle and asks for all three clips on Confirm', async () => {
     const { panel, store, clipRequests } = mount();
     loadButton(panel).click();
@@ -164,5 +184,8 @@ describe('the network-consent dialog', () => {
     expect(store.videos.every((video) => !store.isAttached(video.id))).toBe(true);
     const outcome = said[said.length - 1]!;
     expect(outcome).toContain('Could not reach the sample-data repository');
+    // One sentence, not the same one three times over (D37).
+    const occurrences = outcome.split('Could not reach the sample-data repository').length - 1;
+    expect(occurrences).toBe(1);
   });
 });
