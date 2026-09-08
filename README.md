@@ -81,6 +81,14 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
+`npm test` runs 1,086 unit tests over the pure layers — metrics, event detection, cleaning,
+strategy, maze geometry, the export writers, the session file and the MP4 parser. Sixteen skip
+themselves without the sample videos (below). At the time of writing four fail: three in
+`tests/ui/components/describe-diff.test.ts` and one in `parameters-panel.test.ts`, all pinning
+numbers and a strategy class that the search-strategy and gap-filling defaults changed on
+2026-09-07. They are the interface chunk's to re-pin and are listed here rather than quietly
+excluded.
+
 Two optional extras:
 
 - `BARNESTRACK_SAMPLE_DIR=/path/to/data/barnes-maze npm test` includes the tests that read the
@@ -132,7 +140,9 @@ confidence, a valid flag and a source. A session is one JSON document with three
 human edits; and `derived`, recomputed from `auto ⊕ corrections` on load. The maze map is
 parametric, shared across the cohort, and placed per video. Exports are three tidy CSVs plus
 `parameters.json`, the session file and an XLSX, every row stamped with the tool version, the
-schema version and a parameters hash. Two places where the sample data forced a refinement are
+schema version and a parameters hash — and every trial row with its `target_hole`, because Gawel's
+protocol rotates the platform between trials and a latency is meaningless without the hole it was
+measured to (D62). Two places where the sample data forced a refinement are
 worth naming: same-timestamp frames are ordered by the bitstream's picture order count, because
 the decoder emits them that way and a simpler rule makes the tracking pass non-monotone (D45); and
 an animal split into pieces by a hole's shadow is merged into one candidate, marked
@@ -141,8 +151,10 @@ where investigations are detected (D48).
 
 **Honest failure, and thresholds you can see (D16–D20).** The automatic layer never interpolates:
 every frame without a position carries a state and a reason string, and the quality report clusters
-on those reasons. Cleaning may fill a gap, but only in the derived layer, only within a documented
-limit, and the filled points are drawn hollow and counted. Investigations, escape-box entries and
+on those reasons. Gap filling is **off by default** (D60): a gap stays a gap, is drawn as one, and
+enters no kinematic value. A lab that wants it can turn it on — the filling is then confined to the
+derived layer and to gaps within a documented limit, and the filled points are drawn hollow and
+counted — but no data is better than invented data. Investigations, escape-box entries and
 tracking failures are told apart by evidence the user can inspect — where the animal was last seen,
 how long detection was lost, whether it came back and where, and the blob-area trend before the
 loss — and each event seeks to its own first frame on click. Both the nose and the centroid are
@@ -151,11 +163,13 @@ centroid otherwise, recording which per event, because a confident wrong nose is
 honest centroid. Changing a parameter re-renders the events and the metrics immediately, with a
 badge showing what changed.
 
-**A strategy call you can read aloud (D23).** Search strategy comes from a transparent rule engine
-over named features — errors, angular distance of investigated holes from the target, longest run
-of adjacent holes, centre crossings, path efficiency, tortuosity. The interface shows the feature
-values, the rule that fired, any rule that fired but was outranked, and the runner-up, and it
-accepts an override with a free-text reason stored as a correction. Dimensionality-reduction views
+**A strategy call you can read aloud (D23, D58).** Search strategy comes from a transparent rule
+engine over named features — errors, hole distance of investigated holes from the target, longest
+run of adjacent holes, centre crossings, path efficiency, tortuosity. The rules are Gawel et al.
+2019, Table 1, and the interface says so beside the answer: a user who cites the paper is citing
+what the tool actually computed. The interface shows the feature values, the rule that fired, any
+rule that fired but was outranked, and the runner-up, and it accepts an override with a free-text
+reason stored as a correction. Dimensionality-reduction views
 were deliberately excluded: a student defending a classification needs a sentence, not a position
 in a scatter plot.
 
@@ -180,13 +194,15 @@ stale.
 Barnes maze conventions vary between laboratories, so the behavioural definitions cannot simply be
 looked up — they are lab conventions, not facts. Each one is resolved with an explicit default that
 is **in force, visible in the interface, adjustable, and written into every export as a column**, so
-a later change of mind is a recomputation rather than a reanalysis. Defaults marked _provisional_
-are recorded in [`docs/decisions.md`](docs/decisions.md) as closing against Gawel et al. 2019 and
-Illouz et al. 2020; that literature check is not yet done, and the entries say so rather than
-implying the numbers are settled.
+a later change of mind is a recomputation rather than a reanalysis.
 
-Each default below is provisional in the sense D-numbered decisions use: recorded in
-[`docs/decisions.md`](docs/decisions.md) as closing against the literature, and in force meanwhile.
+Every one of them was reviewed against Gawel et al. 2019 and Illouz et al. 2020 on **2026-09-07**.
+Five changed as a result and are recorded as closed decisions D58–D62 in
+[`docs/decisions.md`](docs/decisions.md): the search-strategy rules became the paper's, an entry
+that runs to the end of the clip stopped needing a minimum duration, gap filling was turned off by
+default, path efficiency took Illouz's definition, and every trial row now names its target hole.
+The rest were confirmed at their measured defaults, with the reason each closes recorded beside it.
+The numbers below are what the tool ships with today.
 
 - **What counts as investigating a hole? (O1)** The event point is within 1.5 × the hole radius of
   a hole centre for at least 0.2 s; bouts at the same hole less than 0.5 s apart merge into one, so
@@ -199,14 +215,17 @@ Each default below is provisional in the sense D-numbered decisions use: recorde
 - **When does primary latency end? (O3)** At the first target investigation under O1. The
   alternative reading of "first reaches the target hole" — a centroid approach within a set
   distance — is recorded as the option not taken.
-- **What is an escape-box entry? (O4)** A run at the target hole in which the animal is either
+- **What is an escape-box entry? (O4, D59)** A run at the target hole in which the animal is either
   undetected or seen only as a small or fragmented low-confidence blob within 1.0 × the hole
-  radius, lasting at least 1.0 s with no full-size detection elsewhere. The trial ends at the first
-  such entry that persists for 3 s or to the end of the video. A loss with the same signature at a
-  non-target hole is an investigation flagged "physically unlikely — review"; a loss away from any
-  hole is a tracking failure and never an event. This default was already revised once after
-  measuring the sample clips, and it is still the weakest point in the analysis — see Known
-  limitations.
+  radius, lasting at least 1.0 s with no full-size detection elsewhere — **or continuing to the last
+  frame of the clip, in which case no minimum duration applies**, because protocol keeps the animal
+  in the box until the trial is ended and no later frame could contradict the reading. The trial
+  ends at the first such entry that persists for 3 s or to the end of the video. A loss with the
+  same signature at a non-target hole is an investigation flagged "physically unlikely — review"; a
+  loss away from any hole is a tracking failure and never an event. A user's "in the escape box
+  from here" range always produces the entry it asserts, and is flagged when the track puts the
+  animal nowhere near a hole (D57). Gawel's own criterion is the whole body in the hole; that is
+  not computable from a track with no per-frame mask, and the gap is in Known limitations.
 - **Where does the trial start, and when is it cut off? (O5)** Trial start is proposed as the first
   confident, mouse-sized detection inside the platform after the last oversized-foreground frame,
   shown as a timeline marker and adjustable. Latencies are measured from there, never from frame 0.
@@ -215,12 +234,21 @@ Each default below is provisional in the sense D-numbered decisions use: recorde
 - **What is the target quadrant? (O6)** A 90° sector centred on the target hole — the target plus
   or minus 2.5 holes on a 20-hole ring. Four fixed quadrants with the target's quadrant selected is
   recorded as the alternative.
-- **How is search strategy classified? (O7)** Spatial, serial or random, from a rule set over six
-  named features — non-target errors, the maximum angular distance of investigated holes from the
-  target, the longest run of adjacent-hole investigations, centre-zone crossings, path efficiency
-  and cumulative heading change. Features are computed over the search phase, from trial start to
-  the first target event, because strategy describes how the target was found. The placeholder
-  rules' known weaknesses are in Known limitations.
+- **How is search strategy classified? (O7, D58)** Spatial, serial or random, by the rules in
+  **Gawel et al. 2019, Table 1**, which the interface names beside the answer. *Spatial*: the target
+  reached with no error, or at most 2 non-target investigations, each at a hole adjacent to the
+  target, with no crossing of the centre between hole searches. *Serial*: before the first target
+  visit, a run of at least 2 investigations at consecutive adjacent holes in one direction around
+  the ring — not counting the target or the holes beside it — with no centre crossing during the
+  run. *Random*: neither. Every threshold is a hashed parameter, so a lab that classifies
+  differently can say so. The rule engine reports six named features alongside the class —
+  non-target errors, the maximum hole distance from the target, the longest adjacent run,
+  centre-zone crossings, path efficiency (Illouz et al. 2020, Fig. 1C) and cumulative heading
+  change — with the rule that fired, any rule that fired and was outranked, and the runner-up.
+  Features run over the search phase, from trial start to the first target event, because strategy
+  describes how the target was found; a trial that never reaches the target is classified over the
+  whole trial window and says so, since Gawel's definitions presuppose a target visit. Thigmotaxis
+  and the finer subtypes are not classified. Known weaknesses are in Known limitations.
 
 Five further ambiguities were resolved structurally rather than numerically:
 
@@ -272,23 +300,29 @@ Five further ambiguities were resolved structurally rather than numerically:
 The full list, split into defects, deliberately excluded scope, and findings about the sample data,
 is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that matter most:
 
-- **No escape-box entry is detectable in any of the three sample clips, so every sample trial is
-  `review`.** O4 reads an entry as a loss of detection at the target hole, but in these recordings
-  the animal's rear stays visible while its head is in a hole, so a position is still produced and
-  the run reads as a long investigation. The rule was already revised once after measurement and
-  the radius was deliberately not widened to force a result. This is the single largest gap between
-  what the tool computes and what a full Barnes maze analysis needs, and it is a threshold question
-  the user can see and change, not hidden behaviour.
+- **No sample trial escapes under the recorded map, because none of the three animals reaches the
+  hole that map calls the target.** O4 reads an entry as a loss of detection at the target hole,
+  and in these recordings the animal's rear stays visible while its head is in a hole, so a
+  position is still produced. Two clips do end with the animal's head in a hole, and since D59 —
+  a run continuing to the last frame of the clip needs no minimum duration — both are read as
+  persistent escape entries when the map names the hole they actually entered: test53 escapes at
+  27.83 s and test51 at 44.04 s (`prototypes/analysis/RESULTS.md`, signature checks). Under the
+  chunk-3 map, whose target is hole 7, those runs are instead investigations flagged "physically
+  unlikely — review", which is the rule saying honestly that the animal went into the wrong hole.
+  What is still missing is Gawel's actual criterion, the whole body inside the hole; the tracker's
+  blob has no per-frame mask, so the tool uses the loss of detection as its proxy and says so.
 - **The nose is experimental.** On these re-encoded clips the tail is often below the foreground
   threshold and a hunched animal has no defined major axis, so no nose cue exists at all on 21–32 %
   of the frames that have a blob — and on every frame that has none — while a cue that does exist
   usually stands alone. Events therefore record which point they were judged on, the quality
   report states the fraction judged on the nose, and the interface labels the nose experimental.
-- **The example cohort's numbers are illustrative, not a real tracking run.** The bundle behind
-  **Load example cohort** carries the three sample videos' real fingerprints and durations, but its
-  latencies, errors, paths and strategies are generated from a synthetic fixture, so the demo renders
-  every view without asking anyone to download a video. The panel says so on screen next to the
-  numbers. Attach a real file — drop it, or press the fetch button — and every number is
+- **The example cohort's track is a scripted trajectory, not a real animal.** The bundle behind
+  **Load example cohort** carries the three sample videos' real fingerprints and durations over a
+  synthetic track, so the demo renders every view without asking anyone to download a video. Its
+  latencies, errors, paths and strategies are no longer scripted alongside it: every derived layer
+  in the bundle is computed by this tool's own `derive()` from the track it ships, and a test
+  re-derives the committed document to prove it. The panel says on screen that the results are
+  illustrative. Attach a real file — drop it, or press the fetch button — and every number is
   recomputed from the frames.
 
 ## Data handling and cost
