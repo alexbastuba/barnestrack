@@ -36,6 +36,30 @@ describe('planEventLabels', () => {
     expect(placements.map((p) => p.text)).toEqual(candidates.map((c) => c.bare));
   });
 
+  it("labels every investigation on test50's shape at whole-clip zoom", () => {
+    // The example cohort's longest clip: 5,539 frames on a 1,150 px timeline,
+    // which is what the Review step gives it at 1400 px wide. Twenty
+    // investigations of about a second each, so every bar is
+    // 30/5539 * 1150 ~ 6 px — under the width of even a two-digit number.
+    const frames = 5539;
+    const width = 1150;
+    const perFrame = width / frames;
+    const candidates: LabelCandidate[] = Array.from({ length: 20 }, (_, i) => {
+      const start = 200 + i * 260;
+      return {
+        id: `ev${i}`,
+        x: start * perFrame,
+        width: Math.max(2, 30 * perFrame),
+        full: `${i % 20} user`,
+        bare: String(i % 20),
+      };
+    });
+
+    const placements = planEventLabels(candidates, measure, { width });
+    expect(placements).toHaveLength(20);
+    expect(placements.filter((p) => p.kind === 'above')).toHaveLength(20);
+  });
+
   it('puts the full label inside a bar wide enough for it', () => {
     const placements = planEventLabels(
       [{ id: 'a', x: 10, width: 200, full: '12 user', bare: '12' }],
