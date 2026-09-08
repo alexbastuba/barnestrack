@@ -9,9 +9,13 @@
  * here; everything asserted is DOM. The canvases are covered in Chrome by
  * `tests/browser/review.spec.ts` and the recorded manual pass.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { hashParameters } from '../../src/analysis/parameters.js';
-import { CHANGE_DEBOUNCE_MS } from '../../src/ui/components/index.js';
+import {
+  CHANGE_DEBOUNCE_MS,
+  formatHole,
+  formatSeconds,
+} from '../../src/ui/components/index.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
 import { editEvent, markRange } from '../../src/session/corrections.js';
@@ -400,13 +404,91 @@ describe('the review queue', () => {
     return eventsToCheck(derived.events, [], stateRuns(derived.cleanedTrack));
   };
 
-  it('counts the events that want a human, above the timeline', () => {
-    const bar = harness.step.body.querySelector('.review-queue')!;
+  const strip = (): HTMLElement =>
+    harness.step.body.querySelector<HTMLElement>('#review-current-event')!;
+  const stripLine = (): string =>
+    strip().querySelector('.current-event-line')!.textContent!;
+
+  it('counts the events that want a human, between the video and the timeline', () => {
+    const bar = strip();
     expect(bar).not.toBeNull();
-    // It is above the timeline, not inside it.
+    // Directly under the video and the toolbar, and still above the timeline.
+    expect(bar.previousElementSibling!.classList.contains('review-stage')).toBe(true);
     expect(bar.nextElementSibling!.classList.contains('timeline')).toBe(true);
     expect(count()).toBe(describeQueue(queued().length));
     expect(queued().length).toBeGreaterThan(0);
+  });
+
+  it('says what to do when nothing is selected, and hides the action hint', () => {
+    expect(stripLine()).toBe(
+      `${describeQueue(queued().length)} — press ] or click an event on the timeline`,
+    );
+    expect(strip().querySelector<HTMLElement>('.current-event-hint')!.hidden).toBe(true);
+  });
+
+  it('names the selected event in the strip, and never scrolls the page', () => {
+    const scrolled = vi.fn();
+    // happy-dom has no layout, so the page cannot scroll here; the spy is what
+    // proves the queue no longer asks it to, and scrollY pins the position.
+    const realScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = realScrollIntoView;
+    });
+    const before = window.scrollY;
+
+    const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Next flagged',
+    )!;
+    next.click();
+
+    const derived = harness.store.analysisFor(harness.store.videos[0]!.id)!.derived!;
+    const first = derived.events.find((e) => e.id === queued()[0])!;
+    const line = stripLine();
+    expect(line).toContain(first.kind === 'investigation' ? 'Investigation' : 'Escape entry');
+    expect(line).toContain(formatHole(first.holeIndex));
+    expect(line).toContain(formatSeconds(first.durationSeconds));
+    expect(line).toContain('flagged:');
+    expect(strip().querySelector<HTMLElement>('.current-event-hint')!.hidden).toBe(false);
+    expect(strip().querySelector('.current-event-hint')!.textContent).toContain(
+      'Relabel: H then the hole number',
+    );
+
+    expect(scrolled).not.toHaveBeenCalled();
+    expect(window.scrollY).toBe(before);
+  });
+
+  it('re-reads the strip when the selected event is relabelled, and clears it on delete', () => {
+    const video = harness.store.videos[0]!;
+    const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Next flagged',
+    )!;
+    next.click();
+    const selected = harness.store.analysisFor(video.id)!.derived!.events.find(
+      (e) => e.id === queued()[0],
+    )!;
+    const moved = (selected.holeIndex ?? 0) + 1;
+
+    harness.store.setCorrections(
+      video.id,
+      editEvent(
+        harness.store.analysisFor(video.id)!.corrections,
+        selected.id,
+        { holeIndex: moved, startFrame: selected.startFrame, endFrame: selected.endFrame },
+        { id: 'test-strip-relabel', timestamp: '2026-09-07T12:00:00.000Z' },
+      ),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    expect(stripLine()).toContain(formatHole(moved));
+    expect(stripLine()).toContain('corrected by hand');
+
+    // Delete drops the selection, so the strip goes back to the queue sentence.
+    const del = [...harness.step.body.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'Delete event (Delete)',
+    )!;
+    del.click();
+    expect(stripLine()).toContain('press ] or click an event on the timeline');
   });
 
   it('selects and seeks to a flagged event on Next flagged', () => {

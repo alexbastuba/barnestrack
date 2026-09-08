@@ -69,6 +69,11 @@ import {
   createParametersPanel,
   createQualityPanel,
   describeDiff,
+  flagLabel,
+  flagsForEvent,
+  formatClock,
+  formatHole,
+  formatSeconds,
   type Component,
   type EventListProps,
   type MetricsCardProps,
@@ -447,20 +452,41 @@ export function createReviewStep(context: AppContext): Step {
     seek(positionOfFrame(ev.startFrame), false);
     renderEventsTable();
     renderQueue();
-    revealEventCard(ev.id);
+    // Nothing is scrolled: the user is looking at the video, and the strip
+    // under it now says which event this is. Scrolling the event card into
+    // view took the page away from the frame the decision is made on.
     context.announce(
       `${KIND_WORDS[ev.kind]} at hole ${ev.holeIndex ?? '—'}, frames ${ev.startFrame}–${ev.endFrame}, ` +
         `${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`,
     );
   }
 
-  /** Scrolls the selected event's card into the events panel's own scroll box. */
-  function revealEventCard(id: string): void {
-    const card = eventsPanel.querySelector<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`);
-    // happy-dom has no scrolling, and neither has a browser with no layout yet.
-    if (card && typeof card.scrollIntoView === 'function') {
-      card.scrollIntoView({ block: 'nearest' });
+  /**
+   * Why an event is in the queue, in the words the event card uses: its review
+   * flags, or — with none — the uncertain frames that put it there
+   * (`eventsToCheck`). An event nobody has questioned gets no clause at all.
+   */
+  function queueReason(ev: EventRecord): string | null {
+    const flags = analysis ? flagsForEvent(analysis.reviewFlags, ev.id) : [];
+    if (flags.length > 0) {
+      return flags.map((flag) => `${flagLabel(flag.code)} — ${flag.message}`).join(' · ');
     }
+    if (queue().includes(ev.id)) return 'decided over frames the tracker was unsure of';
+    return null;
+  }
+
+  /** The one line under the video: which event is selected, and what to do with it. */
+  function describeCurrentEvent(ev: EventRecord): string {
+    const parts = [
+      KIND_WORDS[ev.kind].charAt(0).toUpperCase() + KIND_WORDS[ev.kind].slice(1),
+      formatHole(ev.holeIndex),
+      `${formatClock(ev.startTime_s)}–${formatClock(ev.endTime_s)}`,
+      formatSeconds(ev.durationSeconds),
+    ];
+    const reason = queueReason(ev);
+    if (reason) parts.push(`flagged: ${reason}`);
+    if (ev.source === 'corrected') parts.push('corrected by hand');
+    return parts.join(' · ');
   }
 
   function renderQueue(): void {
@@ -468,6 +494,12 @@ export function createReviewStep(context: AppContext): Step {
     queueCount.textContent = describeQueue(count);
     queuePrevious.disabled = count === 0;
     queueNext.disabled = count === 0;
+
+    const ev = selectedEvent();
+    currentEventLine.textContent = ev
+      ? describeCurrentEvent(ev)
+      : `${describeQueue(count)} — press ] or click an event on the timeline`;
+    currentEventHint.hidden = ev === null;
   }
 
   function relabelSelected(holeIndex: number): void {
@@ -672,6 +704,7 @@ export function createReviewStep(context: AppContext): Step {
       selectedEdge = null;
       timeline.setSelection(id, null);
       renderEventsTable();
+      renderQueue();
       renderStatus();
     },
     onRetime: (eventId, edge, frame) => {
@@ -822,6 +855,7 @@ export function createReviewStep(context: AppContext): Step {
         seek(ev.startFrame, false);
         context.announce(`${KIND_WORDS[ev.kind]} ${ev.label}${ev.corrected ? ' (user)' : ''}, frames ${ev.startFrame}–${ev.endFrame}, selected.`);
         renderEventsTable();
+        renderQueue();
         break;
       }
       case 'focus-frame-field':
@@ -857,6 +891,7 @@ export function createReviewStep(context: AppContext): Step {
           selectedEdge = null;
           timeline.setSelection(null, null);
           renderEventsTable();
+          renderQueue();
           context.announce('Selection cleared.');
         }
         renderStatus();
@@ -956,9 +991,15 @@ export function createReviewStep(context: AppContext): Step {
   const note = el('p', { class: 'review-note' });
 
   /*
-   * The review queue: how much of this video is still nobody's decision, and
-   * two buttons that walk it. The count falls as events are corrected, so the
-   * user has a finish line rather than forty cards and a feeling.
+   * The current-event strip: directly under the video and the toolbar, where
+   * the user is already looking. It names the selected event, says why it is in
+   * the queue, and gives the three keys that decide it — so walking the queue
+   * with `]` does not need a glance at the cards far below, and nothing has to
+   * scroll to make the work visible.
+   *
+   * The queue count and the two buttons live here rather than in a bar of their
+   * own: how much is left and what is in front of you are one thought. The
+   * per-video count in the video selector is untouched.
    */
   const queueCount = el('strong', { class: 'queue-count', attrs: { role: 'status' } });
   const queuePrevious = button('Previous flagged', () => goToQueued(-1), {
@@ -969,15 +1010,26 @@ export function createReviewStep(context: AppContext): Step {
     class: 'queue-step',
     attrs: { 'aria-keyshortcuts': ']' },
   });
-  const queueBar = el('div', { class: 'review-queue' }, [
-    queueCount,
-    queuePrevious,
-    queueNext,
-    el('span', {
-      class: 'hint',
-      text: 'An event is to check when a review flag names it, or it was decided over frames the tracker was unsure of. Correcting it takes it off the list.',
-    }),
-  ]);
+  const currentEventLine = el('p', { class: 'current-event-line' });
+  // The keys are the ones already bound in `REVIEW_KEYS`; this adds none.
+  const currentEventHint = el('p', {
+    class: 'current-event-hint hint',
+    text: 'Relabel: H then the hole number · Delete: ⌫ · Keep: ] for the next',
+    attrs: { hidden: true },
+  });
+  const queueBar = el(
+    'div',
+    {
+      id: 'review-current-event',
+      class: 'review-current-event',
+      attrs: { 'aria-live': 'polite' },
+    },
+    [
+      currentEventLine,
+      currentEventHint,
+      el('div', { class: 'current-event-actions' }, [queueCount, queuePrevious, queueNext]),
+    ],
+  );
   const status = el('p', { class: 'review-status', attrs: { 'aria-live': 'off' } });
 
   const legend = disclosure('Keyboard', [
@@ -1260,6 +1312,7 @@ export function createReviewStep(context: AppContext): Step {
             timeline.setSelection(ev.id, null);
             seek(ev.startFrame, true);
             renderEventsTable();
+            renderQueue();
             timeline.surface.focus(); // the table was rebuilt under this button
           }, { class: 'metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
         ]),
@@ -1627,7 +1680,8 @@ export function createReviewStep(context: AppContext): Step {
         el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item.' }),
         el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user".' }),
         el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate.' }),
-        el('li', { text: 'Every threshold and metric shows its definition and the decision it comes from beside its control.' }),
+        el('li', { text: 'Every threshold and metric shows its definition beside its control.' }),
+        el('li', { text: 'An event is to check when a review flag names it, or it was decided over frames the tracker was unsure of. Correcting it takes it off the list.' }),
       ]),
     ],
     body,

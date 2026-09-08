@@ -1135,14 +1135,15 @@ label {
 
 /* The timeline (D24): a canvas the tables below repeat (D37). */
 /*
- * The review queue sits directly above the timeline: how much of this video is
- * still nobody's decision, and the two buttons that walk it.
+ * The current-event strip sits between the video and the timeline: which event
+ * is selected, why it is in the queue, the keys that decide it, and how much of
+ * this video is still nobody's decision.
  */
-.review-queue {
+.review-current-event {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
   margin-top: 0.75rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--line);
@@ -1151,12 +1152,28 @@ label {
   background: var(--accent-soft);
 }
 
-.queue-count {
+.current-event-line {
+  flex: 1 1 24rem;
+  margin: 0;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.review-queue .hint {
-  flex: 1 1 18rem;
+.current-event-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  order: 3;
+}
+
+.current-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.queue-count {
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline {

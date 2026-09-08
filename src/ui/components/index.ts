@@ -16,7 +16,13 @@ export type { SliderParameterPath } from './analysis-parameter-bounds.js';
 export { NO_CHANGE, describeDiff, describeEventCounts, eventDeltas } from './describe-diff.js';
 export type { EventDelta } from './describe-diff.js';
 
-export { createEventCard, eventSummary, flagsForEvent, shadowClauses } from './event-card.js';
+export {
+  createEventCard,
+  eventSummary,
+  flagLabel,
+  flagsForEvent,
+  shadowClauses,
+} from './event-card.js';
 export type { EventCardProps } from './event-card.js';
 
 export { createEventList } from './event-list.js';
