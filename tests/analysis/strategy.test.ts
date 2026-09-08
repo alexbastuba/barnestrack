@@ -295,9 +295,39 @@ describe('classifyStrategy (O7)', () => {
     ]);
     expect(r.strategy.features.errors).toBe(0);
     expect(r.strategy.features.targetReached).toBe(true);
-    expect(r.strategy.features.centreCrossings).toBeGreaterThanOrEqual(2);
+    // D58 counts crossings *between hole searches*, and a direct approach has only one search, so
+    // there is no "between" and the count is 0 however much the animal wandered on the way. The
+    // by-definition branch is what makes it spatial; the reasoning says so instead of listing
+    // conditions.
+    expect(r.strategy.features.centreCrossings).toBe(0);
     expect(r.strategy.strategy).toBe('spatial');
     expect(r.strategy.reasoning.join('\n')).toContain('a direct approach is spatial by definition');
+  });
+
+  it('counts centre crossings between hole searches, not from the trial start (D58)', () => {
+    // Gawel et al. 2019, Table 1: "with no crossing of the centre between hole searches". An
+    // excursion through the centre *before* the first hole search is an ordinary trajectory and
+    // must not fail the spatial rule, which at the D58 default tolerates zero crossings.
+    const before = pipeline([
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 0, seconds: 0.5, offset_cm: 20 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      ...visitHoles([6, 8, 7]),
+    ]);
+    expect(before.strategy.features.sequence).toEqual([6, 8, 7]);
+    expect(before.strategy.features.centreCrossings).toBe(0);
+    expect(before.strategy.strategy).toBe('spatial');
+
+    // the same crossing placed between two hole searches does fail it
+    const between = pipeline([
+      ...visitHoles([6]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      ...visitHoles([8, 7]),
+    ]);
+    expect(between.strategy.features.sequence).toEqual([6, 8, 7]);
+    expect(between.strategy.features.centreCrossings).toBeGreaterThanOrEqual(1);
+    expect(between.strategy.strategy).not.toBe('spatial');
+    expect(between.strategy.reasoning.join('\n')).toContain('(at most 0) — no');
   });
 
   it('reads its thresholds from the strategy block of the parameters (D55)', () => {

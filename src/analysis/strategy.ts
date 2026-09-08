@@ -184,7 +184,17 @@ export function computeStrategyFeatures(
       ? [...investigations, target]
       : investigations;
 
-  const crossings = centreEntries(a, g, start, phaseEnd);
+  // D58 counts crossings "between hole searches" (Gawel et al. 2019, Table 1), so the window runs
+  // from the first hole search, not from the trial start. A mouse released at the centre that makes
+  // one excursion and returns before searching anything has crossed nothing *between* searches, and
+  // with `spatialMaxCentreCrossings` now 0 that difference decides the class rather than eating
+  // slack. With no hole search there is no "between" and the count is zero.
+  const firstSearchPosition =
+    sequenceEvents.length === 0 ? -1 : framePosition(frames, sequenceEvents[0]!.startFrame);
+  const crossings =
+    firstSearchPosition < 0
+      ? []
+      : centreEntries(a, g, Math.max(start, firstSearchPosition), phaseEnd);
   const errors = sequenceEvents.filter((e) => !e.isTarget);
   let maxDist = 0;
   for (const e of errors)

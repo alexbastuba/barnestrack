@@ -427,6 +427,17 @@ Three tidy CSVs, `snake_case` names with unit suffixes, no comment rows, plus `p
 session file, and one XLSX with the same sheets plus `parameters` and `readme`. Every row carries
 `tool_version`, `schema_version` and `parameters_hash` (`EXPORT_SCHEMA_VERSION = 1`).
 
+**`EXPORT_SCHEMA_VERSION` stays 1 across D62's `target_hole`, deliberately and provisionally.** The
+chunk that added the column was instructed to hold the version at 1, so it did, and this paragraph
+is the record the versioning rule above asks for rather than a silent omission. The argument for
+retaining 1: the change is purely additive, the column carries a documented header, and every
+consumer in this repository — the XLSX writer, the cohort skill, the readme sheet — addresses
+columns by header name, not by position. The argument against, which is not disposed of: unlike the
+session file, an export *is* reachable in the deployed build, so a 35-column and a 36-column
+`trials.csv` can both exist stamped `schema_version 1`, and a reader who split on commas by index
+would silently misread the older one. **Alex's call**; a bump to 2 is the standing rule and is one
+line here plus `src/contracts/exportRows.ts`.
+
 ### `trials.csv` — one row per trial
 
 | Column | Unit | Source |

@@ -92,8 +92,11 @@ The acceptance figure is < 50 ms for 5,539 frames; the 5,539-frame track derives
 After the first target visit at 12.7 s the animal walks the ring hole by hole, never disappears
 into a hole, and the trial runs to the cutoff. Twelve partial-detection runs of half a second or
 more occur; only one sits within the entry radius of a hole (frames 1100–1129 at hole 12, centroid
-0.6 cm from its centre) and it is exactly at the 1.0 s minimum without reaching the end of the clip,
-so no run is entry-shaped and nothing is flagged.
+0.6 cm from its centre). That one *does* clear the minimum duration — 36.733 s to 37.733 s is
+exactly 1.000 s, and the test is `≥` — so it is not the duration that excludes it. It fails the
+reappearance test instead: frame 1130 is a full-size `tracked` detection away from hole 12, so the
+animal came back somewhere else. With no absent frame in the run either, it falls through to
+ordinary dwell rather than becoming a tracking failure, and nothing is flagged.
 
 **The classification moved from spatial to random.** The search phase is 5→5→7: two errors, both at
 hole 5, which is *two* holes from target 7. Gawel's spatial definition allows errors only at holes

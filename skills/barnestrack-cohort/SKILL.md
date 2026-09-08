@@ -49,6 +49,12 @@ Identifiers and metadata: `session_id` (the cohort name — see the warning unde
 `video_id`, and the four fields a user types per video: `animal`, `day`, `trial_label`, `group`.
 Any of the four may be blank; BarnesTrack does not parse filenames.
 
+`target_hole` is the hole every latency and error in the row is measured against, under the maze
+map's numbering. **It is the whole session's map target, so it is the same on every row of a
+file.** A cohort whose platform was rotated between trials — which is the usual protocol — cannot
+yet express a per-trial target, so if two rows should have different targets they were exported
+from one session that could not say so. Check with the person who ran the cohort before pooling.
+
 Measures:
 
 - `trial_start_s` (s, **may be blank**) — where the trial begins. Every latency is measured from
@@ -264,9 +270,9 @@ synthetic, and two of these trials "escape" where no real clip does.
 
 ```
 session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,…
-Barnes cohort A,video-test50,M12,1,1,control,2.4,95.923,,7,12,596.65,…
-Barnes cohort A,video-test51,M12,4,1,control,1.2,19.24,45.1,1,2,110.99,…
-Barnes cohort A,video-test53,M07,1,1,lesion,1,25.04,27.343,4,4,374.24,…
+Barnes cohort A,video-test50,M12,1,1,control,7,2.4,95.923,,7,12,596.65,…
+Barnes cohort A,video-test51,M12,4,1,control,7,1.2,19.24,45.1,1,2,110.99,…
+Barnes cohort A,video-test53,M07,1,1,lesion,7,1,25.04,27.343,4,4,374.24,…
 ```
 
 The tail of the same three rows, from `strategy` onwards:

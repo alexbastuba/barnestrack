@@ -7,6 +7,19 @@ session it is found (D39).
 
 ## Defects
 
+- **An escape-box range asserted at the wrong hole is still exported as `escaped = true,
+  status = ok`.** D57 closed half of the chunk-7b defect: a range whose event point is farther than
+  `escapeEntry.radiusFactor × hole radius` from **every** hole now carries
+  `physically_unlikely_entry` and sends the trial to review. The other half is untouched. When the
+  animal is demonstrably at a *different* hole — inside the entry radius of that hole, so the "far
+  from every hole" test cannot fire — the range is still attributed to the target hole with no
+  flag. Measured on a scripted track with the animal's head in non-target hole 19 and the range
+  marked there under target 7: entry hole 7, `escaped = true`, `status = ok`, total latency 1.50 s,
+  no review flag, and the tool's own evidence line reads "in the escape box at the target hole 7 by
+  assertion … Closest approach: nose 78.6 cm, centroid 76.9 cm" in the same sentence. The evidence
+  is honest; the exported number is not obviously wrong to a reader who does not open the card.
+  Smallest fix: flag when the marked frame's last positioned event point is within the entry radius
+  of a hole that is not the target, naming that hole — a second branch beside the one D57 added.
 - **Every maze nudge re-derives the whole cohort, from a step the user is not looking at.** The app
   shell refreshes every step on every store notification, and the Review step re-derives whatever
   the store invalidated so its figures and its export line are not left claiming that analysed
@@ -540,8 +553,8 @@ session it is found (D39).
   the chunk-3 handoff — there is no ground truth for which hole held the escape box). Under the
   revised O4 (a run of partial detections counts) and D59 (a run reaching the last frame of the clip
   needs no minimum duration), **both** head-in-hole runs are persistent escape entries when the map
-  names the hole the animal entered: test53 at frames 833–904 (2.37 s, escape at 27.83 s) and
-  test51 at frames 735–740 (0.27 s, escape at 44.04 s) — the latter is what D59 changed, since its
+  names the hole the animal entered: test53 at frames 833–904 (2.37 s, total latency 22.83 s) and
+  test51 at frames 735–740 (0.27 s, total latency 44.04 s) — the latter is what D59 changed, since its
   run is 15 frames at 14.985 fps = 0.93 s first-to-last, under the 1.0 s minimum, and only reaches
   the end of the clip (`prototypes/analysis/RESULTS.md`, signature checks). Under the recorded map
   those runs are instead investigations flagged "physically unlikely — review", so all three trials

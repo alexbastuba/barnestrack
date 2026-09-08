@@ -81,9 +81,11 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
-`npm test` runs 1,086 unit tests over the pure layers — metrics, event detection, cleaning,
+`npm test` runs 1,088 unit tests over the pure layers — metrics, event detection, cleaning,
 strategy, maze geometry, the export writers, the session file and the MP4 parser. Sixteen skip
-themselves without the sample videos (below). At the time of writing four fail: three in
+without `BARNESTRACK_SAMPLE_DIR` (below); fifteen of those are the sample-video tests and one skips
+for its own reason, so pointing that variable at the clips leaves a single skip. At the time of
+writing four fail: three in
 `tests/ui/components/describe-diff.test.ts` and one in `parameters-panel.test.ts`, all pinning
 numbers and a strategy class that the search-strategy and gap-filling defaults changed on
 2026-09-07. They are the interface chunk's to re-pin and are listed here rather than quietly
@@ -305,8 +307,9 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   and in these recordings the animal's rear stays visible while its head is in a hole, so a
   position is still produced. Two clips do end with the animal's head in a hole, and since D59 —
   a run continuing to the last frame of the clip needs no minimum duration — both are read as
-  persistent escape entries when the map names the hole they actually entered: test53 escapes at
-  27.83 s and test51 at 44.04 s (`prototypes/analysis/RESULTS.md`, signature checks). Under the
+  persistent escape entries when the map names the hole they actually entered, with total
+  latencies of 22.83 s (test53) and 44.04 s (test51) from trial starts at 5.00 s
+  (`prototypes/analysis/RESULTS.md`, signature checks). Under the
   chunk-3 map, whose target is hole 7, those runs are instead investigations flagged "physically
   unlikely — review", which is the rule saying honestly that the animal went into the wrong hole.
   What is still missing is Gawel's actual criterion, the whole body inside the hole; the tracker's
