@@ -769,9 +769,15 @@ export class Timeline {
 
   private onWheel(event: WheelEvent): void {
     if (!this.model) return;
+    // Same rule as the video stage: a plain vertical wheel scrolls the page,
+    // Shift pans, Ctrl or ⌘ zooms. A horizontal wheel is a sideways gesture the
+    // page has no use for here, so it pans.
+    const pan = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+    const zoom = event.ctrlKey || event.metaKey;
+    if (!pan && !zoom) return;
     event.preventDefault();
     const { x } = this.localPoint(event);
-    if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+    if (pan) {
       const delta = event.shiftKey ? event.deltaY : event.deltaX;
       this.panBy(Math.sign(delta) * Math.max(1, Math.round(windowSpan(this.window) / 10)));
       return;

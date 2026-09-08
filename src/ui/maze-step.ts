@@ -526,7 +526,7 @@ export function createMazeStep(context: AppContext): Step {
    */
   function numberField(
     label: string,
-    config: { step?: string; min?: string; max?: string; hint?: string },
+    config: { step?: string; min?: string; max?: string; hint?: string; live?: boolean },
     onCommit: (value: number) => void,
   ): { wrap: HTMLElement; input: HTMLInputElement } {
     const input = el('input', { id: uniqueId('maze'), class: 'number-input' });
@@ -534,6 +534,24 @@ export function createMazeStep(context: AppContext): Step {
     input.step = config.step ?? '1';
     if (config.min !== undefined) input.min = config.min;
     if (config.max !== undefined) input.max = config.max;
+    /*
+     * A `live` field redraws as it is typed. `change` alone fires on blur, so
+     * the overlay only caught up when the user clicked somewhere else — which
+     * is what a hole diameter typed against a picture of a maze needs least.
+     * Only a value already inside the bounds commits here: clamping and its
+     * announcement stay on `change`, so typing "1" on the way to "12" is not
+     * snapped to the minimum under the user's hands.
+     */
+    if (config.live === true) {
+      input.addEventListener('input', () => {
+        const typed = Number(input.value);
+        if (input.value.trim() === '' || !Number.isFinite(typed)) return;
+        const low = config.min === undefined ? -Infinity : Number(config.min);
+        const high = config.max === undefined ? Infinity : Number(config.max);
+        if (typed < low || typed > high) return;
+        onCommit(typed);
+      });
+    }
     input.addEventListener('change', () => {
       const typed = Number(input.value);
       if (input.value.trim() === '' || !Number.isFinite(typed)) {
@@ -683,12 +701,14 @@ export function createMazeStep(context: AppContext): Step {
   });
   const ringRatioField = numberField(
     'Ring radius ÷ platform radius',
-    { step: '0.01', min: '0.1', max: '1', hint: 'Default 0.89 (O8).' },
+    // 0.005: a 0.01 step moved the ring further than the tolerance a user is
+    // trying to close when the holes are nearly on it.
+    { step: '0.005', min: '0.1', max: '1', hint: 'Default 0.89.' },
     (v) => updateMap((m) => ({ ...m, holes: { ...m.holes, ringRatio: v } })),
   );
   const holeDiameterField = numberField(
     'Hole diameter (cm)',
-    { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm (O8).' },
+    { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm.', live: true },
     (v) => {
       typedHoleDiameterCm = v;
       updateMap((m) => withHoleRadius(m, v));
@@ -1071,7 +1091,8 @@ export function createMazeStep(context: AppContext): Step {
             'Every mouse action has a typed equivalent: centre and radius fields instead of rim clicks, ' +
             'the ring-angle field instead of the alignment click, the target-hole number instead of the ' +
             'target click. Tab to the frame, then arrow keys nudge the current selection by 1 px (10 px ' +
-            'with Shift); + and − zoom, 0 fits, Alt with the arrow keys pans. On the scrubber: arrow ' +
+            'with Shift); + and − zoom, 0 fits, Alt with the arrow keys pans. The scroll wheel zooms ' +
+            'only with Ctrl or ⌘, so a plain scroll still moves the page. On the scrubber: arrow ' +
             'keys move 1 frame, Shift with them 10 frames, Home and End jump to the ends.',
         }),
       ]),
