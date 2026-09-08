@@ -81,7 +81,7 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
-`npm test` runs 1,089 unit tests. Most cover the pure layers — metrics, event detection,
+`npm test` runs 1,090 unit tests. Most cover the pure layers — metrics, event detection,
 cleaning, strategy, maze geometry, the export writers, the session file and the MP4 parser; a
 smaller set covers the DOM-free parts of the interface. Sixteen skip
 without `BARNESTRACK_SAMPLE_DIR` (below); fifteen of those are the sample-video tests and one skips
