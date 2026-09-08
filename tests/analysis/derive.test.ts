@@ -57,8 +57,17 @@ describe('derive', () => {
     const { input, segmentStarts } = inputFor(escapeTrial);
     const d = derive(input);
     expect(d.cleanedTrack).toHaveLength(input.auto.frames.length);
-    expect(d.cleaning.filledFrames).toBeGreaterThanOrEqual(1);
-    expect(d.cleanedTrack[segmentStarts[6]!]!.centroid.source).toBe('filled');
+    // D60: filling is off by default, so the fillable frames in the open stay unpositioned
+    expect(d.cleaning.filledFrames).toBe(0);
+    expect(d.cleanedTrack[segmentStarts[6]!]!.centroid.valid).toBe(false);
+    expect(d.cleanedTrack[segmentStarts[6]!]!.centroid.source).not.toBe('filled');
+    // and the machinery still works for a lab that turns it on
+    const filled = derive({
+      ...input,
+      parameters: { ...DEFAULT_PARAMETERS, gapFilling: { enabled: true, maxDuration_s: 0.1 } },
+    });
+    expect(filled.cleaning.filledFrames).toBeGreaterThanOrEqual(1);
+    expect(filled.cleanedTrack[segmentStarts[6]!]!.centroid.source).toBe('filled');
     expect(d.events.map((e) => `${e.kind}@${e.holeIndex}`)).toEqual([
       'investigation@3',
       'investigation@5',

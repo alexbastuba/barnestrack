@@ -29,7 +29,7 @@ export const DEFAULT_PARAMETERS: Parameters = {
   trialCutoff_s: 180,
   targetQuadrant: { holeSpan: 2.5 },
   kinematicsSmoothingWindowFrames: 3,
-  gapFilling: { enabled: true, maxDuration_s: 0.1 },
+  gapFilling: { enabled: false, maxDuration_s: 0.1 },
   kinematics: { speedWindowFrames: 2, duplicateTimestampFactor: 0.25, dropGapFactor: 1.5 },
   noseConfidenceCutoff: 0.5,
   outlierVelocityThreshold_cmPerS: 150,
@@ -102,7 +102,7 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   kinematicsSmoothingWindowFrames:
     'Width of the median filter applied to centroid positions before path length and speed are computed; the stored track and the events use the raw positions (frames; O9).',
   'gapFilling.enabled':
-    'Whether short gaps in the derived track are filled by linear interpolation between the frames either side; filled points are marked filled, drawn hollow and counted, and the automatic track is never changed (on/off; O10).',
+    'Whether short gaps in the derived track are filled by linear interpolation between the frames either side; filled points are marked filled, drawn hollow and counted, and the automatic track is never changed. Off by default: no data is better than invented data, so a gap stays a gap, is drawn as one, and enters no kinematic value unless a lab turns filling on (on/off; O10).',
   'gapFilling.maxDuration_s':
     'Only gaps no longer than this, measured between the positioned frames either side, are filled — and never when either of those frames is within one hole radius of a hole, because a gap at a hole is evidence, not noise (seconds; O10).',
   'kinematics.speedWindowFrames':

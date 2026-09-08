@@ -50,7 +50,7 @@ describe('DEFAULT_PARAMETERS', () => {
     expect(DEFAULT_PARAMETERS.trialCutoff_s).toBe(180); // O5
     expect(DEFAULT_PARAMETERS.targetQuadrant).toEqual({ holeSpan: 2.5 }); // O6
     expect(DEFAULT_PARAMETERS.kinematicsSmoothingWindowFrames).toBe(3); // O9
-    expect(DEFAULT_PARAMETERS.gapFilling).toEqual({ enabled: true, maxDuration_s: 0.1 }); // O10
+    expect(DEFAULT_PARAMETERS.gapFilling).toEqual({ enabled: false, maxDuration_s: 0.1 }); // O10 → D60: off by default
     expect(DEFAULT_PARAMETERS.kinematics).toEqual({
       speedWindowFrames: 2,
       duplicateTimestampFactor: 0.25,
@@ -178,7 +178,7 @@ describe('canonicalJson and hashing (D51)', () => {
       outlierVelocityThreshold_cmPerS: 150,
       noseConfidenceCutoff: 0.5,
       kinematics: { dropGapFactor: 1.5, duplicateTimestampFactor: 0.25, speedWindowFrames: 2 },
-      gapFilling: { maxDuration_s: 0.1, enabled: true },
+      gapFilling: { maxDuration_s: 0.1, enabled: false },
       kinematicsSmoothingWindowFrames: 3,
       targetQuadrant: { holeSpan: 2.5 },
       trialCutoff_s: 180,

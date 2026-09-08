@@ -11,7 +11,11 @@ const g = testGeometry();
 const cx = TEST_PLATFORM.cx;
 const cy = TEST_PLATFORM.cy;
 
-function clean(frames: readonly TrackFrame[], parameters: Parameters = DEFAULT_PARAMETERS) {
+/**
+ * D60 turned filling off in `DEFAULT_PARAMETERS`, so the tests of the filling
+ * machinery ask for it explicitly; the shipped default has its own test below.
+ */
+function clean(frames: readonly TrackFrame[], parameters: Parameters = withGapFilling(true)) {
   return cleanTrack(frames, buildTrackArrays(frames, g), g, parameters);
 }
 
@@ -20,6 +24,28 @@ function withGapFilling(enabled: boolean, maxDuration_s = 0.1): Parameters {
 }
 
 describe('gap filling (O10)', () => {
+  it('fills nothing at the shipped defaults: a gap stays a gap (D60)', () => {
+    // The same short, away-from-holes gap the next test fills. At DEFAULT_PARAMETERS it is left
+    // alone and reported as `disabled`, and no frame gains a position it was never seen at.
+    const frames = deepFreeze(
+      buildTrack([[cx, cy], [cx + 10, cy], null, null, [cx + 40, cy + 30], [cx + 50, cy + 30]]),
+    );
+    const { track, report } = cleanTrack(
+      frames,
+      buildTrackArrays(frames, g),
+      g,
+      DEFAULT_PARAMETERS,
+    );
+    expect(DEFAULT_PARAMETERS.gapFilling.enabled).toBe(false);
+    expect(report.filledFrames).toBe(0);
+    expect(report.filledGaps).toEqual([]);
+    expect(report.unfilledGaps.map((u) => u.reason)).toEqual(['disabled']);
+    for (const i of [2, 3]) {
+      expect(track[i]!.centroid.valid).toBe(false);
+      expect(track[i]!.centroid.source).not.toBe('filled');
+    }
+  });
+
   it('fills a short gap away from holes linearly in time, marked filled, nose left invalid', () => {
     const frames = deepFreeze(
       buildTrack([[cx, cy], [cx + 10, cy], null, null, [cx + 40, cy + 30], [cx + 50, cy + 30]]),
