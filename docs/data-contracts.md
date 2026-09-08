@@ -133,7 +133,8 @@ superseding the session-level "calibration" field named in D9's prose).
   keyed by the parameters that produced it. Re-running tracking with the same parameters is a
   no-op; different parameters produce a new `auto` layer rather than mutating the old one.
 - **`corrections`** — `{ entries: CorrectionEntry[] }`. Sparse human edits — point corrections,
-  range tools, event corrections, trial-start adjustment, strategy override — each carrying
+  range tools, event corrections, trial-start adjustment, strategy override, a confirmed
+  non-escape (`no_escape`, D63: one per video, with a reason) — each carrying
   `source: 'user'` and an ISO 8601 `timestamp` (D25). Never mutates `auto`.
 - **`derived`** — `{ cleanedTrack, events, metrics, quality } | null`. Everything recomputed from
   `auto ⊕ corrections` on load: safe to discard and recompute at any time; never treated as the
@@ -256,7 +257,7 @@ seconds applied to each frame's own timestamp (D7).
 | `escapeEntry.radiusFactor`             | × hole radius      | 1.0     | An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run. | O4 |
 | `escapeEntry.minDuration_s`            | s                  | 1.0     | A run at the target must last at least this long (first to last frame, no full-size detection elsewhere during it) to be an entry; the same run at a non-target hole is an investigation flagged physically unlikely; a loss this long away from any hole is a tracking failure. | O4 |
 | `escapeEntry.persistCutoff_s`          | s                  | 3       | The trial ends at the first entry lasting at least this long or to the end of the video; total latency is the run's first frame.  | O4 |
-| `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review`.          | O5 |
+| `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review` unless the non-escape is confirmed (D63).          | O5 |
 | `targetQuadrant.holeSpan`              | holes              | 2.5     | The target quadrant reaches this many hole spacings either side of the target hole (2.5 on a 20-hole ring = 90°).               | O6 |
 | `kinematicsSmoothingWindowFrames`      | frames             | 3       | Median filter width applied to centroid positions for path length and speed only; stored track and events use raw positions.    | O9 |
 | `gapFilling.enabled`                   | on/off             | on      | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
@@ -266,7 +267,7 @@ seconds applied to each frame's own timestamp (D7).
 | `kinematics.dropGapFactor`             | × nominal interval | 1.5     | Consecutive frames farther apart than this multiple of the nominal interval are a dropped-frame gap: counted, path keeps the straight segment. | O11 |
 | `noseConfidenceCutoff`                 | 0–1                | 0.5     | Events use the nose when its heading confidence is at least this (or it was placed by hand), otherwise the centroid; `pointUsed` records which. | O16 |
 | `outlierVelocityThreshold_cmPerS`      | cm/s               | 150     | A centroid moving faster than this from the previous positioned frame is an outlier: marked invalid, kept, never replaced.        | O17 |
-| `trialCensoring.censorToCutoff`        | on/off             | off     | Report the cutoff as total latency for a trial that never reached the escape box, for statistics; `escaped` stays false and the status stays `review`. | O5 |
+| `trialCensoring.censorToCutoff`        | on/off             | off     | Report the cutoff as total latency for a trial that never reached the escape box, for statistics; `escaped` stays false and the status stays `review` unless the non-escape is confirmed (D63). | O5 |
 | `strategy.spatialMaxErrors`            | count              | 3       | Spatial: reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target. | O7 |
 | `strategy.spatialMaxHoleDistance`      | holes              | 2       | Spatial: every error hole within this many holes of the target around the ring.                                                  | O7 |
 | `strategy.spatialMaxCentreCrossings`   | count              | 1       | Spatial: at most this many entries into the centre zone before the target.                                                       | O7 |
@@ -438,7 +439,10 @@ session file, an export *is* reachable in the deployed build, so a 35-column and
 would silently misread the older one. **The conclusion is that 1 stands**: `target_hole` is purely
 additive, every consumer keys on header names, and every row already carries `tool_version` and
 `parameters_hash`, which distinguish the two files for anyone reconciling them. A version bump
-signals a breaking change, and there is none here.
+signals a breaking change, and there is none here. **The same holds for D63's `no_escape_confirmed`**,
+added on the same terms: purely additive, keyed by header name, and the argument against — that two
+`trials.csv` files stamped `schema_version 1` can now differ in width by two columns rather than one
+— is the same argument, disposed of the same way.
 
 ### `trials.csv` — one row per trial
 
@@ -455,7 +459,8 @@ signals a breaking change, and there is none here.
 | `target_quadrant_time_s` | s | O6 |
 | `strategy`, `strategy_source` | — | O7 |
 | `escaped` | bool | O4 |
-| `status` | — | `ok \| review \| unresolved` (O5) |
+| `no_escape_confirmed` | bool | D63 — a person confirmed the animal never entered; true also when contradicted, with `escaped` true and `status` review beside it |
+| `status` | — | `ok \| review \| unresolved` (O5, D63) |
 | `tracked_fraction` | 0–1 | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |

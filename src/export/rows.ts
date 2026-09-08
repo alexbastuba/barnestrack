@@ -140,6 +140,9 @@ export function trialRows(
       strategy: metrics.strategy,
       strategySource: metrics.strategySource,
       escaped: metrics.escaped,
+      // D63: reports the correction being in force. A contradicted confirmation writes it beside
+      // `escaped = true` and `status = review`; the status is what says the two disagree.
+      noEscapeConfirmed: metrics.noEscapeConfirmed,
       status: metrics.status,
       trackedFraction: metrics.trackedFraction,
       correctionCount: metrics.correctionCount,

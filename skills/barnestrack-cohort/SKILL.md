@@ -22,7 +22,7 @@ keeps the cohort name as it was typed. The six files:
 
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trials.csv`                      | trial                         | 36 columns; the headline numbers                                                                            |
+| `trials.csv`                      | trial                         | 37 columns; the headline numbers                                                                            |
 | `events.csv`                      | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
@@ -42,7 +42,7 @@ Reading conventions that apply to all three CSVs:
 Header, verbatim:
 
 ```
-session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,status,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
+session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,no_escape_confirmed,status,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
 ```
 
 Identifiers and metadata: `session_id` (the cohort name — see the warning under Rules),
@@ -62,8 +62,9 @@ Measures:
 - `primary_latency_s` (s, **may be blank**) — trial start to the first investigation of the target
   hole. Blank when the animal never investigated the target.
 - `total_latency_s` (s, **may be blank**) — trial start to the escape-box entry. Blank when the
-  animal never entered; the trial is then `escaped = false` and `status = review`. Blank is not the
-  cutoff, and substituting the cutoff is a decision the analyst has to state.
+  animal never entered; the trial is then `escaped = false`, and `status = review` unless
+  `no_escape_confirmed` is true. Blank is not the cutoff, and substituting the cutoff is a decision
+  the analyst has to state.
 - `primary_errors`, `total_errors` (count) — investigations of non-target holes, repeat visits
   included; primary counts those before the first target investigation.
 - `path_length_cm`, `path_length_smoothed_cm` (cm) — raw and median-smoothed centroid path. Report
@@ -73,6 +74,12 @@ Measures:
 - `strategy` — `spatial`, `serial` or `random`.
 - `strategy_source` — `auto` or `corrected`.
 - `escaped` — `true` or `false`.
+- `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
+  never entered the escape box, which is what lets a trial with no entry read `ok`. It says the
+  confirmation is on file, not that it still holds: `escaped = true` beside it means an escape entry
+  was found afterwards and contradicts it, and the row is then `status = review`. Never pool
+  `escaped = false, no_escape_confirmed = false` rows with confirmed ones as if both were known
+  non-escapers — the unconfirmed ones may be missed entries.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
   `tracked` state only, so it reads lower than "frames with a usable position", which is
@@ -174,12 +181,14 @@ These are not style preferences. Each exists because ignoring it produces a conf
 number.
 
 1. **Never fold `review` trials into a headline number silently, and drop `unresolved` ones
-   entirely.** `status = ok` means the animal escaped and nothing needed a human look. `review`
-   means the trial ran past the cutoff, tracking failed, or a value could not be resolved
-   automatically — the numbers are real, they just need saying out loud. On some cohorts every
-   trial is `review`; that is a known property of the escape-entry rule, not a broken export, and
-   the right response is to say so and use the measures it does not affect (errors, path length,
-   quadrant time, strategy) rather than quietly averaging latencies that are blank.
+   entirely.** `status = ok` means the animal escaped — or never entered and a person confirmed it,
+   which `no_escape_confirmed` records — and nothing else needed a human look. `review`
+   means the trial ran past the cutoff without a confirmed non-escape, tracking failed, or a value
+   could not be resolved automatically — the numbers are real, they just need saying out loud. On
+   some cohorts every trial is `review`; that is a known property of the escape-entry rule on
+   videos nobody has reviewed, not a broken export, and the right response is to say so and use the
+   measures it does not affect (errors, path length, quadrant time, strategy) rather than quietly
+   averaging latencies that are blank.
 
    `unresolved` is different and more dangerous: it means **no trial window was found at all** —
    no trial start could be detected. Nothing about it involves review, and a correction cannot
@@ -278,7 +287,7 @@ Barnes cohort A,video-test53,M07,1,1,lesion,7,1,25.04,27.343,4,4,374.24,…
 The tail of the same three rows, from `strategy` onwards:
 
 ```
-strategy,strategy_source,escaped,status,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
+strategy,strategy_source,escaped,no_escape_confirmed,status,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
 serial,auto,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
 spatial,auto,true,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
 random,auto,true,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…

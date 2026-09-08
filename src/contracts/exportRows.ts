@@ -48,6 +48,8 @@ export interface TrialRow extends ExportProvenance {
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
   escaped: boolean;
+  /** D63: a person has confirmed the animal never entered the escape box. */
+  noEscapeConfirmed: boolean;
   status: TrialStatus;
   trackedFraction: number;
   correctionCount: number;

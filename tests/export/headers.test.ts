@@ -30,6 +30,7 @@ const DOCUMENTED_TRIAL_HEADERS = [
   'strategy',
   'strategy_source',
   'escaped',
+  'no_escape_confirmed',
   'status',
   'tracked_fraction',
   'correction_count',
