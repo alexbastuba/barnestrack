@@ -18,6 +18,7 @@ import { markRange } from '../../src/session/corrections.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { createReviewStep } from '../../src/ui/review-step.js';
+import { TRACKS, frameToX } from '../../src/ui/timeline-geometry.js';
 import type { AppContext, Step, StepId } from '../../src/ui/step.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
 
@@ -279,6 +280,108 @@ describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
     expect(quality.textContent).toContain(afterReport.tier);
   });
 });
+
+/**
+ * The pointer gestures on the timeline. happy-dom gives the canvas no layout,
+ * so its rect is stubbed: 900 px wide at the origin, which is all the geometry
+ * needs to turn a clientX into a frame.
+ */
+function stubCanvasRect(step: Step): HTMLCanvasElement {
+  const canvas = step.body.querySelector<HTMLCanvasElement>('.timeline-canvas')!;
+  canvas.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, width: 900, height: 124, right: 900, bottom: 124, x: 0, y: 0 }) as DOMRect;
+  canvas.setPointerCapture = () => {};
+  canvas.releasePointerCapture = () => {};
+  canvas.hasPointerCapture = () => true;
+  return canvas;
+}
+
+/** Inside the detection-state row, where no event edge can claim the press. */
+const STATE_ROW_Y = TRACKS.find((track) => track.id === 'state')!.y + 2;
+/** Inside the events row, where an edge within six pixels is grabbed instead. */
+const EVENTS_ROW_Y = TRACKS.find((track) => track.id === 'events')!.y + 20;
+
+function pointer(type: string, x: number, y: number, shiftKey = false): Event {
+  const event = new Event(type, { bubbles: true }) as Event & Record<string, unknown>;
+  Object.assign(event, { clientX: x, clientY: y, pointerId: 1, button: 0, shiftKey });
+  return event;
+}
+
+/** The frame the scrubber is showing — what the playhead follows. */
+function playheadFrame(step: Step): number {
+  return Number(step.body.querySelector<HTMLInputElement>('.frame-range')!.value);
+}
+
+describe('dragging on the timeline', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('scrubs: the playhead follows the pointer from press to release', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+
+    canvas.dispatchEvent(pointer('pointerdown', 90, STATE_ROW_Y));
+    const atPress = playheadFrame(step);
+    canvas.dispatchEvent(pointer('pointermove', 450, STATE_ROW_Y));
+    const afterDrag = playheadFrame(step);
+
+    expect(afterDrag).toBeGreaterThan(atPress);
+    // Half way across a 900 px timeline is half way through the clip.
+    const frameCount = harnessFrameCount(step);
+    expect(afterDrag).toBeGreaterThan(frameCount * 0.4);
+    expect(afterDrag).toBeLessThan(frameCount * 0.6);
+  });
+
+  it('stops seeking once the pointer is up', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+    canvas.dispatchEvent(pointer('pointerdown', 90, STATE_ROW_Y));
+    canvas.dispatchEvent(pointer('pointermove', 450, STATE_ROW_Y));
+    const atRelease = playheadFrame(step);
+    canvas.dispatchEvent(pointer('pointerup', 450, STATE_ROW_Y));
+    canvas.dispatchEvent(pointer('pointermove', 800, STATE_ROW_Y));
+    expect(playheadFrame(step)).toBe(atRelease);
+  });
+
+  it('retimes instead of scrubbing when the press lands on an event edge', () => {
+    const harness = mount();
+    const step = harness.step;
+    const canvas = stubCanvasRect(step);
+    const video = harness.store.videos[0]!;
+    const analysis = harness.store.analysisFor(video.id)!.derived!;
+    const event = analysis.events[0]!;
+    const frameCount = harnessFrameCount(step);
+    const edgeX = frameToX(event.startFrame, { first: 0, last: frameCount - 1 }, 900);
+    const before = step.body.querySelectorAll('.corrections-list li').length;
+
+    canvas.dispatchEvent(pointer('pointerdown', edgeX, EVENTS_ROW_Y));
+    // The edge branch selects the event; it deliberately does not seek.
+    expect(playheadFrame(step)).toBe(0);
+    canvas.dispatchEvent(pointer('pointerup', edgeX, EVENTS_ROW_Y));
+
+    expect(step.body.querySelectorAll('.corrections-list li').length).toBeGreaterThan(before);
+  });
+
+  it('pans on Shift-drag and leaves the playhead where it was', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+    // Zoom in first, or the whole clip is on screen and there is nothing to pan.
+    step.body.querySelector<HTMLButtonElement>('.timeline-controls button')!.click();
+    const before = playheadFrame(step);
+    const readout = step.body.querySelector('.timeline .zoom-readout')!.textContent;
+
+    canvas.dispatchEvent(pointer('pointerdown', 600, 50, true));
+    canvas.dispatchEvent(pointer('pointermove', 200, 50, true));
+
+    expect(playheadFrame(step)).toBe(before);
+    expect(step.body.querySelector('.timeline .zoom-readout')!.textContent).not.toBe(readout);
+  });
+});
+
+function harnessFrameCount(step: Step): number {
+  return Number(step.body.querySelector<HTMLInputElement>('.frame-range')!.max) + 1;
+}
 
 describe('the timeline legend', () => {
   beforeEach(() => {

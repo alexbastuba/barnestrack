@@ -73,7 +73,11 @@ const OVERVIEW_TOP = TRACKS_HEIGHT + 4;
 type Drag =
   | { kind: 'edge'; pointerId: number; eventId: string; edge: EventEdge; frame: number }
   | { kind: 'trial-start'; pointerId: number; frame: number }
-  | { kind: 'overview'; pointerId: number };
+  | { kind: 'overview'; pointerId: number }
+  /** Scrubbing: the playhead follows the pointer, like the scrubber above the video. */
+  | { kind: 'seek'; pointerId: number }
+  /** Shift-drag: the window follows the pointer, the playhead stays put. */
+  | { kind: 'pan'; pointerId: number; lastX: number };
 
 const STATE_WORD: Record<string, string> = {
   tracked: 'tracked',
@@ -631,6 +635,10 @@ export class Timeline {
 
   private localPoint(event: PointerEvent | WheelEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
+    // A pointer landed on the canvas, so it has a layout even if the resize
+    // observer has not delivered one yet; trust the rect in hand rather than
+    // mapping every x onto the last frame.
+    if (this.width === 0 && rect.width > 0) this.width = rect.width;
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
@@ -681,10 +689,20 @@ export class Timeline {
       this.requestDraw();
       return;
     }
+    // Shift-drag pans, the way it does over the video frame; the playhead stays.
+    if (event.shiftKey) {
+      this.drag = { kind: 'pan', pointerId: event.pointerId, lastX: x };
+      this.canvas.setPointerCapture(event.pointerId);
+      return;
+    }
     if (track?.id === 'events') {
       const ev = eventAtFrame(this.model.events, frame);
       this.callbacks.onSelectEvent(ev?.id ?? null);
     }
+    // Press and drag scrubs, like the scrubber above the video: the press that
+    // seeks is the same gesture that keeps seeking while the pointer moves.
+    this.drag = { kind: 'seek', pointerId: event.pointerId };
+    this.canvas.setPointerCapture(event.pointerId);
     this.callbacks.onSeek(frame);
   }
 
@@ -694,6 +712,17 @@ export class Timeline {
     if (this.drag && this.drag.pointerId === event.pointerId) {
       if (this.drag.kind === 'overview') {
         this.scrollOverviewTo(x);
+        return;
+      }
+      if (this.drag.kind === 'seek') {
+        this.callbacks.onSeek(xToFrame(x, this.window, this.width));
+        return;
+      }
+      if (this.drag.kind === 'pan') {
+        const dx = x - this.drag.lastX;
+        this.drag.lastX = x;
+        // A pixel of pointer travel moves the window by the frames that pixel covers.
+        this.panBy(-Math.round((dx * windowSpan(this.window)) / Math.max(1, this.width)));
         return;
       }
       this.drag.frame = xToFrame(x, this.window, this.width);
