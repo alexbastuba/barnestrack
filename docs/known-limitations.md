@@ -459,6 +459,21 @@ session it is found (D39).
   reason rather than left red or half-fixed: un-skipping it is 9c-b's work, and until then the
   shipped build is covered by the loader-driven half of this spec and by the manual pass recorded in
   `tests/browser/README.md`, not end to end.
+- **`tests/browser/review.spec.ts` cannot reach a parameter row since the blocks collapse.** Chunk
+  10c made every parameters-panel block a closed `<details class="param-block">`, and that spec's
+  `parameterField()` (line 70) still locates `#review-parameters fieldset.param-block` and then
+  `fill()`s a `.param-row` input — the selector now misses, and the row would be hidden anyway
+  until its summary is clicked. The spec is skipped unless `BARNESTRACK_SAMPLE_DIR` is set and is
+  not in CI (the browser-smoke job runs `app-smoke.spec.ts`, which touches no parameter row), so
+  nothing green went red; but the chunk-6 acceptance checks it carries are unrunnable until it is
+  fixed. It was left alone because `tests/browser/` is outside chunk 10c's ownership. Smallest fix:
+  `details.param-block` in that locator, and a `summary` click (or `open = true`) before the fill.
+- **The offline message names test53 for all three clips.** `OFFLINE_MESSAGE` in
+  `src/demo/fetch-sample-clip.ts` tells a user who is offline to download "test53.mp4" whichever
+  clip failed, because all three are now fetched together. The sentence is pinned verbatim by
+  `tests/demo/fetch-sample-clip.test.ts`, which is outside the ownership of the chunks that have
+  touched it. Smallest fix: name the clip that failed (the descriptor is already in scope) and
+  re-point that assertion.
 
 ## Excluded scope
 

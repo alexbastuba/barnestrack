@@ -322,8 +322,8 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   latencies, errors, paths and strategies are no longer scripted alongside it: every derived layer
   in the bundle is computed by this tool's own `derive()` from the track it ships, and a test
   re-derives the committed document to prove it. The panel says on screen that the results are
-  illustrative. Attach a real file — drop it, or press the fetch button — and every number is
-  recomputed from the frames.
+  illustrative. Attach a real file — drop it, or confirm the download in the example-cohort
+  dialog — and every number is recomputed from the frames.
 
 ## Data handling and cost
 

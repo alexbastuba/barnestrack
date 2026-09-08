@@ -26,9 +26,6 @@ export const SAMPLE_CLIP_FILENAME = 'test53.mp4';
 export const SAMPLE_CLIP_URL =
   'https://raw.githubusercontent.com/salk-airc/rse-takehome-2026/main/data/barnes-maze/test53.mp4';
 
-/** Says the file, the size and the source before the request is made. */
-export const FETCH_BUTTON_LABEL = 'Fetch test53.mp4 (≈ 0.5 MB) from the sample-data repository';
-
 export interface SampleClip {
   filename: string;
   url: string;
@@ -64,9 +61,11 @@ export const FETCH_BUTTON_HINT =
 
 /*
  * Names test53 only, which is wrong for the other two clips now that all three
- * are fetched. Correcting it changes an assertion in `tests/demo/`, which is
- * outside chunk 10b's ownership, so the repetition was fixed instead (the
- * outcome line says one sentence, not three) and the wording is left for 10a.
+ * are fetched. The sentence is pinned verbatim by
+ * `tests/demo/fetch-sample-clip.test.ts`, so correcting the wording means
+ * changing that assertion too; it is recorded in docs/known-limitations.md
+ * rather than half-changed here. The three-fold repetition it once caused is
+ * already fixed — the outcome line says the sentence once, not once per clip.
  */
 const OFFLINE_MESSAGE =
   'Could not reach the sample-data repository. Check your connection, or download ' +
