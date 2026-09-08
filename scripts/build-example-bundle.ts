@@ -3,10 +3,14 @@
  *
  *   npx tsx scripts/build-example-bundle.ts
  *
- * For this chunk the analysis comes from the synthetic fixture, so the numbers
- * are plausible rather than real; Monday's demo take replaces `sourceSession()`
- * with the real outputs and nothing else here changes. The loader never assumes
- * anything about the numbers — it validates the shape and adopts the document.
+ * The track is the synthetic fixture's, so it is a scripted trajectory rather
+ * than a real animal; the demo take replaces `sourceSession()` with the real
+ * outputs and nothing else here changes. The *numbers*, however, are this
+ * tool's: since A2 every `derived` layer is recomputed with `derive()` from the
+ * bundle's own `auto ⊕ corrections` under its own parameters, so what the demo
+ * shows is what the app computes from the track it ships. The loader never
+ * assumes anything about the numbers — it validates the shape and adopts the
+ * document.
  *
  * The fingerprints, however, must be real. `fingerprintsMatch` compares
  * `byteLength` and `sha256`, so a session carrying the fixture's invented
@@ -15,8 +19,8 @@
  * and otherwise taken from the values recorded below.
  *
  * Output is gzipped: serialized the way the app writes a session file it is
- * 11,608,385 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
- * pre-commit guard refuses any staged blob over 2 MB. Gzipped it is ~491 kB.
+ * 11,619,675 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
+ * pre-commit guard refuses any staged blob over 2 MB. Gzipped it is ~494 kB.
  * See docs/known-limitations.md.
  */
 import { gzipSync } from 'node:zlib';
@@ -25,6 +29,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SessionFile, VideoDescriptor, VideoFingerprint } from '../src/contracts/session.js';
 import { parseSessionDocument, serializeSessionFile } from '../src/session/session-file.js';
+import { derive, toDerivedLayer } from '../src/analysis/derive.js';
 import { hashParameters, hashTrackingParameters } from '../src/analysis/parameters.js';
 import { fingerprintVideo } from '../src/video/fingerprint.js';
 import { parseMp4Index } from '../src/video/mp4-index.js';
@@ -200,14 +205,55 @@ function assertHashesAreReal(session: SessionFile): void {
   }
 }
 
+/**
+ * Replaces every `derived` layer with what `derive()` actually makes of that
+ * video's own `auto ⊕ corrections` under the session's parameters (A2).
+ *
+ * The fixture's derived values are scripted to look plausible, not derived, and
+ * shipping them meant the demo's on-screen numbers differed from what the same
+ * tool computes from the same track — with the real parameters hash stamped on
+ * both. The bundle now carries numbers the app reproduces, and
+ * `tests/export/example-bundle-derived.test.ts` re-derives the shipped document
+ * to prove it. A video with no map to derive against keeps `derived: null`
+ * (D52), which is honest rather than a placeholder (D16).
+ */
+function withDerivedLayers(session: SessionFile): SessionFile {
+  const { mazeMap, parameters } = session;
+  const analyses: SessionFile['analyses'] = {};
+  for (const video of session.videos) {
+    const analysis = session.analyses[video.id];
+    if (analysis === undefined) continue;
+    if (mazeMap === null || parameters === null) {
+      analyses[video.id] = { ...analysis, derived: null };
+      continue;
+    }
+    const d = derive({
+      videoId: video.id,
+      auto: analysis.auto,
+      corrections: analysis.corrections,
+      mazeMap,
+      mazeTransform: video.mazeTransform,
+      index: {
+        width: video.referenceResolution.width,
+        height: video.referenceResolution.height,
+      },
+      parameters,
+    });
+    analyses[video.id] = { ...analysis, derived: toDerivedLayer(d) };
+  }
+  return { ...session, analyses };
+}
+
 export async function buildExampleSession(): Promise<SessionFile> {
   const source = sourceSession();
   const fingerprints = await realFingerprints();
-  const session = withoutPlaceholderHashes({
-    ...source,
-    name: EXAMPLE_SESSION_NAME,
-    videos: withRealFingerprints(source.videos, fingerprints),
-  });
+  const session = withDerivedLayers(
+    withoutPlaceholderHashes({
+      ...source,
+      name: EXAMPLE_SESSION_NAME,
+      videos: withRealFingerprints(source.videos, fingerprints),
+    }),
+  );
 
   // After placeholder substitution and before anything is written: a hash that
   // still does not reconcile is a real disagreement in the source, and the

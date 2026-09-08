@@ -180,8 +180,12 @@ describe('the committed example bundle', () => {
     const committed = parseSessionDocument(committedSessionText());
     if (!committed.ok) throw new Error(committed.message);
 
-    // Compared as parsed documents: key order is not part of the contract.
-    expect(committed.session).toEqual(rebuilt);
+    // Compared as parsed documents: key order is not part of the contract. The rebuilt session
+    // goes through the writer first, because since A2 its derived layers are real `derive()`
+    // output, where a number that cannot be computed is `NaN` in memory and `null` in the file.
+    const written = parseSessionDocument(JSON.stringify(rebuilt));
+    if (!written.ok) throw new Error(written.message);
+    expect(committed.session).toEqual(written.session);
   });
 });
 
