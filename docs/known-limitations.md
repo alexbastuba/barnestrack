@@ -285,6 +285,32 @@ session it is found (D39).
   document around the node: any change that makes `.table-scroll` unique again, or adds a fourth
   user of the class, moves it. Fixing the container itself deletes both this entry and the key.
 
+- **The maze step's scroll container is fixed; the entry above is superseded.** Chunk 10b added
+  `scrollRegion()` to `src/ui/dom.ts` — `tabindex="0"`, `role="group"` and an accessible name — and
+  used it for the mirror table in `src/ui/maze-step.ts`, so the container is in the tab order and a
+  keyboard user can scroll it. The allowlist key is deleted from
+  `tests/browser/app-smoke.spec.ts`, whose own comment says to delete an entry when its defect is
+  fixed, and `npx playwright test tests/browser/app-smoke.spec.ts` is 9 passed / 1 skipped with an
+  empty allowlist. The entry above is left standing rather than edited, because this chunk may only
+  append here; chunk 10a reconciles the two. The three `region` findings it also mentions ("All page
+  content should be contained by landmarks", against `.stepper`) are unchanged, still moderate, and
+  still below the failing threshold.
+- **The per-video "to check" count is a lower bound for a video this session has not opened.**
+  The Review step's video selector says how many events on each video still want a human. Review
+  flags come from a full derive, which the step runs only for the video on screen; for the others
+  the count comes from their uncertain frames alone, so a video carrying a
+  `physically_unlikely_entry` flag and no uncertain frames reads as `nothing to check` until it is
+  selected, when the number corrects itself. Deriving every video to label a dropdown would cost a
+  cohort sweep per keystroke, which is the defect recorded two entries above. A fix is to keep the
+  flag list on the derived layer rather than only on the full analysis.
+- **"Maze set on k of N videos" cannot tell a confirmed video from an unconfirmed one.** Per-video
+  maze confirmation is session state and was deliberately not built. The count in
+  `src/ui/next-step.ts` therefore treats a video as set when it carries a fitted (non-identity)
+  transform, or when its resolution matches the map's reference resolution and so needs none. A
+  second video of the same size as the first is counted as set the moment it is loaded, before
+  anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
+  gated on this count, so it can enable a step early; it never blocks one wrongly.
+
 ## Excluded scope
 
 - **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at

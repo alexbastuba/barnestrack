@@ -46,7 +46,7 @@ import { mazeMapFileName, parseMazeMapDocument } from '../session/maze-map-file.
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
 import { Scrubber } from './scrubber.js';
-import { button, el, replaceChildren, uniqueId } from './dom.js';
+import { button, el, replaceChildren, scrollRegion, uniqueId } from './dom.js';
 import { createNextStepButton, mazeMissing, mazeSetCount } from './next-step.js';
 import { downloadText, pickFiles } from './download.js';
 import { drawHole, drawLabel } from './overlay-draw.js';
@@ -836,7 +836,7 @@ export function createMazeStep(context: AppContext): Step {
   const mirror = el('section', { class: 'mirror' }, [
     el('h3', { text: 'What the overlay is drawing' }),
     mirrorSummary,
-    el('div', { class: 'table-scroll' }, [
+    scrollRegion('Every hole in this video’s pixels', [
       el('table', { class: 'mirror-table' }, [
         el('caption', {
           text: 'Every hole in this video’s pixels. An asterisk in "Nudged" marks a hole moved off the generated ring.',
