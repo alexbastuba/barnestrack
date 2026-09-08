@@ -60,12 +60,12 @@ describe('DEFAULT_PARAMETERS', () => {
     expect(DEFAULT_PARAMETERS.outlierVelocityThreshold_cmPerS).toBe(150); // O17
     expect(DEFAULT_PARAMETERS.trialCensoring).toEqual({ censorToCutoff: false }); // O5
     expect(DEFAULT_PARAMETERS.strategy).toEqual({
-      spatialMaxErrors: 3,
-      spatialMaxHoleDistance: 2,
-      spatialMaxCentreCrossings: 1,
-      serialMinRun: 3,
+      spatialMaxErrors: 2,
+      spatialMaxHoleDistance: 1,
+      spatialMaxCentreCrossings: 0,
+      serialMinRun: 2,
       centreZoneRadiusFraction: 0.5,
-    }); // O7, hashed since D55
+    }); // O7 → D58 (Gawel et al. 2019, Table 1), hashed since D55
     expect(DEFAULT_PARAMETERS.quality).toEqual({
       goodMinPositionedFraction: 0.9,
       poorMaxPositionedFraction: 0.7,
@@ -169,10 +169,10 @@ describe('canonicalJson and hashing (D51)', () => {
       quality: { poorMaxPositionedFraction: 0.7, goodMinPositionedFraction: 0.9 },
       strategy: {
         centreZoneRadiusFraction: 0.5,
-        serialMinRun: 3,
-        spatialMaxCentreCrossings: 1,
-        spatialMaxHoleDistance: 2,
-        spatialMaxErrors: 3,
+        serialMinRun: 2,
+        spatialMaxCentreCrossings: 0,
+        spatialMaxHoleDistance: 1,
+        spatialMaxErrors: 2,
       },
       trialCensoring: { censorToCutoff: false },
       outlierVelocityThreshold_cmPerS: 150,

@@ -35,10 +35,10 @@ export const DEFAULT_PARAMETERS: Parameters = {
   outlierVelocityThreshold_cmPerS: 150,
   trialCensoring: { censorToCutoff: false },
   strategy: {
-    spatialMaxErrors: 3,
-    spatialMaxHoleDistance: 2,
-    spatialMaxCentreCrossings: 1,
-    serialMinRun: 3,
+    spatialMaxErrors: 2,
+    spatialMaxHoleDistance: 1,
+    spatialMaxCentreCrossings: 0,
+    serialMinRun: 2,
     centreZoneRadiusFraction: 0.5,
   },
   quality: { goodMinPositionedFraction: 0.9, poorMaxPositionedFraction: 0.7 },
@@ -118,13 +118,13 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'trialCensoring.censorToCutoff':
     'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
   'strategy.spatialMaxErrors':
-    'Spatial search: reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target, all within the spatial hole distance, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target, each within the spatial hole distance of it, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
   'strategy.spatialMaxHoleDistance':
-    'Spatial search: every error hole lies within this many holes of the target around the ring (holes; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): every error hole lies within this many holes of the target around the ring — 1 is the paper’s "adjacent to the target hole" (holes; O7).',
   'strategy.spatialMaxCentreCrossings':
-    'Spatial search: at most this many entries into the centre zone before the target (count; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): at most this many entries into the centre zone before the target; 0 is the paper’s "with no crossing of the centre between hole searches" (count; O7).',
   'strategy.serialMinRun':
-    'Serial search: a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before or ending at the target visit (count; O7).',
+    'Serial search (Gawel et al. 2019, Table 1): a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before the first target visit; holes adjacent to the target and the target itself do not count towards the run, as the paper’s "in a serial manner… but not adjacent to target hole" requires (count; O7).',
   'strategy.centreZoneRadiusFraction':
     'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
   'quality.goodMinPositionedFraction':

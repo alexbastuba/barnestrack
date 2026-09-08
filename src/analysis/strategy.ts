@@ -2,9 +2,10 @@
  * Search-strategy classification (O7, D23): a transparent rule engine over
  * named features of the search phase (trial start to the first target
  * visit), showing the feature values, the rule that fired, the runner-up and
- * the reasoning in sentences a student can read aloud. The placeholder rules
- * and their numbers come from `Parameters.strategy` (D55, hashed like every
- * other threshold); a user override wins and is stored as a correction.
+ * the reasoning in sentences a student can read aloud. The rules are Gawel et
+ * al. 2019, Table 1 (D58); their numbers come from `Parameters.strategy` (D55,
+ * hashed like every other threshold) so a lab can restore its own thresholds.
+ * A user override wins and is stored as a correction.
  */
 import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
@@ -23,7 +24,7 @@ export interface StrategyFeatures {
   errors: number;
   /** Largest ring distance, in holes, of an error hole from the target. */
   maxHoleDistanceFromTarget: number;
-  /** Longest run of investigations of adjacent holes in one direction around the ring with no centre crossing during it; a change of direction ends it and the target visit may end it (O7). */
+  /** Longest run of investigations of adjacent holes in one direction around the ring with no centre crossing during it; a change of direction ends it, and the target hole and the two holes either side of it are excluded from the run (D58, Gawel et al. 2019, Table 1). */
   longestAdjacentRun: number;
   longestAdjacentRunHoles: number[];
   /** Entries into the centre zone during the search phase. */
@@ -190,7 +191,14 @@ export function computeStrategyFeatures(
     maxDist = Math.max(maxDist, holeIndexDistance(g, e.holeIndex!, g.targetIndex));
 
   // O7 (settled 2026-09-06): a run is monotone in one direction around the ring; a change of
-  // direction ends it and the new run starts from the turn; the target visit may end a run
+  // direction ends it and the new run starts from the turn.
+  // D58 (Gawel et al. 2019, Table 1: "in a serial manner… but not adjacent to target hole"): the
+  // target and the two holes either side of it are not part of a serial run, so they are dropped
+  // from the sequence the run is built over. A hole dropped from the middle of a walk breaks the
+  // chain — `ringStep` reads 0 across the gap — which is the conservative reading.
+  const runEvents = sequenceEvents.filter(
+    (e) => holeIndexDistance(g, e.holeIndex!, g.targetIndex) > 1,
+  );
   const n = g.holeCount;
   const ringStep = (from: number, to: number): number =>
     (to - from + n) % n === 1 ? 1 : (from - to + n) % n === 1 ? -1 : 0;
@@ -198,7 +206,7 @@ export function computeStrategyFeatures(
   let run: number[] = [];
   let runDirection = 0;
   let runLastEnd = -1;
-  for (const e of sequenceEvents) {
+  for (const e of runEvents) {
     const hole = e.holeIndex!;
     const last = run[run.length - 1];
     if (last === undefined) {
@@ -276,7 +284,7 @@ function evaluateRules(f: StrategyFeatures, o: Parameters['strategy']): RuleOutc
         strategy: 'spatial',
         conditions: [
           {
-            text: 'reached the target with no error before it: a direct approach is spatial by definition',
+            text: 'reached the target with no error before it: a direct approach is spatial by definition (Gawel et al. 2019, Table 1)',
             satisfied: true,
             degree: 1,
           },
@@ -313,7 +321,7 @@ function evaluateRules(f: StrategyFeatures, o: Parameters['strategy']): RuleOutc
     strategy: 'serial',
     conditions: [
       atLeast(
-        `longest run of adjacent holes in one direction with no centre crossing during it ${f.longestAdjacentRun}${runText} (at least ${o.serialMinRun})`,
+        `longest run of adjacent holes in one direction, not counting the target or the holes beside it, with no centre crossing during it ${f.longestAdjacentRun}${runText} (at least ${o.serialMinRun}; Gawel et al. 2019, Table 1)`,
         f.longestAdjacentRun,
         o.serialMinRun,
       ),
@@ -359,6 +367,13 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
     );
   } else {
     rules = evaluateRules(features, parameters.strategy);
+    // D58: Gawel's definitions all presuppose that the animal reached the target, so a trial that
+    // never did is classified over the whole trial window and the explanation opens by saying so.
+    if (!features.targetReached) {
+      reasoning.push(
+        'The target was never reached, so the classification is made over the whole trial window rather than a search phase: the rule set (Gawel et al. 2019, Table 1) presupposes a target visit, and every class below should be read with the trial status.',
+      );
+    }
     const winner = ORDER.find((s) => rules.find((r) => r.strategy === s)!.fired) ?? 'random';
     autoStrategy = winner;
     const others = rules.filter((r) => r.strategy !== winner);
@@ -394,7 +409,7 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
       );
     }
     reasoning.push(
-      `Classified as ${winner} (the first rule to fire in the order ${ORDER.join(' → ')}); runner-up ${runnerUp}.`,
+      `Classified as ${winner} (the first rule to fire in the order ${ORDER.join(' → ')}; rule set from Gawel et al. 2019, Table 1); runner-up ${runnerUp}.`,
     );
     if (!features.targetReached && features.sequence.length === 0) {
       reasoning.push(
