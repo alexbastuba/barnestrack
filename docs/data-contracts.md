@@ -459,7 +459,7 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `target_quadrant_time_s` | s | O6 |
 | `strategy`, `strategy_source` | — | O7 |
 | `escaped` | bool | O4 |
-| `no_escape_confirmed` | bool | D63 — a person confirmed the animal never entered; true also when contradicted, with `escaped` true and `status` review beside it |
+| `no_escape_confirmed` | bool | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry, with `status` review beside it (and `escaped` true only when that entry ended the trial) |
 | `status` | — | `ok \| review \| unresolved` (O5, D63) |
 | `tracked_fraction` | 0–1 | — |
 | `correction_count` | count | — |

@@ -50,6 +50,36 @@ describe('the cohort skill quotes the headers the export actually writes', () =>
     });
   }
 
+  /*
+   * The blocks above are matched on `session_id,`, which is every *full* header
+   * row — and misses the abbreviated tail block, whose header starts at
+   * `strategy`. When `no_escape_confirmed` was inserted, that block's header
+   * gained the column and its three example rows did not, so the skill taught a
+   * reader that `no_escape_confirmed` takes the values `review` / `ok` and
+   * `status` takes `0.9762`, with every test still green. Field counts inside a
+   * block are cheap to check and catch exactly that.
+   */
+  it('keeps every example row as wide as the header above it', () => {
+    const blocks = skill.split('```').filter((_, index) => index % 2 === 1);
+    let checked = 0;
+    for (const block of blocks) {
+      const rows = block.split('\n').filter((line) => line.includes(',') && !line.startsWith('#'));
+      if (rows.length < 2) continue;
+      const width = rows[0]!.split(',').length;
+      // A CSV block, not prose that happens to contain commas.
+      if (width < 5) continue;
+      checked++;
+      for (const row of rows.slice(1)) {
+        expect(row.split(',').length, `row is not as wide as its header:\n${rows[0]}\n${row}`).toBe(
+          width,
+        );
+      }
+    }
+    // The three example blocks that carry data rows; the full-header blocks are
+    // one line each and have nothing to compare.
+    expect(checked).toBe(3);
+  });
+
   it('quotes no header row the export no longer writes', () => {
     // A stale block left behind next to a fresh one would still pass the
     // includes() checks above, so the fenced blocks are counted too: exactly

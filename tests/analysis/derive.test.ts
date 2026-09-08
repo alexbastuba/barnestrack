@@ -688,6 +688,33 @@ describe('a confirmed non-escape (D63)', () => {
     expect(flag!.message).toContain('the animal sat on the platform');
   });
 
+  it('is contradicted by an escape entry too short to end the trial', () => {
+    /*
+     * The reviewer's counterexample, and the reason the flag does not test
+     * `escaped`. A loss at the target over the minimum duration but under the
+     * persist cutoff is a real `escape_entry` row in `events.csv` at the escape
+     * hole, while the trial runs on and `escaped` stays false. Testing only the
+     * trial-ending entry shipped `escaped=false, no_escape_confirmed=true,
+     * status=ok` over an entry the tool had itself found and printed.
+     */
+    const shortEntry: Segment[] = [
+      { kind: 'empty', seconds: 1 },
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5, area: [500, 150] },
+      { kind: 'lost', seconds: 1.5 }, // over escapeEntry.minDuration_s, under persistCutoff_s
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      ...visitHoles([9]),
+    ];
+    const d = derive(inputFor(shortEntry, { corrections: [confirmation] }).input);
+    expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(true);
+    expect(d.metrics.escaped).toBe(false); // the entry is not persistent: the trial ran on
+    const flag = d.reviewFlags.find((f) => f.code === 'no_escape_contradicted');
+    expect(flag).toBeDefined();
+    expect(flag!.message).toContain('too short to end the trial');
+    expect(d.metrics.status).toBe('review');
+  });
+
   it('leaves the trial at review once the confirmation is reverted', () => {
     // `revertNoEscape` drops the entry; deriving without it is what the store then recomputes
     const reverted = revertNoEscape({ entries: [confirmation] });

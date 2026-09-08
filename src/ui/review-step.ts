@@ -776,7 +776,12 @@ export function createReviewStep(context: AppContext): Step {
   noEscapeReason.placeholder = 'Why, in your own words';
   const noEscapeHint = el('span', { id: uniqueId('review-no-escape-hint'), class: 'hint' });
   const noEscapeProblem = el('p', { class: 'error', attrs: { role: 'alert', hidden: true } });
-  noEscapeBox.setAttribute('aria-describedby', noEscapeHint.id);
+  noEscapeProblem.id = uniqueId('review-no-escape-problem');
+  // The label says the reason is required; the control says so too, and both it
+  // and the box point at the message that appears when it is missing.
+  noEscapeReason.required = true;
+  noEscapeReason.setAttribute('aria-describedby', `${noEscapeHint.id} ${noEscapeProblem.id}`);
+  noEscapeBox.setAttribute('aria-describedby', `${noEscapeHint.id} ${noEscapeProblem.id}`);
 
   noEscapeBox.addEventListener('change', () => {
     const layer = layerOrNull();
@@ -801,8 +806,24 @@ export function createReviewStep(context: AppContext): Step {
     commit(setNoEscape(layer, reason, newMeta()), 'Confirmed: the animal never entered the escape box');
   });
 
+  // Editing the reason of a confirmation already on file re-commits it. Without this the field is
+  // enabled, pre-filled and editable, and the next render silently puts the stored text back — the
+  // only way to fix a typo would be to revert the correction and make it again.
+  noEscapeReason.addEventListener('change', () => {
+    const layer = currentLayer();
+    const entry = layer ? noEscapeCorrection(layer) : null;
+    if (!layer || entry === null) return;
+    const reason = noEscapeReason.value.trim();
+    if (reason === '' || reason === entry.reason) {
+      noEscapeReason.value = entry.reason;
+      return;
+    }
+    // `setNoEscape` coalesces, so the entry keeps its id and the corrections list does not grow.
+    commit(setNoEscape(layer, reason, newMeta()), `Reason for the confirmed non-escape changed to: ${reason}`);
+  });
+
   const noEscapeField = el('div', { class: 'no-escape-field' }, [
-    el('div', { class: 'field field-check' }, [
+    el('div', { class: 'field' }, [
       noEscapeBox,
       el('label', { text: 'Confirmed: never entered the escape box', attrs: { for: noEscapeBox.id } }),
     ]),
@@ -819,25 +840,35 @@ export function createReviewStep(context: AppContext): Step {
     const layer = currentLayer();
     const entry = layer ? noEscapeCorrection(layer) : null;
     const escaped = analysis?.metrics.escaped === true;
-    const contradicted = entry !== null && escaped;
+    // Any escape entry, not only one that ended the trial: an entry too short to be persistent is
+    // still an entry the tool found at the escape hole, and the engine flags it the same way.
+    const firstEntry = (analysis?.events ?? [])
+      .filter((ev) => ev.kind === 'escape_entry')
+      .reduce<EventRecord | null>((a, b) => (a === null || b.startFrame < a.startFrame ? b : a), null);
+    const contradicted = entry !== null && firstEntry !== null;
 
     noEscapeBox.checked = entry !== null;
     // Disabled only when there is nothing to confirm — never while a confirmation stands, or the
     // user could not untick their own correction (D25: every correction is revertable).
-    noEscapeBox.disabled = analysis === null || (escaped && entry === null);
+    noEscapeBox.disabled = analysis === null || (firstEntry !== null && entry === null);
     noEscapeReason.disabled = noEscapeBox.disabled;
     if (document.activeElement !== noEscapeReason) noEscapeReason.value = entry?.reason ?? '';
 
     const endFrame = analysis ? positionToFrame(analysis.cleanedTrack, analysis.trial.endFrame) : null;
     const when =
-      analysis && endFrame !== null ? formatFrameTime(endFrame, analysis.trial.endTime_s) : 'a frame of this trial';
+      escaped && analysis && endFrame !== null
+        ? formatFrameTime(endFrame, analysis.trial.endTime_s)
+        : firstEntry
+          ? formatFrameTime(firstEntry.startFrame, firstEntry.startTime_s)
+          : 'a frame of this trial';
+    const shortOfEnding = escaped ? '' : ' (too short to end the trial, or outside it)';
     noEscapeHint.textContent =
       analysis === null
         ? 'Analyse the video first.'
         : contradicted
-          ? `Contradicted: an escape entry at ${when} ends this trial, so the entry stands and the trial is still for review. Untick this, or revert what produced the entry.`
-          : escaped
-            ? `Nothing to confirm: this trial escaped at ${when}.`
+          ? `Contradicted: an escape entry at ${when}${shortOfEnding} stands against this confirmation, so the trial is still for review. Untick this, or revert what produced the entry.`
+          : firstEntry !== null
+            ? `Nothing to confirm: this trial has an escape entry at ${when}${shortOfEnding}.`
             : 'Ticking this says the animal genuinely never went in, which is what lets the trial read ok.';
   }
 

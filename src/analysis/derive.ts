@@ -209,16 +209,30 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     corrections,
     parameters,
   });
-  // D63: the human's "this animal never entered the escape box". It is contradicted the moment an
-  // escape entry ends the trial — a threshold change or a range correction can produce one after
-  // the confirmation was recorded — and then the entry wins: `escaped` stays true, and this flag
-  // sends the trial back to review with the disagreement named.
+  /*
+   * D63: the human's "this animal never entered the escape box", contradicted the moment an escape
+   * entry appears beside it — a threshold change or a range correction can produce one after the
+   * confirmation was recorded — and then the entry wins and the trial goes back to review.
+   *
+   * The test is *any* escape entry, not only the one that ended the trial. An entry that is too
+   * short to be persistent (O4), or one outside the trial window, is still an `escape_entry` row in
+   * `events.csv` at the escape hole while `escaped` stays false, so the trial-ending test alone
+   * would let `escaped = false, no_escape_confirmed = true, status = ok` ship over an entry the
+   * tool itself found and printed. The two cases read differently and say so.
+   */
   const noEscape = latestCorrection(corrections.entries, 'no_escape');
-  if (noEscape !== null && bounds.endReason === 'escape') {
+  const escapeEntries = correctedEvents.events.filter((ev) => ev.kind === 'escape_entry');
+  if (noEscape !== null && escapeEntries.length > 0) {
+    const because = noEscape.reason ? ` ("${noEscape.reason}")` : '';
+    const first = escapeEntries.reduce((a, b) => (a.startFrame <= b.startFrame ? a : b));
     reviewFlags.push({
       code: 'no_escape_contradicted',
       correctionId: noEscape.id,
-      message: `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${noEscape.reason ? ` ("${noEscape.reason}")` : ''}. The entry stands: revert the confirmation, or revert what produced the entry.`,
+      frameIndex: first.startFrame,
+      message:
+        bounds.endReason === 'escape'
+          ? `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. The entry stands: revert the confirmation, or revert what produced the entry.`
+          : `${escapeEntries.length === 1 ? 'An escape entry was' : `${escapeEntries.length} escape entries were`} detected at ${first.startTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. ${escapeEntries.length === 1 ? 'It is' : 'They are'} too short to end the trial, or outside it, so the trial is not marked escaped — check the entry and then either revert the confirmation or delete the entry.`,
     });
   }
 

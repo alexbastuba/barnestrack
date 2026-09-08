@@ -141,8 +141,14 @@ export function trialRows(
       strategySource: metrics.strategySource,
       escaped: metrics.escaped,
       // D63: reports the correction being in force. A contradicted confirmation writes it beside
-      // `escaped = true` and `status = review`; the status is what says the two disagree.
-      noEscapeConfirmed: metrics.noEscapeConfirmed,
+      // `status = review`; the status is what says the tool and the person disagree.
+      //
+      // `?? false` because a session file written before D63 has no such field on its persisted
+      // metrics, and a bool column must not have a third, blank value. The app never reaches this
+      // — loading a session invalidates the derived layers and re-derives them — but `trialRows`
+      // is callable on a parsed document, and a blank there would be a value the skill does not
+      // document.
+      noEscapeConfirmed: metrics.noEscapeConfirmed ?? false,
       status: metrics.status,
       trackedFraction: metrics.trackedFraction,
       correctionCount: metrics.correctionCount,

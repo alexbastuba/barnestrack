@@ -76,8 +76,11 @@ Measures:
 - `escaped` — `true` or `false`.
 - `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
   never entered the escape box, which is what lets a trial with no entry read `ok`. It says the
-  confirmation is on file, not that it still holds: `escaped = true` beside it means an escape entry
-  was found afterwards and contradicts it, and the row is then `status = review`. Never pool
+  confirmation is on file, not that it still holds: if the tool later finds an escape entry the
+  confirmation is contradicted and the row reads `status = review` — with `escaped = true` when
+  that entry ended the trial, and `escaped = false` when it was too short to (see
+  `escape_entry_persist_cutoff_s`) or fell outside the trial window, in which case the entry is
+  visible only in `events.csv`. Treat any `status = review` row as a row to look at. Never pool
   `escaped = false, no_escape_confirmed = false` rows with confirmed ones as if both were known
   non-escapers — the unconfirmed ones may be missed entries.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
@@ -288,9 +291,9 @@ The tail of the same three rows, from `strategy` onwards:
 
 ```
 strategy,strategy_source,escaped,no_escape_confirmed,status,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
-serial,auto,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-spatial,auto,true,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-random,auto,true,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+serial,auto,false,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+spatial,auto,true,false,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+random,auto,true,false,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
 ```
 
 `quality.csv`, all three rows:

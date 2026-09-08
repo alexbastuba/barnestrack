@@ -682,6 +682,27 @@ describe('confirming that a trial had no escape', () => {
     expect(hint()).toContain('Contradicted');
   });
 
+  it('re-commits the reason when it is edited, without a second correction', () => {
+    confirm('nothing went in');
+    const video = harness.store.videos[0]!;
+    const before = harness.store.analysisFor(video.id)!.corrections.entries[0]!;
+
+    reason().value = 'nothing went in — checked again at 2x';
+    reason().dispatchEvent(new Event('change'));
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    const after = harness.store.analysisFor(video.id)!.corrections.entries;
+    expect(after).toHaveLength(1); // coalesced: the correction keeps its identity
+    expect(after[0]!.id).toBe(before.id);
+    expect(after[0]).toMatchObject({ kind: 'no_escape', reason: 'nothing went in — checked again at 2x' });
+    expect(metricNote('Status')).toContain('checked again at 2x');
+    // An emptied reason is not a way to erase the reason on a standing correction.
+    reason().value = '   ';
+    reason().dispatchEvent(new Event('change'));
+    expect(reason().value).toBe('nothing went in — checked again at 2x');
+  });
+
   it('goes back to review when the confirmation is unticked', () => {
     confirm('nothing went in');
     expect(metricValue('Status')).toBe('ok');

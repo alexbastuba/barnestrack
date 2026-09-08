@@ -49,13 +49,19 @@ describe('the hole numbers sit outside the platform', () => {
       for (const hole of source.holes) {
         const label = holeLabelPoint(view, hole);
         const away = Math.hypot(label.x - view.centre.x, label.y - view.centre.y);
+        // Under the old placement — the hole radius plus 9 px from the *hole* —
+        // the labels sat a fraction of a pixel inside the rim on this ring
+        // ratio, so this margin is real but thin, and a fixture with another
+        // ratio would move it.
         expect(away, `hole ${hole.holeIndex} of ${figure.id}`).toBeGreaterThan(view.radius);
-        // Inside the plot rect with room for the glyph itself, not merely on it.
-        const room = ANNOTATION_SIZE;
-        expect(label.x, `hole ${hole.holeIndex} of ${figure.id}`).toBeGreaterThanOrEqual(frame.plot.x + room / 2 - room);
-        expect(label.x).toBeLessThanOrEqual(frame.plot.x + frame.plot.width + room);
-        expect(label.y).toBeGreaterThanOrEqual(frame.plot.y - room);
-        expect(label.y).toBeLessThanOrEqual(frame.plot.y + frame.plot.height + room);
+        // Inside the plot rect with room for the glyph itself, not merely on it:
+        // the labels are centred and middle-baselined, so half a line either way.
+        const room = ANNOTATION_SIZE / 2;
+        const where = `hole ${hole.holeIndex} of ${figure.id}`;
+        expect(label.x, where).toBeGreaterThanOrEqual(frame.plot.x + room);
+        expect(label.x, where).toBeLessThanOrEqual(frame.plot.x + frame.plot.width - room);
+        expect(label.y, where).toBeGreaterThanOrEqual(frame.plot.y + room);
+        expect(label.y, where).toBeLessThanOrEqual(frame.plot.y + frame.plot.height - room);
       }
     }
   });
