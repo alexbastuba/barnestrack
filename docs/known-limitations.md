@@ -492,8 +492,11 @@ session it is found (D39).
   platform rotated between trials — which is Gawel's protocol — has one map and therefore one
   target for every row. The design is recorded and not built: a per-video target override on
   `VideoDescriptor`, and a per-video trial type (`acquisition | probe`, a probe having no escape
-  box and therefore no escape metrics and no `review` for failing to escape). Both are session
-  schema v2 and land together, so neither is done piecemeal.
+  box and therefore no escape metrics). Both are session schema v2 and land together, so neither is
+  done piecemeal. D63 has since closed the other half of the probe case by hand: a trial with no
+  escape entry can be confirmed as a genuine non-escape and read `ok`, one video at a time, which
+  is not the same as a trial type the tool knows about but does remove the "flagged forever"
+  consequence.
 - **A head-in-hole is not inferred from the nose vector when the nose is lost over the hole (O1).**
   The event point is the nose when its heading confidence clears the cutoff and the centroid
   otherwise, and the hole test is a distance. When an animal puts its head into a hole the nose is

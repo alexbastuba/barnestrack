@@ -174,8 +174,10 @@ in a scatter plot.
 **Correcting without losing anything (D24–D27).** A stacked timeline over one shared time axis —
 detection state, confidence, events labelled with hole numbers, corrections, trial markers — above
 a frame-accurate scrubber, fully keyboard-navigable. Corrections are point nudges, range tools
-("not visible here", "in the escape box from here"), event edits, trial-start adjustment and
-strategy overrides, each stored sparsely and individually revertible. Automatic and corrected
+("not visible here", "entered the escape box here"), event edits, trial-start adjustment,
+strategy overrides and a confirmed non-escape — "the animal never entered the escape box", with a
+reason, which is what lets a trial that never escaped read `ok` instead of being flagged forever —
+each stored sparsely and individually revertible. Automatic and corrected
 values differ by shape _and_ text as well as colour, so they survive a grayscale printer and a
 screen reader. Everything autosaves to IndexedDB on every change, and the session file is the
 portable record.
@@ -228,7 +230,8 @@ The numbers below are what the tool ships with today.
   confident, mouse-sized detection inside the platform after the last oversized-foreground frame,
   shown as a timeline marker and adjustable. Latencies are measured from there, never from frame 0.
   The cutoff is 180 s; a trial that never reaches the escape box leaves total latency blank, sets
-  `escaped` false and is marked `review` rather than being given the cutoff as a number.
+  `escaped` false and is marked `review` rather than being given the cutoff as a number — until a
+  person confirms the animal genuinely never went in, which is the only thing that clears it (D63).
 - **What is the target quadrant? (O6)** A 90° sector centred on the target hole — the target plus
   or minus 2.5 holes on a 20-hole ring. Four fixed quadrants with the target's quadrant selected is
   recorded as the alternative.
