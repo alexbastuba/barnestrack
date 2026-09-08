@@ -455,10 +455,11 @@ export function createReviewStep(context: AppContext): Step {
     // Nothing is scrolled: the user is looking at the video, and the strip
     // under it now says which event this is. Scrolling the event card into
     // view took the page away from the frame the decision is made on.
-    context.announce(
-      `${KIND_WORDS[ev.kind]} at hole ${ev.holeIndex ?? '—'}, frames ${ev.startFrame}–${ev.endFrame}, ` +
-        `${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`,
-    );
+    //
+    // The announcement is the position alone. The strip is a live region and
+    // has just said which event this is; saying it again here in different
+    // words made one keypress two utterances for a screen-reader user.
+    context.announce(`${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`);
   }
 
   /**
@@ -496,9 +497,14 @@ export function createReviewStep(context: AppContext): Step {
     queueNext.disabled = count === 0;
 
     const ev = selectedEvent();
-    currentEventLine.textContent = ev
+    const line = ev
       ? describeCurrentEvent(ev)
       : `${describeQueue(count)} — press ] or click an event on the timeline`;
+    // Only when it actually changed: the strip is a polite live region, and
+    // `textContent =` replaces the text node even with an identical string, so
+    // an unguarded write re-announces the whole line on every re-derive — and
+    // `render()` runs on every correction and every debounced threshold commit.
+    if (line !== currentEventLine.textContent) currentEventLine.textContent = line;
     currentEventHint.hidden = ev === null;
   }
 

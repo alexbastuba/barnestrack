@@ -487,16 +487,33 @@ describe('collapsing a block', () => {
   });
 
   it('gains and loses the mark as the value moves, without a remount', async () => {
-    mount({ ...parameters, trialCutoff_s: DEFAULT_PARAMETERS.trialCutoff_s });
-    const mark = blockNamed('Trial cutoff').querySelector<HTMLElement>('.param-changed')!;
+    const { panel, onParametersChange } = mount({
+      ...parameters,
+      trialCutoff_s: DEFAULT_PARAMETERS.trialCutoff_s,
+    });
+    const block = blockNamed('Trial cutoff');
+    const mark = block.querySelector<HTMLElement>('.param-changed')!;
     expect(mark.hidden).toBe(true);
 
-    const input = numberFor('trialCutoff_s');
-    input.value = String(DEFAULT_PARAMETERS.trialCutoff_s + 30);
-    input.dispatchEvent(new Event('input'));
-    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
-    // The panel is driven by its props: the harness feeds the emitted set back.
+    // The mark moves in render(), which the host calls through update() after
+    // the re-derive — the panel emits, the store recomputes, the props come
+    // back. Feeding the emitted set back is that round trip.
+    const type = async (value: number): Promise<void> => {
+      const input = numberFor('trialCutoff_s');
+      input.value = String(value);
+      input.dispatchEvent(new Event('input'));
+      await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+      panel.update({ parameters: onParametersChange.mock.calls.at(-1)![0] as Parameters });
+    };
+
+    await type(DEFAULT_PARAMETERS.trialCutoff_s + 30);
+    expect(mark.hidden).toBe(false);
+
+    await type(DEFAULT_PARAMETERS.trialCutoff_s);
+    expect(mark.hidden).toBe(true);
+    // The same nodes throughout: a remount would lose a drag and the focus.
     expect(mark.isConnected).toBe(true);
+    expect(blockNamed('Trial cutoff')).toBe(block);
   });
 });
 

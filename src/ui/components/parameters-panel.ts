@@ -32,6 +32,7 @@
 import {
   DEFAULT_PARAMETERS,
   PARAMETER_DEFINITIONS,
+  canonicalJson,
   PARAMETER_UNITS,
   parameterAt,
   parameterPaths,
@@ -177,7 +178,6 @@ function markRow(row: Row, messages: readonly string[]): void {
 
 /** One top-level block of the contract, as a collapsible disclosure. */
 interface Block {
-  name: string;
   paths: readonly ParameterPath[];
   /** The word in the summary that says a value in this block is off its default. */
   changed: HTMLElement;
@@ -205,8 +205,6 @@ export function createParametersPanel(
   const paths = parameterPaths(working);
   const rows: Row[] = [];
   const blocks: Block[] = [];
-  /** The blocks the user has opened this session; not session-file state. */
-  const openBlocks = new Set<string>();
 
   const root = el('section', { class: 'parameters-panel' });
   const headingId = uniqueId('parameters-heading');
@@ -439,10 +437,10 @@ export function createParametersPanel(
    * metrics below, so every block starts closed and the user opens the one they
    * are retuning. A `<details>` keeps its own open state, and the blocks are
    * built once and only ever `sync()`ed — never remounted — so a block the user
-   * opened is still open after a re-derive. `openBlocks` records the same thing
-   * for the session so the state is explicitly this component's, and it is
-   * deliberately not written to the session file: which panel a user had open
-   * is not data about the experiment.
+   * opened is still open after a re-derive. That open state lives in the
+   * `<details>` node this component owns and nowhere else; it is deliberately
+   * not written to the session file, because which panel a user had open is not
+   * data about the experiment.
    *
    * `role="group"` with `aria-labelledby` on the summary's own title keeps the
    * grouping the `<fieldset>`/`<legend>` gave (D37); the "changed" mark is a
@@ -478,11 +476,7 @@ export function createParametersPanel(
         attrs: { role: 'group', 'aria-labelledby': title.id, 'data-block': block },
       });
       fieldset.append(el('summary', {}, [title, changed]));
-      fieldset.addEventListener('toggle', () => {
-        if (fieldset.open) openBlocks.add(block);
-        else openBlocks.delete(block);
-      });
-      blocks.push({ name: block, paths: blockPaths, changed });
+      blocks.push({ paths: blockPaths, changed });
 
       if (readOnly) {
         fieldset.classList.add('is-readonly');
@@ -520,11 +514,14 @@ export function createParametersPanel(
     for (const row of rows) row.sync();
     // Structural, not `!==`: a tracking leaf is an object or an array, and two
     // equal exclude-range lists are different references on every re-derive.
+    // `canonicalJson` is the module's own serializer — key-order independent,
+    // the same one the parameters hash is built from — rather than a second
+    // dialect of "equal" that would disagree with the hash on key order.
     for (const block of blocks) {
       const changed = block.paths.some(
         (path) =>
-          JSON.stringify(parameterAt(working, path)) !==
-          JSON.stringify(parameterAt(DEFAULT_PARAMETERS, path)),
+          canonicalJson(parameterAt(working, path)) !==
+          canonicalJson(parameterAt(DEFAULT_PARAMETERS, path)),
       );
       block.changed.hidden = !changed;
     }
