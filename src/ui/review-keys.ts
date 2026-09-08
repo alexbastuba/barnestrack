@@ -105,7 +105,7 @@ export const REVIEW_KEYS: readonly KeyBinding[] = [
   { keys: ['x'], shift: false, when: 'point-tool', action: 'mark-invalid', legend: 'X', description: 'Mark the armed point invalid on this frame' },
   { keys: ['escape'], shift: false, when: 'always', action: 'cancel', legend: 'Esc', description: 'Disarm the point tool, cancel a range being marked, drop the selection' },
   { keys: ['v'], shift: false, when: 'always', action: 'paint-not-visible', legend: 'V', description: '"Animal not visible": press at the first frame, then again at the last' },
-  { keys: ['b'], shift: false, when: 'always', action: 'mark-escape-box', legend: 'B', description: '"Animal in the escape box from here" to the end of the video' },
+  { keys: ['b'], shift: false, when: 'always', action: 'mark-escape-box', legend: 'B', description: '"Entered the escape box here" to the end of the video: the trial ends at this frame' },
   { keys: ['a'], shift: false, when: 'always', action: 'add-event', legend: 'A', description: 'Add an investigation: press at the first frame, then again at the last' },
   { keys: ['delete', 'backspace'], shift: false, when: 'always', action: 'delete-event', legend: 'Delete', description: 'Delete the selected event' },
   { keys: ['h'], shift: false, when: 'always', action: 'relabel-event', legend: 'H', description: 'Change the hole of the selected event' },

@@ -49,12 +49,15 @@ import {
   describeCorrection,
   editEvent,
   markRange,
+  noEscapeCorrection,
   orphanedCorrections,
   pointCorrectionAt,
   NO_CORRECTIONS,
   revertCorrection,
   revertEvent,
+  revertNoEscape,
   revertTrialStart,
+  setNoEscape,
   setPoint,
   setStrategyOverride,
   setTrialStart,
@@ -74,6 +77,7 @@ import {
   formatClock,
   formatHole,
   formatSeconds,
+  positionToFrame,
   type Component,
   type EventListProps,
   type MetricsCardProps,
@@ -736,7 +740,13 @@ export function createReviewStep(context: AppContext): Step {
   const toolOffButton = button('Off (Esc)', () => setTool('off'));
   const invalidButton = button('Mark invalid (X)', () => markInvalid());
   const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible());
-  const escapeBoxButton = button('In escape box from here (B)', () => markEscapeBox());
+  const escapeBoxButton = button('Entered the escape box here — ends the trial (B)', () => markEscapeBox());
+  const escapeBoxHint = el('span', {
+    id: uniqueId('review-escape-hint'),
+    class: 'hint',
+    text: 'The trial ends at this frame and total latency is stamped here, so place it on the frame the animal was last seen going in.',
+  });
+  escapeBoxButton.setAttribute('aria-describedby', escapeBoxHint.id);
   const addEventButton = button('Add investigation from here… (A)', () => addEventHere());
   const deleteEventButton = button('Delete event (Delete)', () => deleteSelected());
   const holeSelect = el('select', { id: uniqueId('review-hole'), attrs: { 'aria-label': 'Hole of the selected event' } });
@@ -749,12 +759,94 @@ export function createReviewStep(context: AppContext): Step {
     if (!layer) return;
     commit(revertTrialStart(layer), 'Trial start reverted to automatic');
   });
+  /*
+   * D63: "the animal never entered the escape box", asserted by a person.
+   *
+   * A trial with no escape entry is `review` by construction, and this is the only thing that can
+   * clear it, so it is deliberately harder to tick than a button is to press: the reason is
+   * required, and the box refuses to stay ticked without one — the same bargain the strategy
+   * override strikes, for the same reason (an assertion with no reason is a silent disagreement
+   * with the tool). It is disabled outright while the trial already has an escape entry: there is
+   * nothing to confirm, and the hint names the time so the user can go and look.
+   */
+  const noEscapeBox = el('input', { id: uniqueId('review-no-escape') });
+  noEscapeBox.type = 'checkbox';
+  const noEscapeReason = el('input', { id: uniqueId('review-no-escape-reason'), class: 'text-input' });
+  noEscapeReason.type = 'text';
+  noEscapeReason.placeholder = 'Why, in your own words';
+  const noEscapeHint = el('span', { id: uniqueId('review-no-escape-hint'), class: 'hint' });
+  const noEscapeProblem = el('p', { class: 'error', attrs: { role: 'alert', hidden: true } });
+  noEscapeBox.setAttribute('aria-describedby', noEscapeHint.id);
+
+  noEscapeBox.addEventListener('change', () => {
+    const layer = layerOrNull();
+    if (!layer) {
+      noEscapeBox.checked = !noEscapeBox.checked;
+      return;
+    }
+    if (!noEscapeBox.checked) {
+      noEscapeProblem.hidden = true;
+      commit(revertNoEscape(layer), 'Confirmation that the animal never escaped removed');
+      return;
+    }
+    const reason = noEscapeReason.value.trim();
+    if (reason === '') {
+      noEscapeBox.checked = false;
+      noEscapeProblem.hidden = false;
+      noEscapeProblem.textContent = 'Say why you are confirming this before ticking the box.';
+      noEscapeReason.focus();
+      return;
+    }
+    noEscapeProblem.hidden = true;
+    commit(setNoEscape(layer, reason, newMeta()), 'Confirmed: the animal never entered the escape box');
+  });
+
+  const noEscapeField = el('div', { class: 'no-escape-field' }, [
+    el('div', { class: 'field field-check' }, [
+      noEscapeBox,
+      el('label', { text: 'Confirmed: never entered the escape box', attrs: { for: noEscapeBox.id } }),
+    ]),
+    el('div', { class: 'field' }, [
+      el('label', { text: 'Reason (required)', attrs: { for: noEscapeReason.id } }),
+      noEscapeReason,
+    ]),
+    noEscapeHint,
+    noEscapeProblem,
+  ]);
+
+  /** Keeps the checkbox, its reason and its hint on what the current analysis says. */
+  function renderNoEscape(): void {
+    const layer = currentLayer();
+    const entry = layer ? noEscapeCorrection(layer) : null;
+    const escaped = analysis?.metrics.escaped === true;
+    const contradicted = entry !== null && escaped;
+
+    noEscapeBox.checked = entry !== null;
+    // Disabled only when there is nothing to confirm — never while a confirmation stands, or the
+    // user could not untick their own correction (D25: every correction is revertable).
+    noEscapeBox.disabled = analysis === null || (escaped && entry === null);
+    noEscapeReason.disabled = noEscapeBox.disabled;
+    if (document.activeElement !== noEscapeReason) noEscapeReason.value = entry?.reason ?? '';
+
+    const endFrame = analysis ? positionToFrame(analysis.cleanedTrack, analysis.trial.endFrame) : null;
+    const when =
+      analysis && endFrame !== null ? formatFrameTime(endFrame, analysis.trial.endTime_s) : 'a frame of this trial';
+    noEscapeHint.textContent =
+      analysis === null
+        ? 'Analyse the video first.'
+        : contradicted
+          ? `Contradicted: an escape entry at ${when} ends this trial, so the entry stands and the trial is still for review. Untick this, or revert what produced the entry.`
+          : escaped
+            ? `Nothing to confirm: this trial escaped at ${when}.`
+            : 'Ticking this says the animal genuinely never went in, which is what lets the trial read ok.';
+  }
+
   const playButton = button('Play / pause (Space)', () => togglePlay());
 
   // A group, not a toolbar: the arrows step frames here, they do not move between the buttons.
   const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools' } }, [
     el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
-    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton, escapeBoxHint]),
     el('div', { class: 'tool-group' }, [
       el('span', { text: 'Event' }),
       addEventButton,
@@ -763,7 +855,7 @@ export function createReviewStep(context: AppContext): Step {
       edgeStartButton,
       edgeEndButton,
     ]),
-    el('div', { class: 'tool-group' }, [el('span', { text: 'Trial' }), trialStartButton, revertTrialStartButton]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Trial' }), trialStartButton, revertTrialStartButton, noEscapeField]),
     el('div', { class: 'tool-group' }, [playButton]),
   ]);
 
@@ -1603,6 +1695,7 @@ export function createReviewStep(context: AppContext): Step {
 
   function renderPanels(): void {
     const video = currentVideo();
+    renderNoEscape();
     const parametersProps: ParametersPanelProps = {
       parameters: store.parameters,
       previous: video ? (previousByVideo.get(video.id) ?? null) : null,
@@ -1638,6 +1731,7 @@ export function createReviewStep(context: AppContext): Step {
       analysis,
       parameters: store.parameters,
       strategyOverrideId: strategyOverride(currentLayer() ?? NO_CORRECTIONS)?.id ?? null,
+      noEscapeReason: noEscapeCorrection(currentLayer() ?? NO_CORRECTIONS)?.reason ?? null,
     };
     if (metricsComponent) {
       metricsComponent.update(metricsProps);

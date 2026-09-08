@@ -22,6 +22,7 @@ const METRIC_KEYS = [
   'strategy',
   'strategySource',
   'escaped',
+  'noEscapeConfirmed',
   'status',
   'trackedFraction',
   'correctionCount',

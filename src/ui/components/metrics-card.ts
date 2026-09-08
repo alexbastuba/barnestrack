@@ -44,6 +44,12 @@ export interface MetricsCardProps {
   parameters: Parameters;
   /** The id of the strategy-override correction in force, when there is one. */
   strategyOverrideId?: string | null;
+  /**
+   * The reason on the `no_escape` correction in force, when there is one (D63).
+   * `TrialMetrics` carries the boolean but not the words, and a status that
+   * reads `ok` because a person said so should say who said what.
+   */
+  noEscapeReason?: string | null;
 }
 
 const STRATEGIES: readonly SearchStrategy[] = ['spatial', 'serial', 'random'];
@@ -130,10 +136,15 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
   const target = firstTargetEvent(withinTrial(analysis, analysis.events));
   const escape = endingEscape(analysis, parameters);
 
+  // D63: a trial reading `ok` with no escape is reading `ok` because a person said so, and the
+  // card says whose claim it is and why. A contradicted confirmation has a flag, which wins here.
+  const confirmed = metrics.noEscapeConfirmed && !metrics.escaped;
   const statusReason =
     analysis.reviewFlags.length > 0
       ? analysis.reviewFlags.map((flag) => flag.message).join(' ')
-      : `Nothing was flagged for review. The trial ended because ${END_REASON_WORDS[trial.endReason] ?? trial.endReason}.`;
+      : confirmed
+        ? `Non-escape confirmed by the user${props.noEscapeReason ? ` (${props.noEscapeReason})` : ''}. Nothing else was flagged for review.`
+        : `Nothing was flagged for review. The trial ended because ${END_REASON_WORDS[trial.endReason] ?? trial.endReason}.`;
 
   return [
     {
@@ -215,13 +226,14 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
       frame: escape?.startFrame ?? null,
       definition:
         'Whether a persistent escape-box entry was detected. False when the trial was cut off instead.',
+      note: confirmed ? 'confirmed by the user: the animal never went in' : undefined,
     },
     {
       name: 'Status',
       value: STATUS_WORDS[metrics.status],
       frame: analysis.reviewFlags.find((flag) => flag.frameIndex !== undefined)?.frameIndex ?? null,
       definition:
-        'ok when nothing needs a human; review when something was flagged or the trial was cut off; unresolved when the trial could not be bounded at all.',
+        'ok when nothing needs a human; review when something was flagged, or the trial was cut off with no escape and nobody has confirmed the animal never went in; unresolved when the trial could not be bounded at all.',
       note: statusReason,
     },
     {

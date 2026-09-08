@@ -18,7 +18,7 @@ import {
 } from '../../src/ui/components/index.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
-import { editEvent, markRange } from '../../src/session/corrections.js';
+import { NO_CORRECTIONS, editEvent, markRange } from '../../src/session/corrections.js';
 import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
@@ -584,5 +584,117 @@ describe('the timeline legend', () => {
     const timeline = step.body.querySelector('.timeline')!;
     expect(timeline.querySelector('.timeline-legend')).not.toBeNull();
     expect(timeline.lastElementChild!.classList.contains('timeline-legend')).toBe(true);
+  });
+});
+
+/*
+ * D63 in the Trial group. The fixture's first video never escapes, which is
+ * exactly the trial this control exists for: it reads `review` until a person
+ * says the animal genuinely never went in.
+ */
+describe('confirming that a trial had no escape', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    harness = mount();
+    // The fixture ships a hand-edited event on this video whose flag is a
+    // review reason of its own, and D63 deliberately does not clear those. This
+    // block is about the escape rule, so it starts from the automatic layer.
+    harness.store.setCorrections(harness.store.videos[0]!.id, NO_CORRECTIONS);
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+  });
+
+  afterEach(() => {
+    harness.step.body.remove();
+  });
+
+  const field = (): HTMLElement => harness.step.body.querySelector<HTMLElement>('.no-escape-field')!;
+  const box = (): HTMLInputElement => field().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  const reason = (): HTMLInputElement => field().querySelector<HTMLInputElement>('.text-input')!;
+  const hint = (): string => field().querySelector('.hint')!.textContent!;
+
+  /** The note beside one row of the metrics card, by the row's visible name. */
+  function metricNote(name: string): string {
+    const row = [...harness.step.body.querySelectorAll('#review-metrics .metric-row')].find(
+      (candidate) => candidate.querySelector('.metric-name')?.textContent === name,
+    )!;
+    return row.querySelector('.metric-note')?.textContent ?? '';
+  }
+
+  function metricValue(name: string): string {
+    const row = [...harness.step.body.querySelectorAll('#review-metrics .metric-row')].find(
+      (candidate) => candidate.querySelector('.metric-name')?.textContent === name,
+    )!;
+    return row.querySelector('.metric-value')!.textContent!;
+  }
+
+  function confirm(text: string): void {
+    reason().value = text;
+    box().click();
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+  }
+
+  it('turns a non-escaper from review into ok, and says who said so', () => {
+    expect(metricValue('Status')).toBe('review');
+    // The reason is not optional: ticking without one refuses and says why.
+    box().click();
+    expect(box().checked).toBe(false);
+    expect(field().querySelector('.error')!.textContent).toContain('Say why');
+    expect(harness.store.analysisFor(harness.store.videos[0]!.id)!.corrections.entries).toEqual([]);
+
+    confirm('watched it to the end; it sat by hole 3');
+    expect(metricValue('Status')).toBe('ok');
+    expect(metricNote('Status')).toContain('Non-escape confirmed by the user');
+    expect(metricNote('Status')).toContain('it sat by hole 3');
+    expect(metricValue('Escaped')).toBe('no');
+    expect(metricValue('Total latency')).toBe('—');
+    // and it is a correction like any other: listed, with its own revert
+    expect(harness.step.body.querySelector('.corrections-list')!.textContent).toContain(
+      'Confirmed: the animal never entered the escape box',
+    );
+  });
+
+  it('is contradicted, not overruled, when an escape entry turns up afterwards', () => {
+    confirm('nothing went in');
+    expect(metricValue('Status')).toBe('ok');
+
+    // A range correction asserting the escape box to the end of the clip: the
+    // entry the confirmation says does not exist.
+    const video = harness.store.videos[0]!;
+    harness.store.setCorrections(
+      video.id,
+      markRange(harness.store.analysisFor(video.id)!.corrections, 'in_escape_box', 2000, 100_000, {
+        id: 'test-escape-range',
+        timestamp: '2026-09-07T12:00:00.000Z',
+      }),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    expect(metricValue('Escaped')).toBe('yes'); // the entry wins
+    expect(metricValue('Status')).toBe('review');
+    expect(metricNote('Status')).toContain('contradicting the confirmation');
+    // The confirmation is still on file and still the user's to withdraw.
+    expect(box().checked).toBe(true);
+    expect(box().disabled).toBe(false);
+    expect(hint()).toContain('Contradicted');
+  });
+
+  it('goes back to review when the confirmation is unticked', () => {
+    confirm('nothing went in');
+    expect(metricValue('Status')).toBe('ok');
+
+    box().click();
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    expect(box().checked).toBe(false);
+    expect(metricValue('Status')).toBe('review');
+    expect(harness.store.analysisFor(harness.store.videos[0]!.id)!.corrections.entries).toEqual([]);
+    expect(harness.step.body.querySelector('.corrections-list')!.textContent).not.toContain(
+      'never entered the escape box',
+    );
   });
 });

@@ -1133,6 +1133,35 @@ label {
   gap: 0.25rem;
 }
 
+/*
+ * D63's confirmed non-escape. It takes a whole row of the Trial group because
+ * it is a claim with a reason and a consequence, not another button: the
+ * checkbox, its reason and the sentence saying what ticking it does all have to
+ * be readable at once, and at 200% zoom that does not fit beside two buttons.
+ */
+.no-escape-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  flex: 1 1 100%;
+}
+
+.no-escape-field .hint,
+.no-escape-field .error {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.no-escape-field .text-input {
+  font: inherit;
+  min-width: min(14rem, 100%);
+  flex: 1 1 min(16rem, 100%);
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+
 /* The timeline (D24): a canvas the tables below repeat (D37). */
 /*
  * The current-event strip sits between the video and the timeline: which event
