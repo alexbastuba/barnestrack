@@ -12,6 +12,7 @@ import {
   pxPerCm,
   ringRadius,
   ringRotationForClick,
+  targetClickOutcome,
 } from '../../src/maze/ring.js';
 import { distance } from '../../src/maze/types.js';
 
@@ -168,5 +169,31 @@ describe('ringRotationForClick', () => {
 
   it('has no answer at the platform centre', () => {
     expect(ringRotationForClick(map(), { x: 320, y: 240 })).toBeNull();
+  });
+});
+
+describe('targetClickOutcome (D49)', () => {
+  it('names the shared target the first time, when nothing has named one', () => {
+    expect(targetClickOutcome(20, null, 13)).toEqual({ kind: 'set', holeIndex: 13 });
+  });
+
+  it('turns this video’s ring by whole holes once the target is named', () => {
+    // Target 7, clicked 13: six holes of 18° each, so hole 7 lands on the click.
+    expect(targetClickOutcome(20, 7, 13)).toEqual({ kind: 'turn', holes: 6, degrees: 108 });
+    // And the other way round.
+    expect(targetClickOutcome(20, 13, 7)).toEqual({ kind: 'turn', holes: -6, degrees: -108 });
+  });
+
+  it('turns by a multiple of one hole spacing, whatever the hole count', () => {
+    for (const n of [12, 18, 20, 40]) {
+      const outcome = targetClickOutcome(n, 2, 5);
+      expect(outcome.kind).toBe('turn');
+      if (outcome.kind !== 'turn') return;
+      expect(outcome.degrees / (360 / n)).toBeCloseTo(3, 9);
+    }
+  });
+
+  it('does nothing when the clicked hole already carries the target number', () => {
+    expect(targetClickOutcome(20, 7, 7)).toEqual({ kind: 'unchanged' });
   });
 });

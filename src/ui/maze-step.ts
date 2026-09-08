@@ -28,6 +28,7 @@ import {
   pxPerCm,
   ringRadius,
   ringRotationForClick,
+  targetClickOutcome,
   TYPICAL_PLATFORM_DIAMETER_CM,
 } from '../maze/ring.js';
 import {
@@ -88,6 +89,15 @@ export function createMazeStep(context: AppContext): Step {
   let hoverPoint: Point | null = null;
   let seekToken = 0;
   let typedHoleDiameterCm = DEFAULT_HOLE_DIAMETER_CM;
+  /**
+   * Has anyone named the target hole for this map? A new map is born with
+   * `target.holeIndex: 0` because the contract has no "no target" state, so the
+   * first click must be able to name the number rather than turn the ring
+   * (D49). A map that arrives from a file or a loaded session already carries a
+   * chosen target, so it starts true — see `render`, `adoptMapDocument` and
+   * `setPlatformInVideo`.
+   */
+  let targetChosen = store.workingMazeMap !== null;
 
   const body = el('div', { class: 'maze-step' });
 
@@ -186,6 +196,9 @@ export function createMazeStep(context: AppContext): Step {
         calibration: { platformDiameter_cm: 0 },
         createdFrom: video.id,
       });
+      // The `target: 0` above is the contract's placeholder, not a choice: the
+      // next target click names the shared number instead of turning the ring.
+      targetChosen = false;
       context.announce(
         `Platform set: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px. Twenty holes generated. Enter the platform diameter to finish.`,
       );
@@ -257,11 +270,7 @@ export function createMazeStep(context: AppContext): Step {
       const found = nearestHole(map, videoPoint);
       countClick();
       mode = 'idle';
-      if (found) {
-        updateMap((m) => ({ ...m, target: { holeIndex: found.hole.holeIndex } }));
-        selection = { kind: 'hole', holeIndex: found.hole.holeIndex };
-        context.announce(`Hole ${found.hole.holeIndex} is the target hole.`);
-      }
+      if (found) claimTarget(found.hole.holeIndex);
       render();
       return;
     }
@@ -279,12 +288,56 @@ export function createMazeStep(context: AppContext): Step {
   }
 
   /**
+   * Names the target hole from a click (D49).
+   *
+   * The target *number* belongs to the shared map and to the whole cohort; which
+   * physical hole carries it in this video belongs to this video's transform,
+   * because the platform is turned between trials. So the first click names the
+   * shared number and every later one on a different hole turns this video's
+   * ring by whole holes until that number lands where the user clicked — the
+   * other videos keep the numbering they already have.
+   */
+  function claimTarget(holeIndex: number): void {
+    const shared = sharedMap();
+    const video = currentVideo();
+    if (!shared || !video) return;
+    const outcome = targetClickOutcome(
+      shared.holes.n,
+      targetChosen ? shared.target.holeIndex : null,
+      holeIndex,
+    );
+    if (outcome.kind === 'set') {
+      setTargetIndex(outcome.holeIndex);
+      context.announce(`Hole ${outcome.holeIndex} is the target hole.`);
+      return;
+    }
+    if (outcome.kind === 'unchanged') {
+      context.announce(`Hole ${holeIndex} is already the target hole in ${video.filename}.`);
+      selection = { kind: 'hole', holeIndex };
+      return;
+    }
+    turnRing(outcome.degrees);
+    selection = { kind: 'hole', holeIndex: shared.target.holeIndex };
+    const holes = Math.abs(outcome.holes);
+    context.announce(
+      `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.`,
+    );
+  }
+
+  /** The one place the shared target number is written; both the click and the field use it. */
+  function setTargetIndex(holeIndex: number): void {
+    updateMap((m) => ({ ...m, target: { holeIndex } }));
+    targetChosen = true;
+    selection = { kind: 'hole', holeIndex };
+  }
+
+  /**
    * Turns the hole ring in *this* video only, by rotating its transform about
    * its own platform centre. The shared `phase_deg` is never written after the
    * map is created: it identifies holes for the whole cohort, so aligning the
-   * ring on a second video must not move the first one's (D10, D28).
+   * ring on a second video must not move the first one's (D10, D28, D49).
    */
-  function rotateRing(degrees: number): void {
+  function turnRing(degrees: number): void {
     const video = currentVideo();
     const map = videoMap();
     if (!video || !map || degrees === 0) return;
@@ -295,6 +348,13 @@ export function createMazeStep(context: AppContext): Step {
         video.mazeTransform,
       ),
     );
+  }
+
+  /** `turnRing` with the alignment click's own announcement. */
+  function rotateRing(degrees: number): void {
+    const video = currentVideo();
+    if (!video || degrees === 0) return;
+    turnRing(degrees);
     const after = videoMap();
     context.announce(
       `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
@@ -384,6 +444,8 @@ export function createMazeStep(context: AppContext): Step {
     selection = null;
     mode = 'idle';
     rimPoints = [];
+    // An imported map carries the target its author chose.
+    targetChosen = true;
     return null;
   }
 
@@ -730,15 +792,21 @@ export function createMazeStep(context: AppContext): Step {
       render();
     },
   );
-  const targetField = numberField('Target hole number', { min: '0' }, (v) => {
-    const map = sharedMap();
-    if (!map) return;
-    const holeIndex = Math.max(0, Math.min(map.holes.n - 1, Math.round(v)));
-    updateMap((m) => ({ ...m, target: { holeIndex } }));
-    selection = { kind: 'hole', holeIndex };
-    context.announce(`Hole ${holeIndex} is the target hole.`);
-    render();
-  });
+  const targetField = numberField(
+    'Target hole number',
+    {
+      min: '0',
+      hint: 'The shared number, the same hole in every video. Clicking a hole turns this video’s ring instead, so the number keeps its meaning.',
+    },
+    (v) => {
+      const map = sharedMap();
+      if (!map) return;
+      const holeIndex = Math.max(0, Math.min(map.holes.n - 1, Math.round(v)));
+      setTargetIndex(holeIndex);
+      context.announce(`Hole ${holeIndex} is the target hole in every video.`);
+      render();
+    },
+  );
   const nudgeHoleField = numberField('Hole to nudge', { min: '0', max: '999' }, (v) => {
     const map = sharedMap();
     if (!map) return;
@@ -893,6 +961,8 @@ export function createMazeStep(context: AppContext): Step {
       selection = null;
       mode = 'idle';
       rimPoints = [];
+      // A map that came with the session has a target somebody chose (D49).
+      targetChosen = store.workingMazeMap !== null;
     }
     const video = currentVideo();
     const map = videoMap();
@@ -948,10 +1018,14 @@ export function createMazeStep(context: AppContext): Step {
     alignButton.disabled = shared === null;
     targetButton.disabled = shared === null;
 
+    // Which physical hole carries the shared target number in *this* video: the
+    // number is the cohort's, the ring angle is this video's (D49).
+    const targetHere =
+      shared && map ? ` · target: hole ${shared.target.holeIndex}, ring at ${map.holes.phase_deg.toFixed(1)}°` : '';
     modeStatus.textContent = video
       ? isAttached
-        ? MODE_PROMPT[mode]
-        : `${video.filename} is not attached, so no frame can be shown. Drop the file again on the Videos step; the numeric fields below still work.`
+        ? `${MODE_PROMPT[mode]}${targetHere}`
+        : `${video.filename} is not attached, so no frame can be shown. Drop the file again on the Videos step; the numeric fields below still work.${targetHere}`
       : 'Load a video on the Videos step first.';
 
     clickBadge.textContent = `Maze step: ${video ? store.mazeClickCount(video.id) : 0} clicks on the image`;

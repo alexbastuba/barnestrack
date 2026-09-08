@@ -25,7 +25,9 @@ The work is four steps, and the page says the same thing at the top of each one:
    video; a second video only needs to say where that maze sits in its own frame." D13 budgets at
    most six clicks on the image for a new maze and at most three for a reused one; on the sample
    recordings a new maze cost five, reusing it on a video from the same rig cost none, and three
-   where the camera had moved. The panel shows the running count.
+   where the camera had moved. The panel shows the running count. Hole numbers are counted from the
+   target hole: naming it once fixes the numbering for the cohort, and clicking the target in a
+   later video turns *that* video's ring onto it rather than renumbering everyone else (D49).
 3. **Track** — "Run the automatic tracking pass over each video and watch it work. Tracking runs in
    the background, so you can keep working on the Videos and Maze steps while it does." A
    3-minute video takes a few seconds, and the page stays responsive while it happens.
@@ -34,7 +36,9 @@ The work is four steps, and the page says the same thing at the top of each one:
    and everything is recomputed from both." A timeline of the trial with every correction on it, the
    evidence behind each event, a metrics card and a quality summary. Six of the thresholds are
    editable there with a live recompute of what changing one does; the full parameters panel, the
-   figures and the export bundle land in a later release.
+   figures and the export bundle land in a later release. An event that is right as it stands is
+   kept with one key (K): it is recorded as the user's, with no change to its values, and leaves the
+   list of events to check.
 
 Three things shape everything else:
 

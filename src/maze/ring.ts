@@ -103,6 +103,36 @@ export function ringRotationForClick(
   return phase === null ? null : angleDifferenceDeg(phase, map.holes.phase_deg);
 }
 
+/**
+ * What clicking a hole means when the user is naming the target (D49).
+ *
+ * The target hole *number* is a property of the maze and is shared by the whole
+ * cohort; which physical hole carries it in a given video is that video's
+ * business, because Gawel's protocol turns the platform between trials. So the
+ * first video to name a target sets the shared number, and every later click on
+ * a different hole turns *that video's* ring by whole holes until the shared
+ * number lands on the clicked hole. Whole holes only: the ring must stay on the
+ * physical holes it was aligned to.
+ */
+export type TargetClickOutcome =
+  /** No target had been named yet: the clicked hole becomes the shared target number. */
+  | { kind: 'set'; holeIndex: number }
+  /** Turn this video's ring by `holes` holes, `degrees` degrees, so the target lands on the click. */
+  | { kind: 'turn'; holes: number; degrees: number }
+  /** The clicked hole already carries the target number in this video. */
+  | { kind: 'unchanged' };
+
+export function targetClickOutcome(
+  n: number,
+  currentTarget: number | null,
+  clickedIndex: number,
+): TargetClickOutcome {
+  if (currentTarget === null) return { kind: 'set', holeIndex: clickedIndex };
+  if (currentTarget === clickedIndex) return { kind: 'unchanged' };
+  const holes = clickedIndex - currentTarget;
+  return { kind: 'turn', holes, degrees: (holes * 360) / n };
+}
+
 /** The angle of `point` seen from the platform centre, or null at the centre itself. */
 export function angleAt(platform: PlatformCircle, point: Point): number | null {
   const dx = point.x - platform.cx;

@@ -7,6 +7,22 @@ session it is found (D39).
 
 ## Defects
 
+- **"Keep" is stored as an edit whose values are the automatic ones, not as a `confirmed` flag.**
+  The D9 correction contract has no way to say "I looked and it is right", and adding one is a
+  schema change, so `Keep (K)` writes an event `edit` carrying the event's own hole and frames. The
+  UI reads a confirmation back by comparing the event with its `autoShadow` (`isConfirmed`,
+  `src/ui/review-queue.ts`), so an event a user edited and then edited back to the automatic values
+  is indistinguishable from one they confirmed — both read "confirmed by the user, no change", and
+  `events.csv` records both as `source = corrected` with the automatic values in the `auto_*`
+  columns. A `confirmed` marker on `EventCorrection` (additive; every reader ignores unknown
+  fields) would separate them and needs sign-off on the contract.
+- **Whether a target has been named is session-run state, not part of the map.** `mazeMap.target`
+  is required by the contract, so a new map is born with `holeIndex: 0` and the Maze step has to
+  remember whether anyone has actually chosen it: the first target click on a brand-new map names
+  the shared number (D49), and every later click turns that video's ring. A map arriving from a
+  session file or an imported `.json` is always treated as already having a target, which is right
+  for a saved cohort but means a user who wants to *renumber* the cohort after a reload must use
+  the "Target hole number" field rather than clicking.
 - **An escape-box range asserted at the wrong hole is still exported as `escaped = true,
   status = ok`.** D57 closed half of the chunk-7b defect: a range whose event point is farther than
   `escapeEntry.radiusFactor × hole radius` from **every** hole now carries

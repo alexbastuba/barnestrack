@@ -44,17 +44,17 @@ function mazeMap(): MazeMapFile {
   };
 }
 
-function session(): SessionFile {
+function session(videos: VideoDescriptor[] = [video()]): SessionFile {
   return {
     ...createSessionFile('maze test', TOOL_VERSION),
-    videos: [video()],
+    videos,
     mazeMap: mazeMap(),
   };
 }
 
-function mount(): { step: Step; store: SessionStore } {
+function mount(file: SessionFile = session()): { step: Step; store: SessionStore } {
   const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION, { autosaveDelayMs: 0 });
-  store.replaceSession(session());
+  store.replaceSession(file);
   const context: AppContext = {
     store,
     toolVersion: TOOL_VERSION,
@@ -72,6 +72,74 @@ function fieldNamed(step: Step, label: string): HTMLInputElement {
   expect(match, `no field labelled "${label}"`).toBeDefined();
   return step.body.querySelector<HTMLInputElement>(`#${match!.getAttribute('for')!}`)!;
 }
+
+/**
+ * A pointer press and release on the overlay at video coordinates. The overlay
+ * is stubbed to sit at the origin at zoom 1, which is what `CanvasView` starts
+ * at before it is ever laid out, so a client point is a video point.
+ */
+function clickAt(step: Step, point: { x: number; y: number }): void {
+  const overlay = step.body.querySelector('.overlay-layer')!;
+  overlay.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 480, right: 640, bottom: 480, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  const viewport = step.body.querySelector('.canvas-viewport') ?? overlay.parentElement!;
+  viewport.getBoundingClientRect = overlay.getBoundingClientRect;
+  for (const type of ['pointerdown', 'pointerup']) {
+    const event = new Event(type, { bubbles: true }) as Event & Record<string, unknown>;
+    Object.assign(event, { clientX: point.x, clientY: point.y, pointerId: 1, button: 0 });
+    overlay.dispatchEvent(event);
+  }
+}
+
+function pressButton(step: Step, text: string): void {
+  const control = [...step.body.querySelectorAll('button')].find((b) => b.textContent === text);
+  expect(control, `no button labelled "${text}"`).toBeDefined();
+  control!.click();
+}
+
+describe('clicking the target hole (D49)', () => {
+  const second = (): VideoDescriptor => ({
+    ...video(),
+    id: 'video-test54',
+    filename: 'test54.mp4',
+    fingerprint: { ...video().fingerprint, sha256: 'b'.repeat(64) },
+  });
+
+  /** Where hole `index` is drawn in the video whose transform is the identity. */
+  function holePoint(index: number): { x: number; y: number } {
+    const m = mazeMap();
+    const radius = m.platform.r * m.holes.ringRatio;
+    const angle = ((m.holes.phase_deg + (index * 360) / m.holes.n) * Math.PI) / 180;
+    return { x: m.platform.cx + radius * Math.cos(angle), y: m.platform.cy + radius * Math.sin(angle) };
+  }
+
+  it('names the shared target on the first click and turns only the second video’s ring on the next', () => {
+    document.body.replaceChildren();
+    const { step, store } = mount(session([video(), second()]));
+
+    // The map came with the session, so it already has a target: hole 0. The
+    // first click is on hole 4 of the first video, which the step treats as a
+    // turn — so name the target through the field, the shared path, first.
+    const targetField = fieldNamed(step, 'Target hole number');
+    targetField.value = '4';
+    targetField.dispatchEvent(new Event('change'));
+    expect(store.current.mazeMap!.target.holeIndex).toBe(4);
+    const firstBefore = store.current.videos[0]!.mazeTransform;
+
+    // Second video: click hole 9, five holes on from the target.
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test54';
+    select.dispatchEvent(new Event('change'));
+    pressButton(step, 'Click the target hole');
+    clickAt(step, holePoint(9));
+
+    // The shared number is untouched: hole 4 is still the target everywhere.
+    expect(store.current.mazeMap!.target.holeIndex).toBe(4);
+    const turned = store.current.videos[1]!.mazeTransform;
+    expect(turned.rotationDeg).toBeCloseTo(((9 - 4) * 360) / 20, 6);
+    // And the first video's placement is exactly as it was.
+    expect(store.current.videos[0]!.mazeTransform).toEqual(firstBefore);
+  });
+});
 
 describe('the hole-diameter field', () => {
   it('reaches the map on every keystroke, without waiting for a blur', () => {
