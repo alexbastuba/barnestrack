@@ -15,6 +15,7 @@ import { FrameSource } from '../video/frame-source.js';
 import type { Mp4Index } from '../video/mp4-index.js';
 import { hasDirectoryPicker, pickDirectoryFiles } from './directory-picker.js';
 import { button, el, formatBytes, formatDuration, replaceChildren, type Child } from './dom.js';
+import { createNextStepButton, videosMissing } from './next-step.js';
 import type { AppContext, Step } from './step.js';
 
 const PRIVACY_NOTE = 'Processed locally — this file never leaves your computer.';
@@ -100,7 +101,8 @@ export function createVideosStep(context: AppContext): Step {
   notLoaded.hidden = true;
   const rejectionList = notLoaded.querySelector('ul') as HTMLUListElement;
 
-  body.append(pickers, listEmpty, list, notesBox, notLoaded);
+  const nextStep = createNextStepButton(context, 'maze', 'Maze');
+  body.append(pickers, listEmpty, list, notesBox, notLoaded, nextStep.element);
 
   // ---- drag and drop --------------------------------------------------------
 
@@ -219,6 +221,7 @@ export function createVideosStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
+    nextStep.update(videosMissing(store));
     if (store.epoch !== lastEpoch) {
       // Reset, load or restore replaced the session; "Not loaded" and the
       // duplicate notes described the one before it.
@@ -410,7 +413,14 @@ export function createVideosStep(context: AppContext): Step {
   }
 
   function newExamplePanel(): HTMLElement {
-    return mountExampleCohortPanel({ store, announce: context.announce, onChange: render });
+    return mountExampleCohortPanel({
+      store,
+      announce: context.announce,
+      onChange: render,
+      // The load disables the button focus was on, so without this focus lands
+      // on <body> and a keyboard user loses their place (D37).
+      onLoaded: () => nextStep.focus(),
+    });
   }
 
   /*
@@ -442,35 +452,38 @@ export function createVideosStep(context: AppContext): Step {
         el('dd', {
           text:
             'The number of pictures in the file’s own sample table, in presentation order. ' +
-            'This is what "frame N" means everywhere in BarnesTrack (D7).',
+            'This is what "frame N" means everywhere in BarnesTrack.',
         }),
         el('dt', { text: 'Frame rate' }),
         el('dd', {
           text:
             'Read from the file’s own timebase and shown for orientation only. Every ' +
             'measurement uses each frame’s recorded timestamp, never frame ÷ frame rate, ' +
-            'because these clips drop and duplicate frames (D7, O11).',
+            'because these clips drop and duplicate frames.',
         }),
         el('dt', { text: 'Accepted files' }),
         el('dd', {
-          text: `MP4 containing 8-bit 4:2:0 H.264 (AVC) video (O13). Anything else is listed under "Not loaded" with the reason and this re-encode command: ${REENCODE_HINT}`,
+          text: `MP4 containing 8-bit 4:2:0 H.264 (AVC) video. Anything else is listed under "Not loaded" with the reason and this re-encode command: ${REENCODE_HINT}`,
         }),
         el('dt', { text: 'Cohort metadata' }),
         el('dd', {
           text:
             'Animal, day, trial and group are typed in, never guessed from the filename, and they ' +
-            'become columns in every export (O12).',
+            'become columns in every export.',
         }),
         el('dt', { text: 'Re-attaching' }),
         el('dd', {
           text:
             'Videos are matched by content (file size, then a SHA-256 of the bytes), never by name, ' +
-            'so a renamed copy re-attaches and a different file with a familiar name does not (D27).',
+            'so a renamed copy re-attaches and a different file with a familiar name does not.',
         }),
       ]),
     ],
     body,
     blocked: () => null,
+    done: () => videosMissing(store) === null,
+    doneLabel: () =>
+      `${store.videos.length} video${store.videos.length === 1 ? '' : 's'} loaded`,
     refresh: render,
   };
 }

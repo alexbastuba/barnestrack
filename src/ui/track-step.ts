@@ -29,6 +29,7 @@ import {
   clampToBound,
 } from '../analysis/tracker/params.js';
 import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
+import { createNextStepButton, trackMissing } from './next-step.js';
 import { describeFrameRanges, formatFrameRanges, parseFrameRanges } from './frame-ranges.js';
 import type { AppContext, Step } from './step.js';
 import {
@@ -134,11 +135,13 @@ export function createTrackStep(context: AppContext): Step {
     queueState,
   ]);
 
-  replaceChildren(body, [controls, parameterPanel.element, cards]);
+  const nextStep = createNextStepButton(context, 'review', 'Review & Export');
+  replaceChildren(body, [controls, parameterPanel.element, cards, nextStep.element]);
 
   // ---- rendering ---------------------------------------------------------------
 
   function render(): void {
+    nextStep.update(trackMissing(store));
     if (store.epoch !== lastEpoch) {
       lastEpoch = store.epoch;
       runner.destroy();
@@ -175,12 +178,12 @@ export function createTrackStep(context: AppContext): Step {
         el('li', {
           text:
             'Automatic values are never overwritten: a correction is stored beside the automatic ' +
-            'layer and everything downstream is recomputed (D9, D25).',
+            'layer and everything downstream is recomputed.',
         }),
         el('li', {
           text:
             'A frame the tracker could not resolve stays visibly missing; nothing is interpolated ' +
-            'silently (D16).',
+            'silently.',
         }),
         el('li', {
           text:
@@ -203,6 +206,8 @@ export function createTrackStep(context: AppContext): Step {
       }
       return null;
     },
+    done: () => trackMissing(store) === null,
+    doneLabel: () => 'tracked',
     refresh: render,
     onShow: render,
   };

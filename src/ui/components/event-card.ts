@@ -123,7 +123,9 @@ export function createEventCard(
     );
   });
 
-  const item = el('li', { class: 'event-item' }, [card]);
+  // On the <li>, not on the button: the button's className is reassigned on
+  // every render, and this is what the review queue scrolls to.
+  const item = el('li', { class: 'event-item', attrs: { 'data-event-id': props.event.id } }, [card]);
   container.append(item);
 
   function render(): void {
@@ -174,6 +176,13 @@ export function createEventCard(
     for (const clause of shadowClauses(event)) {
       children.push(el('span', { class: 'event-shadow', text: clause }));
     }
+
+    // Where the hole is changed. The card is one button, so it cannot hold a
+    // control of its own; the correction toolbar is the one place corrections
+    // are made, and this says which key takes you there.
+    children.push(
+      el('span', { class: 'event-how', text: 'Hole → H then a number. ' }),
+    );
 
     for (const flag of flagsForEvent(flags, event.id)) {
       children.push(

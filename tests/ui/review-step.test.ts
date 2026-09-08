@@ -14,10 +14,13 @@ import { hashParameters } from '../../src/analysis/parameters.js';
 import { CHANGE_DEBOUNCE_MS } from '../../src/ui/components/index.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
-import { markRange } from '../../src/session/corrections.js';
+import { editEvent, markRange } from '../../src/session/corrections.js';
+import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
+import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import { createReviewStep } from '../../src/ui/review-step.js';
+import { TRACKS, frameToX } from '../../src/ui/timeline-geometry.js';
 import type { AppContext, Step, StepId } from '../../src/ui/step.js';
 import { syntheticSession } from '../fixtures/synthetic-analysis.js';
 
@@ -277,5 +280,227 @@ describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
     expect(afterReport.tier).not.toBe(beforeReport.tier);
     expect(quality.textContent).not.toBe(before);
     expect(quality.textContent).toContain(afterReport.tier);
+  });
+});
+
+/**
+ * The pointer gestures on the timeline. happy-dom gives the canvas no layout,
+ * so its rect is stubbed: 900 px wide at the origin, which is all the geometry
+ * needs to turn a clientX into a frame.
+ */
+function stubCanvasRect(step: Step): HTMLCanvasElement {
+  const canvas = step.body.querySelector<HTMLCanvasElement>('.timeline-canvas')!;
+  canvas.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, width: 900, height: 124, right: 900, bottom: 124, x: 0, y: 0 }) as DOMRect;
+  canvas.setPointerCapture = () => {};
+  canvas.releasePointerCapture = () => {};
+  canvas.hasPointerCapture = () => true;
+  return canvas;
+}
+
+/** Inside the detection-state row, where no event edge can claim the press. */
+const STATE_ROW_Y = TRACKS.find((track) => track.id === 'state')!.y + 2;
+/** Inside the events row, where an edge within six pixels is grabbed instead. */
+const EVENTS_ROW_Y = TRACKS.find((track) => track.id === 'events')!.y + 20;
+
+function pointer(type: string, x: number, y: number, shiftKey = false): Event {
+  const event = new Event(type, { bubbles: true }) as Event & Record<string, unknown>;
+  Object.assign(event, { clientX: x, clientY: y, pointerId: 1, button: 0, shiftKey });
+  return event;
+}
+
+/** The frame the scrubber is showing — what the playhead follows. */
+function playheadFrame(step: Step): number {
+  return Number(step.body.querySelector<HTMLInputElement>('.frame-range')!.value);
+}
+
+describe('dragging on the timeline', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('scrubs: the playhead follows the pointer from press to release', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+
+    canvas.dispatchEvent(pointer('pointerdown', 90, STATE_ROW_Y));
+    const atPress = playheadFrame(step);
+    canvas.dispatchEvent(pointer('pointermove', 450, STATE_ROW_Y));
+    const afterDrag = playheadFrame(step);
+
+    expect(afterDrag).toBeGreaterThan(atPress);
+    // Half way across a 900 px timeline is half way through the clip.
+    const frameCount = harnessFrameCount(step);
+    expect(afterDrag).toBeGreaterThan(frameCount * 0.4);
+    expect(afterDrag).toBeLessThan(frameCount * 0.6);
+  });
+
+  it('stops seeking once the pointer is up', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+    canvas.dispatchEvent(pointer('pointerdown', 90, STATE_ROW_Y));
+    canvas.dispatchEvent(pointer('pointermove', 450, STATE_ROW_Y));
+    const atRelease = playheadFrame(step);
+    canvas.dispatchEvent(pointer('pointerup', 450, STATE_ROW_Y));
+    canvas.dispatchEvent(pointer('pointermove', 800, STATE_ROW_Y));
+    expect(playheadFrame(step)).toBe(atRelease);
+  });
+
+  it('retimes instead of scrubbing when the press lands on an event edge', () => {
+    const harness = mount();
+    const step = harness.step;
+    const canvas = stubCanvasRect(step);
+    const video = harness.store.videos[0]!;
+    const analysis = harness.store.analysisFor(video.id)!.derived!;
+    const event = analysis.events[0]!;
+    const frameCount = harnessFrameCount(step);
+    const edgeX = frameToX(event.startFrame, { first: 0, last: frameCount - 1 }, 900);
+    const before = step.body.querySelectorAll('.corrections-list li').length;
+
+    canvas.dispatchEvent(pointer('pointerdown', edgeX, EVENTS_ROW_Y));
+    // The edge branch selects the event; it deliberately does not seek.
+    expect(playheadFrame(step)).toBe(0);
+    canvas.dispatchEvent(pointer('pointerup', edgeX, EVENTS_ROW_Y));
+
+    expect(step.body.querySelectorAll('.corrections-list li').length).toBeGreaterThan(before);
+  });
+
+  it('pans on Shift-drag and leaves the playhead where it was', () => {
+    const step = mount().step;
+    const canvas = stubCanvasRect(step);
+    // Zoom in first, or the whole clip is on screen and there is nothing to pan.
+    step.body.querySelector<HTMLButtonElement>('.timeline-controls button')!.click();
+    const before = playheadFrame(step);
+    const readout = step.body.querySelector('.timeline .zoom-readout')!.textContent;
+
+    canvas.dispatchEvent(pointer('pointerdown', 600, 50, true));
+    canvas.dispatchEvent(pointer('pointermove', 200, 50, true));
+
+    expect(playheadFrame(step)).toBe(before);
+    expect(step.body.querySelector('.timeline .zoom-readout')!.textContent).not.toBe(readout);
+  });
+});
+
+function harnessFrameCount(step: Step): number {
+  return Number(step.body.querySelector<HTMLInputElement>('.frame-range')!.max) + 1;
+}
+
+describe('the review queue', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    harness = mount();
+  });
+
+  const count = (): string => harness.step.body.querySelector('.queue-count')!.textContent!;
+  const queued = (): string[] => {
+    const video = harness.store.videos[0]!;
+    const derived = harness.store.analysisFor(video.id)!.derived!;
+    return eventsToCheck(derived.events, [], stateRuns(derived.cleanedTrack));
+  };
+
+  it('counts the events that want a human, above the timeline', () => {
+    const bar = harness.step.body.querySelector('.review-queue')!;
+    expect(bar).not.toBeNull();
+    // It is above the timeline, not inside it.
+    expect(bar.nextElementSibling!.classList.contains('timeline')).toBe(true);
+    expect(count()).toBe(describeQueue(queued().length));
+    expect(queued().length).toBeGreaterThan(0);
+  });
+
+  it('selects and seeks to a flagged event on Next flagged', () => {
+    const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Next flagged',
+    )!;
+    expect(next.disabled).toBe(false);
+    next.click();
+
+    const video = harness.store.videos[0]!;
+    const derived = harness.store.analysisFor(video.id)!.derived!;
+    const first = derived.events.find((e) => e.id === queued()[0])!;
+    expect(playheadFrame(harness.step)).toBe(first.startFrame);
+    // The card list marks the same event as the timeline's selection.
+    const selected = harness.step.body.querySelector('#review-events-mirror tr.is-selected');
+    expect(selected).not.toBeNull();
+  });
+
+  it('walks the queue forwards and backwards', () => {
+    const buttons = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')];
+    const previous = buttons.find((b) => b.textContent === 'Previous flagged')!;
+    const next = buttons.find((b) => b.textContent === 'Next flagged')!;
+    next.click();
+    const firstFrame = playheadFrame(harness.step);
+    next.click();
+    expect(playheadFrame(harness.step)).not.toBe(firstFrame);
+    previous.click();
+    expect(playheadFrame(harness.step)).toBe(firstFrame);
+  });
+
+  it('drops the count by one when an event in the queue is corrected', () => {
+    const video = harness.store.videos[0]!;
+    const before = queued();
+    expect(before.length).toBeGreaterThan(0);
+    const target = harness.store.analysisFor(video.id)!.derived!.events.find(
+      (e) => e.id === before[0],
+    )!;
+
+    // Relabelling through the same op the toolbar's hole buttons use.
+    const layer = harness.store.analysisFor(video.id)!.corrections;
+    harness.store.setCorrections(
+      video.id,
+      editEvent(
+        layer,
+        target.id,
+        { holeIndex: (target.holeIndex ?? 0) + 1 },
+        { id: 'test-relabel', timestamp: '2026-09-07T12:00:00.000Z' },
+      ),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    expect(queued().length).toBe(before.length - 1);
+    expect(count()).toBe(describeQueue(before.length - 1));
+  });
+
+  it('names the count per video in the selector', () => {
+    const select = harness.step.body.querySelector('.review-top select')!;
+    const options = [...select.querySelectorAll('option')].map((o) => o.textContent);
+    expect(options.length).toBeGreaterThan(1);
+    for (const label of options) expect(label).toMatch(/ — (nothing to check|\d+ events? to check)$/);
+  });
+});
+
+describe('the timeline legend', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('names every pattern the timeline draws, in words beside a swatch', () => {
+    const step = mount().step;
+    const legend = step.body.querySelector('.timeline-legend')!;
+    expect(legend).not.toBeNull();
+    const entries = [...legend.querySelectorAll('li')].map((li) => li.textContent);
+    expect(entries).toEqual([
+      'tracked',
+      'low confidence',
+      'ambiguous',
+      'not detected',
+      'filled by cleaning',
+      'corrected by hand',
+      'trial start / end',
+    ]);
+    // Every word has a swatch, and no swatch is announced twice.
+    for (const li of legend.querySelectorAll('li')) {
+      const swatch = li.querySelector('.legend-swatch')!;
+      expect(swatch.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('sits inside the timeline, under the canvas and its controls', () => {
+    const step = mount().step;
+    const timeline = step.body.querySelector('.timeline')!;
+    expect(timeline.querySelector('.timeline-legend')).not.toBeNull();
+    expect(timeline.lastElementChild!.classList.contains('timeline-legend')).toBe(true);
   });
 });

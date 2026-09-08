@@ -46,7 +46,8 @@ import { mazeMapFileName, parseMazeMapDocument } from '../session/maze-map-file.
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
 import { Scrubber } from './scrubber.js';
-import { button, el, replaceChildren, uniqueId } from './dom.js';
+import { button, el, replaceChildren, scrollRegion, uniqueId } from './dom.js';
+import { createNextStepButton, mazeMissing, mazeSetCount } from './next-step.js';
 import { downloadText, pickFiles } from './download.js';
 import { drawHole, drawLabel } from './overlay-draw.js';
 import type { AppContext, Step } from './step.js';
@@ -525,7 +526,7 @@ export function createMazeStep(context: AppContext): Step {
    */
   function numberField(
     label: string,
-    config: { step?: string; min?: string; max?: string; hint?: string },
+    config: { step?: string; min?: string; max?: string; hint?: string; live?: boolean },
     onCommit: (value: number) => void,
   ): { wrap: HTMLElement; input: HTMLInputElement } {
     const input = el('input', { id: uniqueId('maze'), class: 'number-input' });
@@ -533,6 +534,24 @@ export function createMazeStep(context: AppContext): Step {
     input.step = config.step ?? '1';
     if (config.min !== undefined) input.min = config.min;
     if (config.max !== undefined) input.max = config.max;
+    /*
+     * A `live` field redraws as it is typed. `change` alone fires on blur, so
+     * the overlay only caught up when the user clicked somewhere else — which
+     * is what a hole diameter typed against a picture of a maze needs least.
+     * Only a value already inside the bounds commits here: clamping and its
+     * announcement stay on `change`, so typing "1" on the way to "12" is not
+     * snapped to the minimum under the user's hands.
+     */
+    if (config.live === true) {
+      input.addEventListener('input', () => {
+        const typed = Number(input.value);
+        if (input.value.trim() === '' || !Number.isFinite(typed)) return;
+        const low = config.min === undefined ? -Infinity : Number(config.min);
+        const high = config.max === undefined ? Infinity : Number(config.max);
+        if (typed < low || typed > high) return;
+        onCommit(typed);
+      });
+    }
     input.addEventListener('change', () => {
       const typed = Number(input.value);
       if (input.value.trim() === '' || !Number.isFinite(typed)) {
@@ -657,7 +676,7 @@ export function createMazeStep(context: AppContext): Step {
     render();
   });
 
-  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20 (O8).' }, (v) => {
+  const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20.' }, (v) => {
     const n = Math.round(v);
     const before = sharedMap();
     updateMap((m) => ({
@@ -682,12 +701,14 @@ export function createMazeStep(context: AppContext): Step {
   });
   const ringRatioField = numberField(
     'Ring radius ÷ platform radius',
-    { step: '0.01', min: '0.1', max: '1', hint: 'Default 0.89 (O8).' },
+    // 0.005: a 0.01 step moved the ring further than the tolerance a user is
+    // trying to close when the holes are nearly on it.
+    { step: '0.005', min: '0.1', max: '1', hint: 'Default 0.89.' },
     (v) => updateMap((m) => ({ ...m, holes: { ...m.holes, ringRatio: v } })),
   );
   const holeDiameterField = numberField(
     'Hole diameter (cm)',
-    { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm (O8).' },
+    { step: '0.1', min: '0.1', max: '100', hint: 'Default 5 cm.', live: true },
     (v) => {
       typedHoleDiameterCm = v;
       updateMap((m) => withHoleRadius(m, v));
@@ -763,6 +784,13 @@ export function createMazeStep(context: AppContext): Step {
   const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value));
 
   const modeStatus = el('p', { class: 'mode-status' });
+  /**
+   * How far through the cohort the maze is. Per-video confirmation is session
+   * state and is not built here, so this counts the videos the map has actually
+   * been placed in rather than the ones a user has signed off.
+   */
+  const mazeProgress = el('p', { class: 'maze-progress', attrs: { role: 'status' } });
+  const nextStep = createNextStepButton(context, 'track', 'Track');
   const clickBadge = el('p', { class: 'click-badge', attrs: { 'aria-live': 'off' } });
   const mirrorBody = el('tbody');
   const mirrorSummary = el('p', { class: 'mirror-summary' });
@@ -808,7 +836,7 @@ export function createMazeStep(context: AppContext): Step {
   const mirror = el('section', { class: 'mirror' }, [
     el('h3', { text: 'What the overlay is drawing' }),
     mirrorSummary,
-    el('div', { class: 'table-scroll' }, [
+    scrollRegion('Every hole in this video’s pixels', [
       el('table', { class: 'mirror-table' }, [
         el('caption', {
           text: 'Every hole in this video’s pixels. An asterisk in "Nudged" marks a hole moved off the generated ring.',
@@ -835,11 +863,13 @@ export function createMazeStep(context: AppContext): Step {
       ]),
       clickBadge,
     ]),
+    mazeProgress,
     modeStatus,
     scrubber.element,
     canvasView.element,
     controls,
     mirror,
+    nextStep.element,
   );
 
   // ---- render ---------------------------------------------------------------
@@ -849,6 +879,10 @@ export function createMazeStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
+    const total = store.videos.length;
+    mazeProgress.textContent =
+      total === 0 ? '' : `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+    nextStep.update(mazeMissing(store));
     if (store.epoch !== lastEpoch) {
       // Load, reset or restore replaced the whole session: nothing cached here
       // refers to it any more.
@@ -1021,7 +1055,7 @@ export function createMazeStep(context: AppContext): Step {
         el('dd', {
           text:
             'A least-squares circle through the rim points you click — three is enough — or typed ' +
-            'centre and radius. Stored in native video pixels, so zoom and pan never change it (D13, D15).',
+            'centre and radius. Stored in native video pixels, so zoom and pan never change it.',
         }),
         el('dt', { text: 'Hole ring' }),
         el('dd', {
@@ -1029,27 +1063,27 @@ export function createMazeStep(context: AppContext): Step {
             `Holes are generated, not clicked: a count (default ${DEFAULT_HOLE_COUNT}), a ring radius as a ` +
             `fraction of the platform radius (default ${DEFAULT_RING_RATIO}) and one angle. Clicking any hole sets ` +
             'that angle so the whole ring lines up. A single hole can be nudged when a maze is ' +
-            'genuinely irregular; nudged holes are marked with an asterisk (O8).',
+            'genuinely irregular; nudged holes are marked with an asterisk.',
         }),
         el('dt', { text: 'Target hole' }),
         el('dd', {
           text:
             'The escape hole. It is drawn with a double ring and the label "T", not by colour alone, ' +
-            'and it is listed in the table below (D26, D37).',
+            'and it is listed in the table below.',
         }),
         el('dt', { text: 'Calibration' }),
         el('dd', {
           text:
             'The platform diameter in centimetres is the one measurement BarnesTrack needs from you. ' +
             'Every distance threshold is stored in centimetres and converted per video from it, so ' +
-            'nothing downstream is computed until it is entered (D14, D44, O8).',
+            'nothing downstream is computed until it is entered.',
         }),
         el('dt', { text: 'Reusing the map' }),
         el('dd', {
           text:
             'One map is shared by the session. "Apply from" places it in another video by scaling for ' +
             'resolution; "Adjust" refits it from three rim clicks by translation and scale, keeping ' +
-            'the ring angle, the target and any nudges (D10, D29).',
+            'the ring angle, the target and any nudges.',
         }),
         el('dt', { text: 'Keyboard' }),
         el('dd', {
@@ -1057,7 +1091,8 @@ export function createMazeStep(context: AppContext): Step {
             'Every mouse action has a typed equivalent: centre and radius fields instead of rim clicks, ' +
             'the ring-angle field instead of the alignment click, the target-hole number instead of the ' +
             'target click. Tab to the frame, then arrow keys nudge the current selection by 1 px (10 px ' +
-            'with Shift); + and − zoom, 0 fits, Alt with the arrow keys pans. On the scrubber: arrow ' +
+            'with Shift); + and − zoom, 0 fits, Alt with the arrow keys pans. The scroll wheel zooms ' +
+            'only with Ctrl or ⌘, so a plain scroll still moves the page. On the scrubber: arrow ' +
             'keys move 1 frame, Shift with them 10 frames, Home and End jump to the ends.',
         }),
       ]),
@@ -1065,6 +1100,8 @@ export function createMazeStep(context: AppContext): Step {
     body,
     blocked: () =>
       store.videos.length === 0 ? 'load at least one video on the Videos step first' : null,
+    done: () => mazeMissing(store) === null,
+    doneLabel: () => 'maze set',
     refresh: render,
     onShow: () => {
       canvasView.fit();

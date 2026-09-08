@@ -12,7 +12,7 @@
  * group that Escape cancels, and the banner is text.
  */
 import type { SessionStore } from '../session/session-store.js';
-import { button, el, uniqueId } from '../ui/dom.js';
+import { button, el, formatBytes, uniqueId } from '../ui/dom.js';
 import {
   EXAMPLE_BANNER_TEXT,
   EXAMPLE_PROVENANCE_TEXT,
@@ -23,7 +23,8 @@ import {
 } from './example-cohort.js';
 import {
   FETCH_BUTTON_HINT,
-  FETCH_BUTTON_LABEL,
+  SAMPLE_CLIPS,
+  SAMPLE_CLIPS_TOTAL_BYTES,
   SAMPLE_CLIP_FILENAME,
   attachFetchedClip,
   fetchSampleClip,
@@ -41,15 +42,21 @@ export interface ExampleCohortPanelContext {
   announce: (message: string) => void;
   /** Called after the store changes, so the step can re-render. */
   onChange?: () => void;
+  /**
+   * Called once the cohort is in. `onLoad` disables its own focused button
+   * before awaiting, which drops focus to `<body>`; the step uses this to put
+   * focus on the way forward instead of nowhere (D37).
+   */
+  onLoaded?: () => void;
   /** Injected in tests. */
   loaderOptions?: ExampleLoaderOptions;
 }
 
-function formatProgress(progress: FetchProgress): string {
+function formatProgress(progress: FetchProgress, filename = SAMPLE_CLIP_FILENAME): string {
   const received = Math.round(progress.receivedBytes / 1024);
-  if (progress.totalBytes === null) return `Downloading ${SAMPLE_CLIP_FILENAME}: ${received} kB…`;
+  if (progress.totalBytes === null) return `Downloading ${filename}: ${received} kB…`;
   const total = Math.round(progress.totalBytes / 1024);
-  return `Downloading ${SAMPLE_CLIP_FILENAME}: ${received} of ${total} kB…`;
+  return `Downloading ${filename}: ${received} of ${total} kB…`;
 }
 
 export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTMLElement {
@@ -87,25 +94,70 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   });
   confirmRow.hidden = true;
 
-  const loadButton = button(LOAD_BUTTON_LABEL, () => void onLoad(), { class: 'example-load' });
-  const fetchButton = button(FETCH_BUTTON_LABEL, () => void onFetch(), { class: 'example-fetch' });
-  // Tied to the button, so the D2 statement is part of its accessible
-  // description rather than nearby text a screen reader may never reach.
-  const fetchHint = el('span', {
-    class: 'hint',
-    id: uniqueId('fetch-hint'),
-    text: FETCH_BUTTON_HINT,
+  const loadButton = button(LOAD_BUTTON_LABEL, () => openConsent(), { class: 'example-load' });
+
+  /*
+   * The one network request in the product, asked for before it is made (D2).
+   * A native <dialog> opened with showModal(): the browser traps focus in it,
+   * Escape closes it and the page behind it is inert, none of which a hand-made
+   * overlay gets right. It says the file names and their exact sizes, so
+   * "0.5 MB" is not the only thing a user has to go on.
+   */
+  const consentTitleId = uniqueId('consent-title');
+  const consentDialog = el('dialog', {
+    class: 'example-dialog',
+    attrs: { 'aria-labelledby': consentTitleId },
   });
-  fetchButton.setAttribute('aria-describedby', fetchHint.id);
-  const fetchRow = el('div', { class: 'example-fetch-row' }, [fetchButton, fetchHint]);
-  fetchRow.hidden = true;
+  const consentConfirm = button('Load the example and fetch the clips', () => {
+    closeConsent();
+    void onLoad(true);
+  }, { class: 'primary' });
+  // D33 keeps the results reachable with no network at all: the bundle is
+  // local, and this is the button that delivers what the line above promises.
+  const consentResultsOnly = button('Load the results only', () => {
+    closeConsent();
+    void onLoad(false);
+  }, { class: 'example-results-only' });
+  consentDialog.append(
+    el('h3', { id: consentTitleId, text: 'Load the example cohort?' }),
+    el('p', { text: FETCH_BUTTON_HINT }),
+    el(
+      'ul',
+      { class: 'example-file-list' },
+      SAMPLE_CLIPS.map((clip) =>
+        el('li', { text: `${clip.filename} — ${formatBytes(clip.byteLength)}` }),
+      ),
+    ),
+    el('p', {
+      class: 'hint',
+      text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" downloads nothing from the internet; without the files there are no frames to correct.`,
+    }),
+    el('div', { class: 'example-dialog-actions' }, [
+      button('Cancel', () => closeConsent(), {}),
+      consentResultsOnly,
+      consentConfirm,
+    ]),
+  );
+
+  function openConsent(): void {
+    // happy-dom has no modal dialog; the flag is what the tests and the
+    // handlers read either way.
+    if (typeof consentDialog.showModal === 'function') consentDialog.showModal();
+    else consentDialog.open = true;
+    consentConfirm.focus();
+  }
+
+  function closeConsent(): void {
+    if (typeof consentDialog.close === 'function') consentDialog.close();
+    else consentDialog.open = false;
+  }
 
   const root = el('div', { class: 'example-cohort' }, [
     loadButton,
+    consentDialog,
     confirmRow,
     provenance,
     banner,
-    fetchRow,
     progress,
     status,
   ]);
@@ -121,14 +173,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     const loaded = store.videos.length > 0 && store.current.name === EXAMPLE_SESSION_NAME;
     banner.hidden = !loaded;
     provenance.hidden = !loaded;
-    // Only offered once there is a descriptor to verify the download against.
-    fetchRow.hidden = !loaded || attachedAlready();
     context.onChange?.();
-  }
-
-  function attachedAlready(): boolean {
-    const clip = store.videos.find((video) => video.filename === SAMPLE_CLIP_FILENAME);
-    return clip !== undefined && store.isAttached(clip.id);
   }
 
   /**
@@ -172,9 +217,10 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     });
   }
 
-  async function onLoad(): Promise<void> {
+  async function onLoad(withClips: boolean): Promise<void> {
     loadButton.disabled = true;
     say('Loading the example cohort…');
+    let loaded = false;
     try {
       const result = await loadExampleCohort(store, {
         ...context.loaderOptions,
@@ -183,6 +229,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
 
       switch (result.kind) {
         case 'loaded':
+          loaded = true;
           say(
             `Example cohort loaded: ${result.session.videos.length} videos with results, ` +
               `no video files attached. ${EXAMPLE_PROVENANCE_TEXT}`,
@@ -201,39 +248,67 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     } finally {
       loadButton.disabled = false;
       refresh();
+      // After the re-render, so the button focus lands on is the current one.
+      if (loaded) context.onLoaded?.();
     }
+    // The user consented to both in one dialog, so the clips follow the bundle
+    // without a second press. The results are already on screen while they
+    // download, and a failure here leaves them there.
+    if (loaded && withClips) await fetchAllClips();
   }
 
-  async function onFetch(): Promise<void> {
-    const clip = store.videos.find((video) => video.filename === SAMPLE_CLIP_FILENAME);
-    if (clip === undefined) {
-      say(`This session has no ${SAMPLE_CLIP_FILENAME} to attach the download to.`);
-      return;
-    }
+  /**
+   * The three clips, one after another rather than at once: three parallel
+   * downloads on a lab connection is three slow ones, and a serial run lets the
+   * progress line name the file it is on. One clip failing does not stop the
+   * others — offline, every one fails with its own message and the results the
+   * bundle brought are still on screen.
+   */
+  async function fetchAllClips(): Promise<void> {
+    let attachedCount = 0;
+    const failures: string[] = [];
 
-    fetchButton.disabled = true;
-    say(`Contacting the sample-data repository for ${SAMPLE_CLIP_FILENAME}…`);
-    try {
-      const result = await fetchSampleClip(clip, {
+    for (const clip of SAMPLE_CLIPS) {
+      const descriptor = store.videos.find((video) => video.filename === clip.filename);
+      if (descriptor === undefined) {
+        failures.push(`this session has no ${clip.filename} to attach a download to`);
+        continue;
+      }
+      if (store.isAttached(descriptor.id)) {
+        attachedCount += 1;
+        continue;
+      }
+      status.textContent = `Contacting the sample-data repository for ${clip.filename}…`;
+      const result = await fetchSampleClip(descriptor, {
+        url: clip.url,
+        // The same injection point the bundle load uses, so a test that stubs
+        // the network stubs all of it and no test reaches raw.githubusercontent.
+        ...(context.loaderOptions?.fetchImpl === undefined
+          ? {}
+          : { fetchImpl: context.loaderOptions.fetchImpl }),
         onProgress: (received) => {
-          progress.textContent = formatProgress(received);
+          progress.textContent = formatProgress(received, clip.filename);
         },
       });
       if (result.kind === 'failed') {
-        say(result.message);
-        return;
+        failures.push(result.message);
+        continue;
       }
-
       const attached = await attachFetchedClip(store, result.file);
-      say(
-        attached.kind === 'attached'
-          ? `${SAMPLE_CLIP_FILENAME} verified and attached — frames and corrections are available.`
-          : attached.message,
-      );
-    } finally {
-      fetchButton.disabled = false;
-      refresh();
+      if (attached.kind === 'attached') attachedCount += 1;
+      else failures.push(attached.message);
     }
+
+    const verified = `${attachedCount} of ${SAMPLE_CLIPS.length} clips verified and attached`;
+    // Distinct sentences only: offline, all three fail the same way, and three
+    // copies of one sentence is a 470-character announcement (D37).
+    const distinct = [...new Set(failures)];
+    say(
+      distinct.length === 0
+        ? `${verified} — frames and corrections are available.`
+        : `${verified}. ${distinct.join(' ')}`,
+    );
+    refresh();
   }
 
   refresh();

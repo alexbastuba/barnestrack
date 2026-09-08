@@ -102,7 +102,7 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     max: 2,
     step: '0.05',
     reason:
-      'Gap filling is meant for a dropped frame or two (O10). Past two seconds an interpolated straight line is a claim about behaviour, not a repair.',
+      'Gap filling is meant for a dropped frame or two. Past two seconds an interpolated straight line is a claim about behaviour, not a repair.',
   },
   'kinematics.speedWindowFrames': {
     min: 1,
@@ -129,7 +129,7 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     min: 0,
     max: 1,
     step: '0.05',
-    reason: 'A confidence, so the range is the whole of it (O16).',
+    reason: 'A confidence, so the range is the whole of it.',
   },
   outlierVelocityThreshold_cmPerS: {
     min: 10,
@@ -143,49 +143,49 @@ export const ANALYSIS_PARAMETER_BOUNDS: Record<SliderParameterPath, ParameterBou
     max: 10,
     step: '1',
     reason:
-      'Zero makes spatial mean a faultless first approach and nothing else; past ten errors a trial that visited half the ring would still be called spatial, which is the case the rule exists to exclude (O7).',
+      'Zero makes spatial mean a faultless first approach and nothing else; past ten errors a trial that visited half the ring would still be called spatial, which is the case the rule exists to exclude.',
   },
   'strategy.spatialMaxHoleDistance': {
     min: 1,
     max: 10,
     step: '1',
     reason:
-      'One hole either side is the tightest neighbourhood that still admits an error; ten holes is half a 20-hole ring, where the constraint excludes nothing (O7).',
+      'One hole either side is the tightest neighbourhood that still admits an error; ten holes is half a 20-hole ring, where the constraint excludes nothing.',
   },
   'strategy.spatialMaxCentreCrossings': {
     min: 0,
     max: 5,
     step: '1',
     reason:
-      'Zero forbids any return through the centre before the target, which is the strictest reading of a direct approach; past five the count no longer separates a spatial search from a random one (O7).',
+      'Zero forbids any return through the centre before the target, which is the strictest reading of a direct approach; past five the count no longer separates a spatial search from a random one.',
   },
   'strategy.serialMinRun': {
     min: 2,
     max: 10,
     step: '1',
     reason:
-      'Two is the loosest run anyone would defend as serial — one hole and every visit is a run — so it is the floor rather than the recommendation; ten consecutive adjacent holes is half the ring and almost no trial would qualify (O7).',
+      'Two is the loosest run anyone would defend as serial — one hole and every visit is a run — so it is the floor rather than the recommendation; ten consecutive adjacent holes is half the ring and almost no trial would qualify.',
   },
   'strategy.centreZoneRadiusFraction': {
     min: 0.1,
     max: 0.9,
     step: '0.05',
     reason:
-      'Below a tenth of the platform radius the centre zone is smaller than the animal and is never entered; past 0.9 it reaches the hole ring and every move between two holes counts as a centre crossing (O7).',
+      'Below a tenth of the platform radius the centre zone is smaller than the animal and is never entered; past 0.9 it reaches the hole ring and every move between two holes counts as a centre crossing.',
   },
   'quality.goodMinPositionedFraction': {
     min: 0.5,
     max: 1,
     step: '0.01',
     reason:
-      'Below half the trial positioned, GOOD would claim more than the track supports. The top of the range is 1 — a lab that wants GOOD to mean a track with no dropped frame at all can ask for exactly that, and it is a setting rather than a trap: the slider drags back down and no video is refused, only re-tiered (D30).',
+      'Below half the trial positioned, GOOD would claim more than the track supports. The top of the range is 1 — a lab that wants GOOD to mean a track with no dropped frame at all can ask for exactly that, and it is a setting rather than a trap: the slider drags back down and no video is refused, only re-tiered.',
   },
   'quality.poorMaxPositionedFraction': {
     min: 0,
     max: 1,
     step: '0.01',
     reason:
-      'Zero means no video is ever POOR; the top of the range is the whole of it because the constraint that matters — staying at or below the GOOD threshold — is enforced by `validateParameters`, not by the track (D30).',
+      'Zero means no video is ever POOR; the top of the range is the whole of it because the constraint that matters — staying at or below the GOOD threshold — is enforced by `validateParameters`, not by the track.',
   },
 };
 

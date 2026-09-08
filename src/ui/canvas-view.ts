@@ -87,7 +87,7 @@ export class CanvasView {
       this.zoomReadout,
       el('span', {
         class: 'hint',
-        text: 'Scroll to zoom, Shift-drag to pan. From the keyboard: + and − zoom, 0 fits, Alt with the arrow keys pans.',
+        text: 'Ctrl or ⌘ with the scroll wheel zooms; a plain scroll moves the page. Shift-drag to pan. From the keyboard: + and − zoom, 0 fits, Alt with the arrow keys pans.',
       }),
     ]);
 
@@ -123,6 +123,11 @@ export class CanvasView {
     this.frame.height = height;
     this.frame.style.width = `${width}px`;
     this.frame.style.height = `${height}px`;
+    // The stage takes the clip's own shape rather than a fixed box that
+    // letterboxes it; the height cap lives in the stylesheet.
+    if (width > 0 && height > 0) {
+      this.viewport.style.setProperty('--stage-aspect', `${width} / ${height}`);
+    }
     this.fit();
   }
 
@@ -252,6 +257,12 @@ export class CanvasView {
   }
 
   private onWheel(event: WheelEvent): void {
+    // A plain wheel belongs to the page. This stage is taller than most
+    // viewports, so swallowing every wheel event over it trapped the scroll:
+    // a user rolling down the Maze step stopped dead on the video and zoomed
+    // it instead. Ctrl or ⌘ with the wheel is the zoom, which is also the
+    // gesture a trackpad pinch already sends.
+    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
     const factor = event.deltaY > 0 ? 1 / WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
     this.userAdjusted = true;

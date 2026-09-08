@@ -76,6 +76,20 @@ export function field(
   return el('div', { class: options.class ?? 'field' }, [label, control, hint]);
 }
 
+/**
+ * A scroll box a keyboard user can reach. An overflow container that is not in
+ * the tab order and holds no focusable child can be scrolled with a pointer and
+ * not at all from the keyboard — axe reports it as `scrollable-region-focusable`
+ * — which inverts the point of the DOM tables that mirror the canvases (D37).
+ */
+export function scrollRegion(label: string, children: Child[], className = 'table-scroll'): HTMLElement {
+  return el(
+    'div',
+    { class: className, attrs: { tabindex: '0', role: 'group', 'aria-label': label } },
+    children,
+  );
+}
+
 let idCounter = 0;
 export function uniqueId(prefix: string): string {
   idCounter += 1;

@@ -92,6 +92,31 @@ export function markRect(
   return spanRect(frame, frame, window, width, y, height);
 }
 
+/**
+ * A full-height sliver for a frame span, with its own floor on the width. The
+ * detection-state sliver must survive whole-clip zoom, where one lost frame out
+ * of five thousand is a hundredth of a pixel; `minWidth` is passed in CSS
+ * pixels, so a caller drawing on a device-pixel-scaled canvas can ask for one
+ * device pixel rather than `MIN_MARK_PX`.
+ */
+export function sliverRect(
+  startFrame: number,
+  endFrame: number,
+  window: TimelineWindow,
+  width: number,
+  height: number,
+  minWidth: number,
+): Rect | null {
+  const x0 = frameToX(Math.min(startFrame, endFrame), window, width);
+  const x1 = frameToX(Math.max(startFrame, endFrame) + 1, window, width);
+  if (x1 <= 0 || x0 >= width) return null;
+  let left = Math.max(0, x0);
+  const right = Math.min(width, x1);
+  const w = Math.max(minWidth, right - left);
+  if (left + w > width) left = Math.max(0, width - w);
+  return { x: left, y: 0, width: w, height };
+}
+
 /** Zooms the window by `factor` (> 1 zooms in) about a frame, which keeps its place on screen. */
 export function zoomWindow(
   window: TimelineWindow,
@@ -134,7 +159,7 @@ export function ensureVisible(
 // Track layout, top to bottom
 // ---------------------------------------------------------------------------
 
-export type TrackId = 'axis' | 'state' | 'nose' | 'events' | 'corrections';
+export type TrackId = 'axis' | 'state' | 'events' | 'corrections';
 
 export interface TrackLayout {
   id: TrackId;
@@ -143,16 +168,27 @@ export interface TrackLayout {
   height: number;
 }
 
+/**
+ * Four rows, not five. The nose-confidence row left the timeline: the quality
+ * panel's histogram says the same thing with an axis and a count, and the row
+ * cost 28 px of the height the events row needs for leader labels. The
+ * detection-state row is half what it was, because it now carries a pattern
+ * rather than a pattern with a word written across it.
+ */
 export const TRACKS: readonly TrackLayout[] = [
   { id: 'axis', label: 'Time (s)', y: 0, height: 18 },
-  { id: 'state', label: 'Detection state', y: 22, height: 18 },
-  { id: 'nose', label: 'Nose confidence', y: 44, height: 28 },
-  { id: 'events', label: 'Events', y: 76, height: 32 },
-  { id: 'corrections', label: 'Corrections', y: 112, height: 14 },
+  { id: 'state', label: 'Detection state', y: 22, height: 10 },
+  { id: 'events', label: 'Events', y: 36, height: 46 },
+  { id: 'corrections', label: 'Corrections', y: 86, height: 14 },
 ];
 
+/** Where an event's bar starts inside the events row; above it go leader labels. */
+export const EVENT_BAR_TOP = 16;
+/** Space kept under an event bar, inside the events row. */
+export const EVENT_BAR_BOTTOM = 3;
+
 /** Height of the stacked tracks; the overview strip sits below it. */
-export const TRACKS_HEIGHT = 130;
+export const TRACKS_HEIGHT = 104;
 export const OVERVIEW_HEIGHT = 16;
 export const TIMELINE_HEIGHT = TRACKS_HEIGHT + 4 + OVERVIEW_HEIGHT;
 

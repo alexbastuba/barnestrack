@@ -95,7 +95,9 @@ import {
   type ReviewFiguresProps,
 } from './review-figures.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
+import { describeQueue, eventsToCheck, stepQueue } from './review-queue.js';
 import { Scrubber } from './scrubber.js';
+import { stateRuns } from '../viz/quality-strip.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
 import {
   eventAtFrame,
@@ -174,6 +176,8 @@ export function createReviewStep(context: AppContext): Step {
    * true "before", and an idle re-render does not silently reset it.
    */
   const previousByVideo = new Map<VideoId, DerivedAnalysis>();
+  /** Queue length per video, filled whenever a video's full analysis is derived. */
+  const queueCounts = new Map<VideoId, number>();
   /** A cohort sweep's result for the video on screen, handed to the next `ensureAnalysis`. */
   let adopted: { videoId: VideoId; run: AnalysisRun } | null = null;
   /** True while a cohort sweep is writing derived caches; one render follows, not one per video. */
@@ -250,6 +254,9 @@ export function createReviewStep(context: AppContext): Step {
       if (analysis && cacheKey?.videoId === video.id) previousByVideo.set(video.id, analysis);
       analysis = run.analysis;
       model = timelineModel(analysis, entry.corrections);
+      // Counted here, where the flags exist, so the selector can name a number
+      // for every video this session has actually derived.
+      queueCounts.set(video.id, eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns).length);
       lastTiming = { deriveMs: run.deriveMs, totalMs: performance.now() - started };
       cacheKey = {
         videoId: video.id,
@@ -390,6 +397,77 @@ export function createReviewStep(context: AppContext): Step {
   function selectedEvent(): EventRecord | null {
     if (!analysis || selectedEventId === null) return null;
     return analysis.events.find((e) => e.id === selectedEventId) ?? null;
+  }
+
+  // ---- the review queue ----------------------------------------------------------------
+
+  /** The events still wanting a human on the video on screen. */
+  function queue(): string[] {
+    if (!analysis || !model) return [];
+    return eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns);
+  }
+
+  /**
+   * How many events want a human on a video, for the video selector.
+   *
+   * Review flags come from a full derive, which the step runs for the video on
+   * screen; the cohort cache holds only the derived layer. So a video this
+   * session has opened is counted with its flags, and one it has not is counted
+   * from its uncertain frames alone — a lower bound that corrects itself the
+   * moment the user selects it. Deriving all of them for a dropdown label would
+   * cost a cohort sweep per keystroke.
+   */
+  function queueCountFor(videoId: VideoId): number | null {
+    const cached = queueCounts.get(videoId);
+    if (cached !== undefined) return cached;
+    const derived = store.analysisFor(videoId)?.derived;
+    if (!derived) return null;
+    return eventsToCheck(derived.events, [], stateRuns(derived.cleanedTrack)).length;
+  }
+
+  function videoOptionLabel(video: { id: VideoId; filename: string }): string {
+    const count = queueCountFor(video.id);
+    if (count === null) return `${video.filename} (not tracked)`;
+    return `${video.filename} — ${describeQueue(count)}`;
+  }
+
+  /** Selects a queued event, seeks to it and brings its card into view. */
+  function goToQueued(direction: 1 | -1): void {
+    const ids = queue();
+    const next = stepQueue(ids, selectedEventId, direction);
+    if (next === null || !analysis) {
+      context.announce('Nothing to check on this video.');
+      return;
+    }
+    const ev = analysis.events.find((candidate) => candidate.id === next);
+    if (!ev) return;
+    selectedEventId = ev.id;
+    selectedEdge = null;
+    timeline.setSelection(ev.id, null);
+    seek(positionOfFrame(ev.startFrame), false);
+    renderEventsTable();
+    renderQueue();
+    revealEventCard(ev.id);
+    context.announce(
+      `${KIND_WORDS[ev.kind]} at hole ${ev.holeIndex ?? '—'}, frames ${ev.startFrame}–${ev.endFrame}, ` +
+        `${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`,
+    );
+  }
+
+  /** Scrolls the selected event's card into the events panel's own scroll box. */
+  function revealEventCard(id: string): void {
+    const card = eventsPanel.querySelector<HTMLElement>(`[data-event-id="${CSS.escape(id)}"]`);
+    // happy-dom has no scrolling, and neither has a browser with no layout yet.
+    if (card && typeof card.scrollIntoView === 'function') {
+      card.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function renderQueue(): void {
+    const count = queue().length;
+    queueCount.textContent = describeQueue(count);
+    queuePrevious.disabled = count === 0;
+    queueNext.disabled = count === 0;
   }
 
   function relabelSelected(holeIndex: number): void {
@@ -712,6 +790,12 @@ export function createReviewStep(context: AppContext): Step {
       case 'end':
         seek(frameCount() - 1, true);
         break;
+      case 'prev-flagged-event':
+        goToQueued(-1);
+        break;
+      case 'next-flagged-event':
+        goToQueued(1);
+        break;
       case 'prev-flag':
       case 'next-flag': {
         if (!model) return;
@@ -870,6 +954,30 @@ export function createReviewStep(context: AppContext): Step {
   });
   const timing = el('p', { class: 'review-timing', attrs: { 'aria-live': 'off' } });
   const note = el('p', { class: 'review-note' });
+
+  /*
+   * The review queue: how much of this video is still nobody's decision, and
+   * two buttons that walk it. The count falls as events are corrected, so the
+   * user has a finish line rather than forty cards and a feeling.
+   */
+  const queueCount = el('strong', { class: 'queue-count', attrs: { role: 'status' } });
+  const queuePrevious = button('Previous flagged', () => goToQueued(-1), {
+    class: 'queue-step',
+    attrs: { 'aria-keyshortcuts': '[' },
+  });
+  const queueNext = button('Next flagged', () => goToQueued(1), {
+    class: 'queue-step',
+    attrs: { 'aria-keyshortcuts': ']' },
+  });
+  const queueBar = el('div', { class: 'review-queue' }, [
+    queueCount,
+    queuePrevious,
+    queueNext,
+    el('span', {
+      class: 'hint',
+      text: 'An event is to check when a review flag names it, or it was decided over frames the tracker was unsure of. Correcting it takes it off the list.',
+    }),
+  ]);
   const status = el('p', { class: 'review-status', attrs: { 'aria-live': 'off' } });
 
   const legend = disclosure('Keyboard', [
@@ -970,10 +1078,12 @@ export function createReviewStep(context: AppContext): Step {
       timing,
     ]),
     note,
-    toolbar,
     status,
     scrubber.element,
-    canvasView.element,
+    // Video and toolbar side by side on a wide screen, stacked below 1200 px
+    // (app.css). The timeline stays outside, full width, on its own row.
+    el('div', { class: 'review-stage' }, [canvasView.element, toolbar]),
+    queueBar,
     timeline.element,
     legend,
     el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
@@ -1054,13 +1164,15 @@ export function createReviewStep(context: AppContext): Step {
       stopPlaying(false);
     }
     const video = currentVideo();
-    syncSelect(
-      videoSelect,
-      store.videos.map((v) => ({ value: v.id, label: store.analysisFor(v.id) ? v.filename : `${v.filename} (not tracked)` })),
-      video?.id ?? '',
-    );
     ensureAnalysis();
     sweepMissingAnalyses();
+    // After the derive, not before: the option labels carry this video's queue
+    // count, and reading it first would show the count from before the edit.
+    syncSelect(
+      videoSelect,
+      store.videos.map((v) => ({ value: v.id, label: videoOptionLabel(v) })),
+      video?.id ?? '',
+    );
 
     const isAttached = video !== null && store.isAttached(video.id);
     // The scrubber runs on the file's frame table when the video is attached and on the
@@ -1104,7 +1216,7 @@ export function createReviewStep(context: AppContext): Step {
         selectedEvent()?.holeIndex?.toString() ?? holeSelect.value,
       );
     }
-    timeline.setModel(model, store.parameters.noseConfidenceCutoff);
+    timeline.setModel(model);
     timeline.setPlayhead(playhead);
     timeline.setSelection(selectedEventId, selectedEdge);
     renderPanels();
@@ -1113,6 +1225,7 @@ export function createReviewStep(context: AppContext): Step {
     renderEventsTable();
     renderFrameTable();
     renderCorrections();
+    renderQueue();
     renderStatus();
     canvasView.requestDraw();
   }
@@ -1511,9 +1624,9 @@ export function createReviewStep(context: AppContext): Step {
       'Every correction is stored beside the automatic values and everything is recomputed from both.',
     definitions: () => [
       el('ul', {}, [
-        el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item (D9, D20, D25).' }),
-        el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user" (D16, D26).' }),
-        el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate (D7).' }),
+        el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item.' }),
+        el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user".' }),
+        el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate.' }),
         el('li', { text: 'Every threshold and metric shows its definition and the decision it comes from beside its control.' }),
       ]),
     ],
@@ -1524,6 +1637,10 @@ export function createReviewStep(context: AppContext): Step {
       if (!store.videos.some((v) => store.analysisFor(v.id) !== undefined)) return 'no video has been tracked yet — run the Track step';
       return null;
     },
+    // The last step, and the one whose work is never "finished" by a rule: the
+    // queue above the timeline says how much is left, and only a person can say
+    // the review is over.
+    done: () => false,
     refresh: render,
     onShow: () => {
       render();

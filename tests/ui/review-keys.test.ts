@@ -76,8 +76,14 @@ describe('resolveKey', () => {
   it('maps the letters, brackets and Space, case-insensitively, with Shift + E going backwards', () => {
     expect(resolveKey(press('e'), idle)).toBe('next-event');
     expect(resolveKey(press('E', true), idle)).toBe('prev-event');
-    expect(resolveKey(press('['), idle)).toBe('prev-flag');
-    expect(resolveKey(press(']'), idle)).toBe('next-flag');
+    // The brackets walk the review queue; Shift with them walks the finer
+    // frame-level runs. `{` and `}` are what Shift produces on a US layout.
+    expect(resolveKey(press('['), idle)).toBe('prev-flagged-event');
+    expect(resolveKey(press(']'), idle)).toBe('next-flagged-event');
+    expect(resolveKey(press('{', true), idle)).toBe('prev-flag');
+    expect(resolveKey(press('}', true), idle)).toBe('next-flag');
+    expect(resolveKey(press('[', true), idle)).toBe('prev-flag');
+    expect(resolveKey(press(']', true), idle)).toBe('next-flag');
     expect(resolveKey(press(' '), idle)).toBe('play-pause');
     expect(resolveKey(press('f'), idle)).toBe('focus-frame-field');
     expect(resolveKey(press('N'), idle)).toBe('tool-nose');

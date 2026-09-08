@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  EVENT_BAR_BOTTOM,
+  EVENT_BAR_TOP,
   MIN_MARK_PX,
   MIN_WINDOW_FRAMES,
   TIMELINE_HEIGHT,
@@ -16,6 +18,7 @@ import {
   fullWindow,
   markRect,
   panWindow,
+  sliverRect,
   spanRect,
   timeTicks,
   trackAt,
@@ -120,8 +123,37 @@ describe('tracks and time', () => {
       expect(TRACKS[i]!.y).toBeGreaterThanOrEqual(TRACKS[i - 1]!.y + TRACKS[i - 1]!.height);
     }
     expect(TRACKS[TRACKS.length - 1]!.y + TRACKS[TRACKS.length - 1]!.height).toBeLessThanOrEqual(TIMELINE_HEIGHT);
-    expect(trackAt(TRACKS[3]!.y + 1)?.id).toBe('events');
+    expect(trackAt(TRACKS[2]!.y + 1)?.id).toBe('events');
     expect(trackAt(TIMELINE_HEIGHT + 50)).toBeNull();
+  });
+
+  it('has four rows: the nose-confidence row left the timeline for the quality panel', () => {
+    expect(TRACKS.map((track) => track.id)).toEqual(['axis', 'state', 'events', 'corrections']);
+  });
+
+  it('halves the detection-state row, which no longer carries a word inside it', () => {
+    const state = TRACKS.find((track) => track.id === 'state')!;
+    expect(state.height).toBe(10);
+  });
+
+  it('leaves room above an event bar for a leader label', () => {
+    const events = TRACKS.find((track) => track.id === 'events')!;
+    expect(EVENT_BAR_TOP).toBeGreaterThanOrEqual(12);
+    expect(events.height - EVENT_BAR_TOP - EVENT_BAR_BOTTOM).toBeGreaterThan(20);
+  });
+
+  it('keeps a one-frame lost run visible at whole-clip zoom, down to one device pixel', () => {
+    // 5,539 frames across 900 px: one frame is 0.16 px and would round away.
+    const whole = { first: 0, last: 5538 };
+    const rect = sliverRect(2000, 2000, whole, 900, 104, 0.5);
+    expect(rect).not.toBeNull();
+    expect(rect!.width).toBeGreaterThanOrEqual(0.5);
+    expect(rect!.height).toBe(104);
+    expect(rect!.y).toBe(0);
+  });
+
+  it('drops a sliver that is outside the window altogether', () => {
+    expect(sliverRect(10, 12, { first: 100, last: 200 }, 900, 104, 0.5)).toBeNull();
   });
 
   it('finds the frame on screen at a wall-clock time and places round-number ticks from the frame times', () => {

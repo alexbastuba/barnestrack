@@ -109,7 +109,7 @@ export function createQualityPanel(
     el('h3', { id: headingId, text: 'Tracking quality' }),
     el('p', {
       class: 'what',
-      text: 'Whether this video can be trusted before a figure is built on it. The tier, the gaps and the headline fraction are judged over the trial window — frames before the animal is placed are not tracking failures (D54).',
+      text: 'Whether this video can be trusted before a figure is built on it. The tier, the gaps and the headline fraction are judged over the trial window — frames before the animal is placed are not tracking failures.',
     }),
   );
 
@@ -165,7 +165,7 @@ export function createQualityPanel(
       figure(
         'Positioned (trial window)',
         formatPercent(quality.positionedFraction),
-        'the headline the tier is judged on (D54)',
+        'the headline the tier is judged on',
       ),
       figure(
         'Positioned (whole clip)',
@@ -175,7 +175,7 @@ export function createQualityPanel(
       figure(
         'Events judged on the nose',
         formatPercent(quality.noseJudgedEventFraction),
-        `${judged.filter((e) => e.pointUsed === 'nose').length} of ${judged.length} (O16)`,
+        `${judged.filter((e) => e.pointUsed === 'nose').length} of ${judged.length}`,
       ),
       figure('Gaps in the trial', formatCount(quality.gaps.length)),
       figure('Longest gap', formatSeconds(quality.longestGapSeconds)),
@@ -277,7 +277,7 @@ export function createQualityPanel(
     return disclosure('Nose-heading confidence distribution', [
       el('p', {
         class: 'metric-note',
-        text: `How confident the tracker was about which end of the body is the nose, over the ${formatCount(total)} frames of the trial window. Events use the nose only above the cutoff (O16).`,
+        text: `How confident the tracker was about which end of the body is the nose, over the ${formatCount(total)} frames of the trial window. Events use the nose only above the cutoff.`,
       }),
       el('div', { class: 'table-scroll' }, [
         el('table', { class: 'mirror-table' }, [
@@ -390,7 +390,7 @@ export function createQualityPanel(
         el('p', { class: 'metric-note', text: `Parameters hash: ${parametersHash}` }),
         el('p', { class: 'metric-note', text: `Tracking hash: ${trackingParametersHash}` }),
         el('p', {
-          text: 'Every export carries the parameters hash, so a figure can be traced back to the exact thresholds that produced it (D51).',
+          text: 'Every export carries the parameters hash, so a figure can be traced back to the exact thresholds that produced it.',
         }),
       ]),
     ]);

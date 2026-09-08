@@ -41,10 +41,12 @@ BARNESTRACK_SAMPLE_DIR=/path/to/barnes-maze npx playwright test
   — load, review, retune a threshold, export the bundle, reload — which **skips** until chunks 6
   and 9c land the Review step and mount the "Load example cohort" button; the skip message names
   the missing mount. The axe scan covers every step that renders (Videos, Maze, Track) and fails on
-  `serious`/`critical` only; one recorded defect is allowed by name (see
-  `docs/known-limitations.md`) so a new violation still fails. It makes no network request: the
-  fetch verifier is covered offline in `tests/demo/fetch-sample-clip.test.ts`, and the one live
-  check there is opt-in through `BARNESTRACK_NET_TEST=1` (D2).
+  `serious`/`critical` only; `KNOWN_VIOLATIONS` is **empty** since chunk 10b fixed the maze step's
+  scroll container, so any serious or critical finding fails the run. It makes no network request:
+  the shipped-UI flow refuses `raw.githubusercontent.com` with `page.route(…, abort)` before it
+  clicks through the consent dialog, the fetch verifier is covered offline in
+  `tests/demo/fetch-sample-clip.test.ts`, and the one live check there is opt-in through
+  `BARNESTRACK_NET_TEST=1` (D2).
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 
@@ -326,6 +328,20 @@ defect it is meant to allow. Reproduced at `6885937`, before chunk 9c-a's first 
 never this chunk's — but it is a one-string fix and the spec is already inside chunk 9c-a's
 exception, so it was made here. The run is back to 9 passed / 1 skipped, with the maze node
 reported and then logged as "a recorded defect …, not a regression".
+
+### Chunk 10b — the UX pass
+
+**The axe allowlist is empty again.** `src/ui/dom.ts` gained `scrollRegion()` — `tabindex="0"`,
+`role="group"` and an accessible name — and the maze step's mirror table uses it, so
+`scrollable-region-focusable` no longer fires and the `KNOWN_VIOLATIONS` entry is deleted per that
+set's own rule. Measured: `npx playwright test tests/browser/app-smoke.spec.ts` → **9 passed,
+1 skipped**, with only the three moderate `region` findings against `.stepper` logged, as before.
+
+**The wheel rule changed, and the specs do not test it.** A plain wheel over the video stage or the
+timeline now scrolls the page; Ctrl or ⌘ with the wheel zooms; Shift with it pans the timeline. It
+is unit-tested in `tests/ui/maze-step.test.ts` against the `defaultPrevented` flag rather than here,
+because what matters is whether the handler consumes the event, not how far a real page scrolled.
+Not checked by hand in a browser in that chunk; the unit tests are the whole of the evidence.
 
 **One thing the spec still leaves for chunk 10.** The axe loop covers Videos, Maze and Track only,
 under a comment saying the Review step is a placeholder until chunk 6. Chunk 6 has landed, so the

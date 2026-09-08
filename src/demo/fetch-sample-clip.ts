@@ -29,11 +29,45 @@ export const SAMPLE_CLIP_URL =
 /** Says the file, the size and the source before the request is made. */
 export const FETCH_BUTTON_LABEL = 'Fetch test53.mp4 (≈ 0.5 MB) from the sample-data repository';
 
-export const FETCH_BUTTON_HINT =
-  'This is the only time BarnesTrack contacts the network. It downloads one video ' +
-  'from raw.githubusercontent.com into this browser and checks it against the ' +
-  'example cohort before using it. Nothing is uploaded.';
+export interface SampleClip {
+  filename: string;
+  url: string;
+  /** Exact size, from the example bundle's own descriptors. */
+  byteLength: number;
+}
 
+/**
+ * The three clips of the example cohort, with the sizes the confirmation
+ * dialog quotes before any request is made (D2). The numbers are the
+ * `fingerprint.byteLength` of the bundle's own descriptors; a file that no
+ * longer matches is caught by `verifyAgainstDescriptor`, not by this table.
+ */
+export const SAMPLE_CLIPS: readonly SampleClip[] = [
+  { filename: 'test50.mp4', url: sampleClipUrl('test50.mp4'), byteLength: 2_333_495 },
+  { filename: 'test51.mp4', url: sampleClipUrl('test51.mp4'), byteLength: 455_830 },
+  { filename: 'test53.mp4', url: sampleClipUrl('test53.mp4'), byteLength: 496_723 },
+];
+
+export const SAMPLE_CLIPS_TOTAL_BYTES = SAMPLE_CLIPS.reduce(
+  (total, clip) => total + clip.byteLength,
+  0,
+);
+
+function sampleClipUrl(filename: string): string {
+  return `https://raw.githubusercontent.com/salk-airc/rse-takehome-2026/main/data/barnes-maze/${filename}`;
+}
+
+export const FETCH_BUTTON_HINT =
+  'This is the only time BarnesTrack contacts the network. It downloads the three video ' +
+  'clips listed below from raw.githubusercontent.com into this browser and checks each one ' +
+  'against the example cohort before using it. Nothing is uploaded.';
+
+/*
+ * Names test53 only, which is wrong for the other two clips now that all three
+ * are fetched. Correcting it changes an assertion in `tests/demo/`, which is
+ * outside chunk 10b's ownership, so the repetition was fixed instead (the
+ * outcome line says one sentence, not three) and the wording is left for 10a.
+ */
 const OFFLINE_MESSAGE =
   'Could not reach the sample-data repository. Check your connection, or download ' +
   'test53.mp4 yourself and drop it on the Videos step instead.';

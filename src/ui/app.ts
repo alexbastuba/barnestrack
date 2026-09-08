@@ -157,7 +157,17 @@ export function mountApp(
         empty.textContent = reason === null ? '' : `Nothing to show yet — ${reason}`;
         empty.hidden = reason === null;
       }
-      if (state) state.textContent = reason === null ? 'ready' : 'nothing to show yet';
+      // Three states, not two: a step that can run reads "ready", and one whose
+      // work is finished says so in its own words ("3 videos loaded").
+      if (state) {
+        state.textContent =
+          reason !== null
+            ? 'nothing to show yet'
+            : step.done()
+              ? (step.doneLabel?.() ?? 'done')
+              : 'ready';
+        state.classList.toggle('is-done', reason === null && step.done());
+      }
       step.body.hidden = reason !== null;
       step.refresh();
     }

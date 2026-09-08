@@ -114,7 +114,8 @@ describe('the rows a trial has', () => {
     const start = definitionOf('Trial start');
     expect(start).not.toContain(PARAMETER_DEFINITIONS.trialCutoff_s);
     expect(start).toContain('oversized-foreground');
-    expect(start).toContain('O5');
+    // The decision reference is a comment in the source, not text on screen.
+    expect(start).not.toContain('O5');
 
     // These two keep the threshold that shapes them, but only after their own
     // definition, never instead of it.

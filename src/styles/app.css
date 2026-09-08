@@ -334,6 +334,16 @@ label {
   margin-left: auto;
 }
 
+/* Finished, and said in words as well as in colour (D26, D37). */
+.step-tab .step-state.is-done {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.step-tab .step-state.is-done::before {
+  content: '✓ ';
+}
+
 .step-tab.is-current {
   border-color: var(--accent);
   border-bottom-width: 0.25rem;
@@ -346,6 +356,27 @@ label {
 
 .step-tab.is-current .step-state {
   color: var(--accent);
+}
+
+/*
+ * The way on from a step: bottom-right of the panel, the primary action only
+ * when the step is actually finished, with the reason it is not beside it.
+ */
+.next-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.next-step-hint {
+  margin: 0;
+  flex: 1 1 16rem;
+  text-align: right;
 }
 
 /* ---- panels --------------------------------------------------------------- */
@@ -662,11 +693,22 @@ label {
   margin-bottom: 0.75rem;
 }
 
+/*
+ * One stage on every step, sized from the video rather than from the panel:
+ * its own aspect ratio, never taller than 60 % of the viewport, centred. A
+ * fixed 26rem box letterboxed every clip and, at 70vh, left no room for the
+ * toolbar and the timeline on the same screen. `--stage-aspect` is set by
+ * CanvasView when a source arrives; 4/3 is what the sample rig films at and
+ * holds the box's shape before the first frame decodes.
+ */
 .viewport {
   position: relative;
   overflow: hidden;
-  height: 26rem;
-  max-height: 70vh;
+  height: auto;
+  aspect-ratio: var(--stage-aspect, 4 / 3);
+  max-width: 100%;
+  margin-inline: auto;
+  max-height: 60vh;
   background: #101315;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -1042,6 +1084,33 @@ label {
   margin: 0.5rem 0;
 }
 
+/*
+ * The correction workflow on one screen. Stacked, the video, the toolbar and
+ * the timeline do not fit a laptop viewport together, so a correction means
+ * scrolling between the frame and the bar that named it. Past 1200 px the
+ * toolbar moves into a column beside the video and its groups stack; the
+ * timeline stays full width below both. Narrower than that, this is today's
+ * layout — the wrapper is a plain block and the children are in source order.
+ */
+@media (min-width: 1200px) {
+  .review-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    gap: var(--gap);
+    align-items: start;
+  }
+
+  .review-stage .review-tools {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    margin: 0;
+  }
+
+  .review-stage .tool-group {
+    width: 100%;
+  }
+}
+
 .tool-group {
   display: flex;
   flex-wrap: wrap;
@@ -1065,6 +1134,31 @@ label {
 }
 
 /* The timeline (D24): a canvas the tables below repeat (D37). */
+/*
+ * The review queue sits directly above the timeline: how much of this video is
+ * still nobody's decision, and the two buttons that walk it.
+ */
+.review-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.queue-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.review-queue .hint {
+  flex: 1 1 18rem;
+}
+
 .timeline {
   margin: 0.75rem 0;
 }
@@ -1098,6 +1192,70 @@ label {
 
 .timeline-window {
   min-width: 12rem;
+}
+
+/*
+ * What the timeline's marks mean, in words beside a swatch that carries the
+ * same fill and the same hatch as the mark itself (D26, D37) — so the row
+ * patterns no longer have to spell themselves out inside a 10 px bar.
+ */
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.375rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.timeline-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.legend-swatch {
+  width: 1.25rem;
+  height: 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  flex: none;
+}
+
+.legend-tracked {
+  background: var(--accent-soft);
+}
+
+.legend-low {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--paper-soft) 0 3px,
+    var(--ink-soft) 3px 4px
+  );
+}
+
+.legend-ambiguous {
+  background: repeating-linear-gradient(45deg, var(--line) 0 2px, var(--ink) 2px 3px);
+}
+
+.legend-lost {
+  background: repeating-linear-gradient(45deg, var(--danger) 0 2px, #ffffff 2px 3px);
+}
+
+.legend-filled {
+  background: var(--paper);
+  border-style: dashed;
+}
+
+.legend-corrected {
+  background: repeating-linear-gradient(45deg, var(--paper) 0 3px, var(--accent) 3px 4px);
+  border-color: var(--accent);
+}
+
+.legend-trial {
+  background: linear-gradient(90deg, var(--ok) 0 3px, var(--paper) 3px calc(100% - 3px), var(--ok) calc(100% - 3px) 100%);
 }
 
 .zoom-readout {
@@ -1860,24 +2018,40 @@ button.metric-value:hover:not(:disabled) {
   font-weight: 600;
 }
 
-.example-fetch-row {
+/*
+ * The network-consent dialog (D2). A native <dialog>, so the browser traps
+ * focus, Escape closes it and the page behind it goes inert. Sized in ch so the
+ * sentence keeps a readable measure at 200 % zoom (D37).
+ */
+.example-dialog {
+  max-width: 60ch;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.example-dialog::backdrop {
+  background: rgb(22 25 29 / 45%);
+}
+
+.example-dialog h3 {
+  margin: 0 0 0.5rem;
+}
+
+.example-file-list {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.example-dialog-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
-}
-
-/* Its label names the file and its size, so it is long; let it wrap left-aligned
-   rather than push the hint off the row at 200 % zoom (D37). */
-.example-fetch {
-  flex: 0 1 auto;
-  text-align: left;
-}
-
-/* Wide enough to keep the D2 sentence on two or three lines, not eight. */
-.example-fetch-row .hint {
-  flex: 1 1 22rem;
-  max-width: 44rem;
+  margin-top: 1rem;
 }
 
 .example-banner,
