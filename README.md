@@ -320,7 +320,7 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   a run at the target hole continuing to the last frame of the clip needs no minimum duration —
   both are read as persistent escape entries when the map names the hole they actually entered,
   with total latencies of 22.83 s (test53) and 44.04 s (test51) from trial starts at 5.00 s
-  (`prototypes/analysis/RESULTS.md`, signature checks). Under the chunk-3 map, whose target is
+  (`prototypes/analysis/RESULTS.md`, signature checks). Under the recorded sample map, whose target is
   hole 7, neither hole is the target: test53's 2.37 s run is long enough to be entry-shaped anyway
   and is flagged "physically unlikely — review", while test51's 0.93 s run is not, and stays an
   ordinary investigation.
