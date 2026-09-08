@@ -7,6 +7,8 @@ import { pipeline } from './pipeline.js';
 import { holePoint, visitHoles, type Segment } from './synthetic-track.js';
 
 const target8 = testGeometry({ map: { target: { holeIndex: 8 } } });
+/** The default geometry `pipeline` builds when none is passed: target hole 7. */
+const target7 = testGeometry();
 
 describe('classifyStrategy (O7)', () => {
   it('serial: 12→8 then the target (8) is a run of three, the target and its neighbours excluded', () => {
@@ -308,9 +310,11 @@ describe('classifyStrategy (O7)', () => {
     // Gawel et al. 2019, Table 1: "with no crossing of the centre between hole searches". An
     // excursion through the centre *before* the first hole search is an ordinary trajectory and
     // must not fail the spatial rule, which at the D58 default tolerates zero crossings.
+    // The animal must genuinely leave the centre zone (0.5 × R ≈ 23 cm here) and re-enter it, or
+    // there is no crossing to exclude and the test would pass with or without the fix.
+    const outside = holePoint(target7, 0, 8); // 32.9 cm from the centre: outside the zone
     const before = pipeline([
-      { kind: 'moveToCentre', seconds: 0.5 },
-      { kind: 'moveToHole', hole: 0, seconds: 0.5, offset_cm: 20 },
+      { kind: 'moveTo', x: outside.x, y: outside.y, seconds: 0.5 },
       { kind: 'moveToCentre', seconds: 0.5 },
       ...visitHoles([6, 8, 7]),
     ]);
@@ -321,13 +325,35 @@ describe('classifyStrategy (O7)', () => {
     // the same crossing placed between two hole searches does fail it
     const between = pipeline([
       ...visitHoles([6]),
+      { kind: 'moveTo', x: outside.x, y: outside.y, seconds: 0.5 },
       { kind: 'moveToCentre', seconds: 0.5 },
       ...visitHoles([8, 7]),
     ]);
     expect(between.strategy.features.sequence).toEqual([6, 8, 7]);
-    expect(between.strategy.features.centreCrossings).toBeGreaterThanOrEqual(1);
-    expect(between.strategy.strategy).not.toBe('spatial');
+    // two: the return from the excursion, and the walk from hole 6 across to hole 8
+    expect(between.strategy.features.centreCrossings).toBe(2);
+    expect(between.strategy.strategy).toBe('random');
     expect(between.strategy.reasoning.join('\n')).toContain('(at most 0) — no');
+  });
+
+  it('does not count a centre crossing after the last hole search either (D58)', () => {
+    // The tail of the same window. When the target is never reached the search phase runs to the
+    // trial end, so a walk to the centre after the animal has stopped searching used to decide the
+    // class — and "never reached" is the case both remaining sample clips fall into.
+    const searchOnly = pipeline([...visitHoles([6, 8]), { kind: 'dwell', hole: 8, seconds: 0.5 }]);
+    expect(searchOnly.strategy.features.targetReached).toBe(false);
+    expect(searchOnly.strategy.features.sequence).toEqual([6, 8]);
+    expect(searchOnly.strategy.features.centreCrossings).toBe(0);
+    expect(searchOnly.strategy.strategy).toBe('spatial');
+
+    const thenCentre = pipeline([
+      ...visitHoles([6, 8]),
+      { kind: 'moveToCentre', seconds: 1 },
+      { kind: 'dwell', seconds: 1 },
+    ]);
+    expect(thenCentre.strategy.features.sequence).toEqual([6, 8]);
+    expect(thenCentre.strategy.features.centreCrossings).toBe(0);
+    expect(thenCentre.strategy.strategy).toBe('spatial');
   });
 
   it('reads its thresholds from the strategy block of the parameters (D55)', () => {

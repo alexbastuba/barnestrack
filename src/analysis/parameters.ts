@@ -122,7 +122,7 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'strategy.spatialMaxHoleDistance':
     'Spatial search (Gawel et al. 2019, Table 1): every error hole lies within this many holes of the target around the ring — 1 is the paper’s "adjacent to the target hole" (holes).',
   'strategy.spatialMaxCentreCrossings':
-    'Spatial search (Gawel et al. 2019, Table 1): at most this many entries into the centre zone before the target; 0 is the paper’s "with no crossing of the centre between hole searches" (count).',
+    'Spatial search (Gawel et al. 2019, Table 1): at most this many entries into the centre zone between hole searches — from the first investigation to the last, so an excursion before the animal starts searching or after it stops does not count; 0 is the paper’s "with no crossing of the centre between hole searches" (count).',
   'strategy.serialMinRun':
     'Serial search (Gawel et al. 2019, Table 1): a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before the first target visit; holes adjacent to the target and the target itself do not count towards the run, as the paper’s "in a serial manner… but not adjacent to target hole" requires (count).',
   'strategy.centreZoneRadiusFraction':

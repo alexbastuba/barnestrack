@@ -279,9 +279,9 @@ The tail of the same three rows, from `strategy` onwards:
 
 ```
 strategy,strategy_source,escaped,status,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
-serial,auto,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,1d7e4a02c9b5…
-spatial,auto,true,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,1d7e4a02c9b5…
-random,auto,true,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,1d7e4a02c9b5…
+serial,auto,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+spatial,auto,true,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+random,auto,true,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
 ```
 
 `quality.csv`, all three rows:
@@ -296,7 +296,7 @@ Barnes cohort A,video-test53,0.8652,0.1127,0.011,0.011,0.8762,0.8762,0.8333,2,1.
 Asked _"summarise this cohort"_, a correct answer looks like this:
 
 > Three trials, one cohort, one parameter set — all three rows share
-> `parameters_hash 1d7e4a02c9b5…` and `barnestrack v0.1.0 (5e11c0a)`, so they are directly
+> `parameters_hash 9c3cf1d9fcc3…` and `barnestrack v0.1.0 (5e11c0a)`, so they are directly
 > comparable.
 >
 > One trial is `ok` (test51: escaped at 45.1 s, 1 primary error, spatial). Two are `review`:

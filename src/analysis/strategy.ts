@@ -27,7 +27,7 @@ export interface StrategyFeatures {
   /** Longest run of investigations of adjacent holes in one direction around the ring with no centre crossing during it; a change of direction ends it, and the target hole and the two holes either side of it are excluded from the run (D58, Gawel et al. 2019, Table 1). */
   longestAdjacentRun: number;
   longestAdjacentRunHoles: number[];
-  /** Entries into the centre zone during the search phase. */
+  /** Entries into the centre zone between hole searches — from the first investigation of the search phase to the last, not from the trial start (D58, Gawel et al. 2019, Table 1). */
   centreCrossings: number;
   /** Illouz et al. 2020, Fig. 1C (D61): straight line between the centroid at the first and last positioned frames of the trial window ÷ the smoothed path over that window; > 1 only when gaps hide path. */
   pathEfficiency: number;
@@ -189,12 +189,25 @@ export function computeStrategyFeatures(
   // one excursion and returns before searching anything has crossed nothing *between* searches, and
   // with `spatialMaxCentreCrossings` now 0 that difference decides the class rather than eating
   // slack. With no hole search there is no "between" and the count is zero.
+  // The window is closed at both ends: a walk to the centre *after* the last hole search is not
+  // between anything either, and when the target is never reached `phaseEnd` is the trial end, so
+  // without the tail trim a trailing centre visit decided the class. With the target reached the
+  // last search *is* `phaseEnd`, so the trim is a no-op there.
   const firstSearchPosition =
     sequenceEvents.length === 0 ? -1 : framePosition(frames, sequenceEvents[0]!.startFrame);
+  const lastSearchPosition =
+    sequenceEvents.length === 0
+      ? -1
+      : framePosition(frames, sequenceEvents[sequenceEvents.length - 1]!.startFrame);
   const crossings =
-    firstSearchPosition < 0
+    firstSearchPosition < 0 || lastSearchPosition < 0
       ? []
-      : centreEntries(a, g, Math.max(start, firstSearchPosition), phaseEnd);
+      : centreEntries(
+          a,
+          g,
+          Math.max(start, firstSearchPosition),
+          Math.min(phaseEnd, lastSearchPosition),
+        );
   const errors = sequenceEvents.filter((e) => !e.isTarget);
   let maxDist = 0;
   for (const e of errors)

@@ -307,8 +307,8 @@ session it is found (D39).
   `derive()` raises `stale_auto_layer` when `auto.parametersHash` disagrees with the tracking block
   in force (D56), and the trial reads `review`. The export writes `parameters_hash` = the hash of
   the parameters in force, whose `tracking` values never ran, and `parameters.json` carries those
-  never-run values; no column and no row says the track was made with something else. Measured
-  (`notes/audit/a10-stale-auto.ts`): `tailOpeningRadius_cm` 0.8 → 1.0 after the pass gives
+  never-run values; no column and no row says the track was made with something else. Measured during the trust audit (whose
+  reproduction scripts live under the untracked `notes/`, so the numbers below are the record): `tailOpeningRadius_cm` 0.8 → 1.0 after the pass gives
   `trials.csv status=review parameters_hash=ac9eef30…` and `parameters.json tracking
   .tailOpeningRadius_cm = 1`, with nothing naming the 0.8 the track was actually made with. A
   reader reconciling two cohorts by `parameters_hash` treats them as the same configuration.
@@ -319,8 +319,7 @@ session it is found (D39).
   audit A5).** `eventPoints`, `spanDistances` and `pointUsedFor` read every `cValid` frame
   (`src/analysis/events.ts`), and a filled frame is `cValid=1` carrying the tracker's original
   `detectionState` and `noseHeadingConfidence` (`src/analysis/clean.ts`), so
-  `noseConfidenceHistogram` counts it too. Measured on a scripted track
-  (`notes/audit/a8-fill-into-events.ts`): with filling on, `min_centroid_distance_cm` reads 1.73
+  `noseConfidenceHistogram` counts it too. Measured on a scripted track during the trust audit: with filling on, `min_centroid_distance_cm` reads 1.73
   where the animal was never seen closer than 2.51 cm, the evidence says "Nose used on 19 of 29
   positioned frames" against 19 of 27, and the histogram total is 261 against 259. Latent on real
   data — all three sample clips have zero filled frames — and now latent by default too, since D60
@@ -332,7 +331,7 @@ session it is found (D39).
   `speedsCmPerS` (`src/viz/data.ts`) uses raw positions, a window counted in path points so it
   spans gaps, no duplicate-timestamp skipping and the whole clip; `computeKinematics`
   (`src/analysis/kinematics.ts`) uses O9-smoothed positions within one run, skips duplicate pairs
-  and stops at the trial window. Measured (`notes/audit/a9-figures.ts`): on test50 the mean
+  and stops at the trial window. Measured during the trust audit: on test50 the mean
   difference is 0.26 cm/s and the maximum 13.12 cm/s; the figure's median reads 4.26 against the
   analysis's 3.96, its fastest 36.28 against 35.72. Two definitions of "speed" in one figure, and
   the caption's "fastest speed" is not the one any export carries. Smallest fix: one pure helper
@@ -348,7 +347,7 @@ session it is found (D39).
   re-derive the bounds in `trialSource` and clip `centroidPath` to them.
 - **A session keeps the tool version of the build that created it (trust audit A8).**
   `SessionStore` stamps `toolVersion` only in `createSessionFile`; `replaceSession`, `restore` and
-  `analyseVideo` never restamp. Measured (`notes/audit/a13-toolversion-corrections-roundtrip.ts`):
+  `analyseVideo` never restamp. Measured during the trust audit:
   a file from build `aaaaaaa` loaded into a store built as `bbbbbbb` and re-derived still reports
   `barnestrack v0.1.0 (aaaaaaa)` in `store.current.toolVersion`, in the default `tool_version` of
   every `trials.csv` row, and in the saved file. Numbers computed by build B are attributed to
