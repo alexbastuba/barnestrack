@@ -332,15 +332,17 @@ disk by the browser and decoded in the tab; tracking, analysis, figures and expo
 locally; the session file and the CSVs are written straight to the downloads folder. There is no
 server to send anything to, no account, no telemetry, and no third party in the path — there is not
 even a font or a CDN script to fetch. Loading the page and working through a whole cohort of your
-own videos issues no request at all beyond the page's own HTML, JavaScript and CSS. Exactly two
-requests exist, and both need a button press:
+own videos issues no request at all beyond the page's own HTML, JavaScript and CSS. Requests exist
+in exactly two places, and both need a button press:
 
 - **Load example cohort** fetches `examples/example-cohort.barnestrack.json.gz` (about 500 kB) from
   the page's own build — same origin, the same static deployment the page was served from, nothing
   leaving it.
-- **Fetch test53.mp4** downloads that one clip from the public sample-data repository. This is the
-  single outbound request BarnesTrack can make, it is named on the button, and it exists so the demo
-  has a real video to scrub.
+- **Confirming the example cohort's dialog** downloads the three sample clips — `test50.mp4`,
+  `test51.mp4` and `test53.mp4`, 3.1 MB in total — from the public sample-data repository. These are
+  the only outbound requests BarnesTrack can make; the dialog names each file and its size before
+  the first one is sent, its other button loads the same results with no network request at all, and
+  they exist so the demo has real video to scrub.
 
 The other URL-shaped strings in the built bundle are never fetched: XML namespace identifiers — the
 SVG namespace passed to `createElementNS`, and exceljs's OOXML namespaces once the XLSX export is in

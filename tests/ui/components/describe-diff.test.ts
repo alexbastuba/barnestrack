@@ -338,7 +338,9 @@ describe('describeDiff', () => {
 describe('describeDiff over a real re-derivation', () => {
   it('describes what raising the investigation minimum duration actually did', () => {
     // 0.2 s → 10 s on test50: the shorter bouts stop counting as investigations,
-    // which drops the error count far enough to change the strategy call too.
+    // and the error counts fall with them (13 → 7 total). The strategy call is
+    // not one of the things that moves — both sides still fire the serial rule —
+    // so the badge has to say so rather than stay silent about it.
     const { before, after } = derivedPair('video-test50', (p) => ({
       ...p,
       holeInvestigation: { ...p.holeInvestigation, minDuration_s: 10 },
