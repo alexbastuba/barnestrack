@@ -9,16 +9,17 @@
       content="Turns Barnes maze videos into auditable behavioral metrics, entirely in your browser."
     />
     <!--
-      The same mark the header draws in `logoMark()` (src/ui/app.ts): a Barnes
-      platform from above, twelve holes, one of them the target. Inlined as a
-      data URI rather than a file, so the page ships no icon asset and the
-      network tab stays empty of the stray /favicon.ico the browser would
-      otherwise ask for (D2, D41). Chunk 9c-b swaps the final mark in here and
-      in `logoMark()`.
+      The same mark the header draws in `logoMark()` (src/ui/app.ts): a mouse
+      seen from above facing the enlarged target hole of a Barnes maze ring.
+      Inlined as a data URI rather than a file, so the page ships no icon asset
+      and the network tab stays empty of the stray /favicon.ico the browser
+      would otherwise ask for (D2, D41). The paths are identical to the header's;
+      the only change is the fill, because an icon outside the document cannot
+      inherit a text colour and so is pinned to #222.
     -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%230a4d8c' stroke-width='1.2'%3E%3Ccircle cx='16' cy='16' r='14' stroke-width='2'/%3E%3Ccircle cx='16.00' cy='5.50' r='1.5'/%3E%3Ccircle cx='21.25' cy='6.91' r='1.5'/%3E%3Ccircle cx='25.09' cy='10.75' r='1.5'/%3E%3Ccircle cx='25.09' cy='21.25' r='1.5'/%3E%3Ccircle cx='21.25' cy='25.09' r='1.5'/%3E%3Ccircle cx='16.00' cy='26.50' r='1.5'/%3E%3Ccircle cx='10.75' cy='25.09' r='1.5'/%3E%3Ccircle cx='6.91' cy='21.25' r='1.5'/%3E%3Ccircle cx='5.50' cy='16.00' r='1.5'/%3E%3Ccircle cx='6.91' cy='10.75' r='1.5'/%3E%3Ccircle cx='10.75' cy='6.91' r='1.5'/%3E%3C/g%3E%3Ccircle cx='26.50' cy='16.00' r='2.4' fill='%230a4d8c'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128' role='img'%3E%3Ctitle%3EBarnesTrack%3C/title%3E%3Cdesc%3EA mouse viewed from above faces the enlarged target hole in a Barnes maze ring.%3C/desc%3E%3Cpath fill='%23222' fill-rule='evenodd' d='M64 3.5a60.5 60.5 0 1 1 0 121 60.5 60.5 0 0 1 0-121Zm0 5a55.5 55.5 0 1 0 0 111 55.5 55.5 0 0 0 0-111Z'/%3E%3Cpath fill='%23222' d='M64 11.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Z M44 22.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M84 22.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M29 31.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M99 31.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M20 47.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M108 47.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M18 66.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M110 66.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M25 84.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M103 84.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M39 98.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z M89 98.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z'/%3E%3Cpath fill='%23222' d='M64 60a21 25 0 1 1 0 50 21 25 0 0 1 0-50Z M49 56a9 9 0 1 1 0 18 9 9 0 0 1 0-18Z M79 56a9 9 0 1 1 0 18 9 9 0 0 1 0-18Z'/%3E%3Cpath fill='%23222' fill-rule='evenodd' d='M64 35c-6 4-12 20-12 33 0 10 5 16 12 16s12-6 12-16c0-13-6-29-12-33Zm-5 17.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Zm10 0a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z'/%3E%3C/svg%3E"
     />
   </head>
   <body>

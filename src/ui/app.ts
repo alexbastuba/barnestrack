@@ -337,43 +337,83 @@ export function mountApp(
   return { context, refresh, showStep, element: root };
 }
 
-/** An original mark: a Barnes platform seen from above, with one target hole filled. D41. */
+/**
+ * The mark, drawn on a 128-unit square: a transparent platform with a rim,
+ * twelve small holes and one enlarged target at twelve o'clock, and a mouse
+ * seen from above facing it. Every path fills with `currentColor`, so the mark
+ * takes the header's text colour in both themes. The same artwork is inlined
+ * as the favicon data URI in index.html (D41).
+ */
+const MARK_PATHS: ReadonlyArray<{ d: string; evenOdd?: true }> = [
+  // Transparent platform with a currentColor rim.
+  {
+    d: 'M64 3.5a60.5 60.5 0 1 1 0 121 60.5 60.5 0 0 1 0-121Z' +
+      'm0 5a55.5 55.5 0 1 0 0 111 55.5 55.5 0 0 0 0-111Z',
+    evenOdd: true,
+  },
+  // Twelve small holes and one enlarged target at 12 o'clock.
+  {
+    d: [
+      'M64 11.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Z',
+      'M44 22.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M84 22.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M29 31.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M99 31.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M20 47.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M108 47.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M18 66.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M110 66.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M25 84.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M103 84.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M39 98.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+      'M89 98.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4Z',
+    ].join(' '),
+  },
+  // Compact mouse silhouette; deliberately no tail.
+  {
+    d: [
+      'M64 60a21 25 0 1 1 0 50 21 25 0 0 1 0-50Z',
+      'M49 56a9 9 0 1 1 0 18 9 9 0 0 1 0-18Z',
+      'M79 56a9 9 0 1 1 0 18 9 9 0 0 1 0-18Z',
+    ].join(' '),
+  },
+  // Head, with the two eyes knocked out of it by the even-odd rule.
+  {
+    d: 'M64 35c-6 4-12 20-12 33 0 10 5 16 12 16s12-6 12-16c0-13-6-29-12-33Z' +
+      'm-5 17.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z' +
+      'm10 0a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z',
+    evenOdd: true,
+  },
+];
+
+/** An original mark: a mouse facing the target hole of a Barnes maze ring. D41. */
 function logoMark(): SVGSVGElement {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('viewBox', '0 0 128 128');
   svg.setAttribute('width', '32');
   svg.setAttribute('height', '32');
   svg.setAttribute('class', 'logo');
   svg.setAttribute('role', 'img');
   // Both the label and the <title>, byte-identical: the title is what an SVG
   // reader looks for, the aria-label is what an accessibility tree check looks
-  // for, and neither on its own satisfies both (D37, D41).
+  // for, and neither on its own satisfies both (D37, D41). The elements carry
+  // no ids and nothing points at them by id, so two marks on one page — the
+  // header and any future reuse — cannot collide.
   svg.setAttribute('aria-label', 'BarnesTrack');
   const title = document.createElementNS(ns, 'title');
   title.textContent = 'BarnesTrack';
-  svg.append(title);
+  const desc = document.createElementNS(ns, 'desc');
+  desc.textContent =
+    'A mouse viewed from above faces the enlarged target hole in a Barnes maze ring.';
+  svg.append(title, desc);
 
-  const platform = document.createElementNS(ns, 'circle');
-  platform.setAttribute('cx', '16');
-  platform.setAttribute('cy', '16');
-  platform.setAttribute('r', '14');
-  platform.setAttribute('fill', 'none');
-  platform.setAttribute('stroke', 'currentColor');
-  platform.setAttribute('stroke-width', '2');
-  svg.append(platform);
-
-  const holes = 12;
-  for (let i = 0; i < holes; i++) {
-    const angle = (i / holes) * 2 * Math.PI - Math.PI / 2;
-    const hole = document.createElementNS(ns, 'circle');
-    hole.setAttribute('cx', (16 + 10.5 * Math.cos(angle)).toFixed(2));
-    hole.setAttribute('cy', (16 + 10.5 * Math.sin(angle)).toFixed(2));
-    hole.setAttribute('r', i === 3 ? '2.4' : '1.5');
-    hole.setAttribute('fill', i === 3 ? 'currentColor' : 'none');
-    hole.setAttribute('stroke', 'currentColor');
-    hole.setAttribute('stroke-width', '1.2');
-    svg.append(hole);
+  for (const { d, evenOdd } of MARK_PATHS) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('fill', 'currentColor');
+    if (evenOdd) path.setAttribute('fill-rule', 'evenodd');
+    path.setAttribute('d', d);
+    svg.append(path);
   }
   return svg;
 }
