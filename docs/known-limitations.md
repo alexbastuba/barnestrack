@@ -342,6 +342,21 @@ session it is found (D39).
   materiality threshold (uncertain frames as a share of the span) or an explicit "keep automatic"
   mark; both are operational definitions and need Alex.
 
+- **Correction to the two entries above, and the offline message's wording.** The entry saying the
+  browser smoke run is "9 passed / 1 skipped with an empty allowlist" measured it with no `dist/`
+  present. After `npm run build` — which this project's own check list runs — the shipped-UI flow no
+  longer skips, and the run is **9 passed / 1 failed**: `tests/browser/app-smoke.spec.ts:467`,
+  `expect(locator('#panel-review').locator('.empty')).toHaveCount(0)` resolves to 2. Both matched
+  nodes are `hidden` — one from `src/ui/app.ts` and one from `src/ui/components/event-list.ts` — and
+  both exist at chunk 10b's base commit, so the assertion is stale rather than newly broken: it
+  counts hidden nodes. The one-line fix is `.empty:visible`. The axe scan itself does pass with the
+  empty allowlist; that part of the entry stands.
+  Separately, now that all three clips are fetched, the offline sentence names the wrong file for
+  two of them: all three failures read "download test53.mp4 yourself and drop it on the Videos step
+  instead". The repetition was fixed (the outcome line says one sentence, not three) but the wording
+  could not be: `tests/demo/fetch-sample-clip.test.ts` pins that string exactly and `tests/demo/` is
+  outside chunk 10b's ownership.
+
 ## Excluded scope
 
 - **The example cohort's numbers are synthetic, not a real tracking run.** The bundle at

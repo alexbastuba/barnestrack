@@ -130,7 +130,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     ),
     el('p', {
       class: 'hint',
-      text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" makes no network request at all; without the files there are no frames to correct.`,
+      text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" downloads nothing from the internet; without the files there are no frames to correct.`,
     }),
     el('div', { class: 'example-dialog-actions' }, [
       button('Cancel', () => closeConsent(), {}),
