@@ -34,9 +34,9 @@ The work is four steps, and the page says the same thing at the top of each one:
 4. **Review & Export** — "Check every event against the frames it came from, correct what the
    tracker got wrong, and read the metrics. Every correction is stored beside the automatic values
    and everything is recomputed from both." A timeline of the trial with every correction on it, the
-   evidence behind each event, a metrics card and a quality summary. Six of the thresholds are
-   editable there with a live recompute of what changing one does; the full parameters panel, the
-   figures and the export bundle land in a later release. An investigation that is right as it
+   evidence behind each event, a metrics card and a quality summary. Every threshold that
+   decides a number is editable there, each with its definition, and a badge says what a change
+   moved; the figures and the export bundle are on the same step. An investigation that is right as it
    stands is kept with one key (K): it is recorded as the user's, with the same hole and frames the
    tool found, and leaves the list of events to check.
 
@@ -405,8 +405,8 @@ implemented, and how to check it:
   in the figures, markers differ by shape, every series carries a text label, gap-filled positions
   are hollow rings, and corrected events are hatched with "corrected by a reviewer" in the legend.
   The rest of what D26 specifies — a corrected point drawn as a diamond with an edit badge — is
-  decided but not yet in the figure layer, because the correction tools that would produce a
-  corrected point are not in this build. To check what is here: set the display to grayscale and
+  decided but not yet in the figure layer; corrected points are drawn with the same marker as
+  automatic ones there, and only the timeline and the frame view distinguish them. To check what is here: set the display to grayscale and
   work through a video.
 - **Every canvas has a DOM equivalent.** The maze overlay is mirrored by a table carrying the same
   values, and the canvas label says so. Each figure carries a `FigureDescription` — the same facts
