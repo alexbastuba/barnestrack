@@ -128,6 +128,15 @@ session it is found (D39).
   entry-shaped at all is an O4 question. The same rule reads a hand-marked "not visible" range of
   a second or more beside a non-target hole as entry-shaped too (test51, frames 300–320 inside the
   hole-12 visit): the visit stays one flagged investigation rather than splitting at the gap.
+  D59 widened this: a run that reaches the last frame of the clip is entry-shaped whatever its
+  duration, so test51's 0.93 s dwell at hole 19 now carries the flag too. Two of the three sample
+  clips are therefore `review` for a dwell rather than for a tracking problem.
+- **The O7 empty search still classifies as spatial under Gawel's rules.** A trial with no
+  investigation and no target visit satisfies the spatial rule's three limits vacuously — 0 errors
+  ≤ 2, max hole distance 0 ≤ 1, 0 crossings ≤ 0 — and D58's tighter numbers do not change that.
+  The reasoning says so and the status carries the warning, but the class itself reads as a
+  confident spatial search of nothing. The fix is a fourth outcome ("not classified") for a trial
+  with an empty sequence, which is a contract change to `SearchStrategy`.
 - **The review step addresses frames by position, not by sample-table index.** The playhead is a
   position in the track and is written as a correction's `frameIndex`; event bars and seek targets
   use `EventRecord.startFrame`, a frame index, on the same axis. The two agree for every track the
@@ -158,12 +167,22 @@ session it is found (D39).
 - **Repeat visits split at the merge-gap boundary.** Bouts at the same hole 0.53 s apart are two
   investigations under the 0.5 s default (test51, hole 12): the repeat-visit count is sensitive to
   the merge gap near its own value. The gap is a visible O1 parameter.
-- **The O7 placeholder classifies an empty search as spatial.** A trial with no investigation and
-  no target visit satisfies the spatial rule's three limits vacuously (the reasoning says so; the
-  status carries the warning). The scope of the rules is settled — the search phase, trial start
-  to the first target visit — so test50, which walks the ring hole by hole for two minutes *after*
-  its first target visit at 12.7 s, classifies from the two errors before it; post-target
-  behaviour is by O7 not part of the classification.
+- **Strategy is judged on the search phase, so a long serial walk after the target is invisible.**
+  The rules run from trial start to the first target visit, because strategy describes how the
+  target was found (O7, settled). test50 walks the ring hole by hole for two minutes *after* its
+  first target visit at 12.7 s and classifies from the three holes before it (5→5→7, now *random*
+  under D58); a reader watching the video would call that walk serial. This is the definition doing
+  what it says rather than a defect, but it is the single most surprising thing the classifier does
+  on the sample data, and it is why the strategy card shows the sequence it used.
+- **Events judged on the centroid are not head events by Gawel's definition.** Gawel's unit is "a
+  nose and head deflection into a non-escape hole"; this tool uses the nose when its heading
+  confidence clears `noseConfidenceCutoff` and the centroid otherwise, and records which per event.
+  On the sample clips the nose decides 79 % / 69 % / 88 % of events (test50 / test51 / test53,
+  `prototypes/analysis/RESULTS.md`), so between 12 % and 31 % of investigations and entries are
+  body-proximity judgements wearing a head-event name. Every event stores `point_used` and both the
+  minimum nose and minimum centroid distance, and `quality.csv` carries
+  `nose_judged_event_fraction`, so the share is visible and a proximity-weighted rule can replace
+  the current one without a schema change (O16, O1).
 - **A few derived numbers still carry `NaN` rather than `null`.** D55 made `trialStart_s`,
   `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable; `minCentroidDistance_cm` (a loss with no
   positioned approach frame) and the kinematics fractions of an empty trial are still typed as
@@ -270,7 +289,100 @@ session it is found (D39).
   document around the node: any change that makes `.table-scroll` unique again, or adds a fourth
   user of the class, moves it. Fixing the container itself deletes both this entry and the key.
 
+- **A stale automatic layer is flagged on screen but invisible in the export (trust audit A4).**
+  `derive()` raises `stale_auto_layer` when `auto.parametersHash` disagrees with the tracking block
+  in force (D56), and the trial reads `review`. The export writes `parameters_hash` = the hash of
+  the parameters in force, whose `tracking` values never ran, and `parameters.json` carries those
+  never-run values; no column and no row says the track was made with something else. Measured
+  (`notes/audit/a10-stale-auto.ts`): `tailOpeningRadius_cm` 0.8 → 1.0 after the pass gives
+  `trials.csv status=review parameters_hash=ac9eef30…` and `parameters.json tracking
+  .tailOpeningRadius_cm = 1`, with nothing naming the 0.8 the track was actually made with. A
+  reader reconciling two cohorts by `parameters_hash` treats them as the same configuration.
+  Smallest fix: a `review_flags` column on `trials.csv` listing each video's flag codes, and a
+  `tracking_parameters_hash` column beside `parameters_hash` — both export-schema changes needing
+  Alex's sign-off and a `EXPORT_SCHEMA_VERSION` bump.
+- **Filled centroids enter event distances, evidence counts and the nose histogram unmarked (trust
+  audit A5).** `eventPoints`, `spanDistances` and `pointUsedFor` read every `cValid` frame
+  (`src/analysis/events.ts`), and a filled frame is `cValid=1` carrying the tracker's original
+  `detectionState` and `noseHeadingConfidence` (`src/analysis/clean.ts`), so
+  `noseConfidenceHistogram` counts it too. Measured on a scripted track
+  (`notes/audit/a8-fill-into-events.ts`): with filling on, `min_centroid_distance_cm` reads 1.73
+  where the animal was never seen closer than 2.51 cm, the evidence says "Nose used on 19 of 29
+  positioned frames" against 19 of 27, and the histogram total is 261 against 259. Latent on real
+  data — all three sample clips have zero filled frames — and now latent by default too, since D60
+  turned filling off; a lab that turns it on meets it. Smallest fix: carry `cFilled` in
+  `TrackArrays` and skip filled frames in `spanDistances`, `pointUsedFor`, the evidence counts and
+  the histogram, plus `n_filled_frames` and `n_outlier_frames` columns on `trials.csv` (schema
+  bump) so an export says how much of a path is interpolation.
+- **The speed-coloured path computes a different speed from the analysis (trust audit A6).**
+  `speedsCmPerS` (`src/viz/data.ts`) uses raw positions, a window counted in path points so it
+  spans gaps, no duplicate-timestamp skipping and the whole clip; `computeKinematics`
+  (`src/analysis/kinematics.ts`) uses O9-smoothed positions within one run, skips duplicate pairs
+  and stops at the trial window. Measured (`notes/audit/a9-figures.ts`): on test50 the mean
+  difference is 0.26 cm/s and the maximum 13.12 cm/s; the figure's median reads 4.26 against the
+  analysis's 3.96, its fastest 36.28 against 35.72. Two definitions of "speed" in one figure, and
+  the caption's "fastest speed" is not the one any export carries. Smallest fix: one pure helper
+  both call, or persist `kinematics.speed_cmPerS` in the derived cache and have the figure read it.
+- **Spatial figures draw the whole clip beside metrics judged over the trial window (trust audit
+  A7).** `centroidPath` (`src/viz/data.ts`) walks every valid frame, and `DerivedLayer` does not
+  carry the trial bounds (D55), so the trajectory, heatmap, quadrant overlay and speed path have
+  none. Measured with a trial start corrected to frame 1500 on test50: the metrics report 942.9 cm
+  over frames 1500–5538 while the figure draws 5,389 points from frame 150, and the heatmap
+  accounts 180.1 s against a tracked time of 134.9 s. On the uncorrected samples the difference is
+  one frame, which is why no test saw it. Only the trajectory says "whole clip" in its caption.
+  Smallest fix: persist `trial.startFrame`/`endFrame` in `DerivedLayer` (a contract change) or
+  re-derive the bounds in `trialSource` and clip `centroidPath` to them.
+- **A session keeps the tool version of the build that created it (trust audit A8).**
+  `SessionStore` stamps `toolVersion` only in `createSessionFile`; `replaceSession`, `restore` and
+  `analyseVideo` never restamp. Measured (`notes/audit/a13-toolversion-corrections-roundtrip.ts`):
+  a file from build `aaaaaaa` loaded into a store built as `bbbbbbb` and re-derived still reports
+  `barnestrack v0.1.0 (aaaaaaa)` in `store.current.toolVersion`, in the default `tool_version` of
+  every `trials.csv` row, and in the saved file. Numbers computed by build B are attributed to
+  build A unless the export caller passes the build version explicitly, which the export button
+  does. Smallest fix: restamp `session.toolVersion` whenever this build writes a derived cache
+  (`setDerivedLayer`).
+- **`events.csv` rounds `duration_s` independently of its start and end (trust audit A10).**
+  `seconds()` in `src/export/rows.ts` rounds each of `start_time_s`, `end_time_s` and `duration_s`
+  to 3 dp separately, while the contract states `durationSeconds = endTime_s − startTime_s`.
+  Measured (`notes/audit/a6-consistency.ts` #6): the maximum disagreement is 1.00e-3 s on all three
+  sample videos — `auto-investigation-h13-f155` writes 10.344 and 11.278 with `duration_s 0.934`.
+  A reader recomputing duration from the columns disagrees with the file by a millisecond, and a
+  bout at exactly `hole_investigation_min_duration_s` can read as below it. Smallest fix: write
+  `duration_s` as `round(end, 3) − round(start, 3)`, or export the times at full precision.
+
 ## Excluded scope
+
+- **The escape-entry criterion is the loss of detection, not the whole body in the hole (D59).**
+  Gawel's and Illouz's definition is a whole-body entry — the hind legs are what matters — and this
+  tool's proxy is a run of frames at the target in which the animal is absent or seen only as a
+  small or fragmented blob, with total latency taken from the first lost frame. The better
+  criterion is the fraction of the animal's blob inside the hole disc, and it is not computable
+  here: `TrackFrame` carries a centroid, a nose, an area and a bounding box, not a per-frame mask
+  (`docs/data-contracts.md` §2), so nothing in the track says which pixels were where. Adding a
+  mask is a track-contract change and a tracker change together. Until then the entry frame is the
+  first frame the animal could not be seen, which on a re-encoded clip is a few frames after the
+  head goes in.
+- **A trial cannot name its own target hole, and a probe trial has no type (D62).** `trials.csv`
+  now carries `target_hole`, but it is the whole session's map target: a cohort recorded with the
+  platform rotated between trials — which is Gawel's protocol — has one map and therefore one
+  target for every row. The design is recorded and not built: a per-video target override on
+  `VideoDescriptor`, and a per-video trial type (`acquisition | probe`, a probe having no escape
+  box and therefore no escape metrics and no `review` for failing to escape). Both are session
+  schema v2 and land together, so neither is done piecemeal.
+- **A head-in-hole is not inferred from the nose vector when the nose is lost over the hole (O1).**
+  The event point is the nose when its heading confidence clears the cutoff and the centroid
+  otherwise, and the hole test is a distance. When an animal puts its head into a hole the nose is
+  exactly what stops being visible, so the frames that most deserve to count as an investigation
+  are the ones judged on the body centroid. Inferring the head position from the last confident
+  nose vector and the body's major axis would recover them. Not built: it is a new estimator with
+  its own confidence, and O1's radius is the deliberate, visible proxy in the meantime.
+- **No median-versus-mean speed sanity flag (O17).** The outlier rule marks a frame whose centroid
+  moved faster than 150 cm/s and never replaces the point, which catches single jumps. It does not
+  catch a track whose mean speed sits far above its median — the signature of a handful of large
+  excursions, or of an identity swap that the per-frame threshold happens to clear. A flag
+  comparing the two over the trial window was considered at the O-review and recorded rather than
+  built; both numbers already exist in `KinematicsSummary`, so it is a threshold and a review flag
+  rather than new machinery.
 
 - **The example cohort's track is synthetic, though its numbers are now this tool's.** The bundle
   at `public/examples/example-cohort.barnestrack.json.gz` is generated by
