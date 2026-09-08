@@ -320,6 +320,36 @@ export function editEvent(
 }
 
 /**
+ * Keeps an event exactly as the tool found it: an edit whose values are the
+ * automatic ones. The event becomes the user's — `source: 'corrected'`, with
+ * the automatic values kept as its `autoShadow` — so it leaves the list of
+ * events to check, and "revert to automatic" puts it back.
+ *
+ * There is no `confirmed` flag in the D9 contract, so a confirmation *is* the
+ * equal-values edit: everything downstream already recomputes from it, and
+ * `src/analysis/events.ts` already writes "no change to hole or frames" into
+ * the event's evidence. A reader tells a confirmation from a real edit by
+ * comparing the event with its own `autoShadow`, not by a stored field.
+ */
+export function confirmEvent(
+  layer: CorrectionsLayer,
+  eventId: string,
+  values: { holeIndex: number | null; startFrame: number; endFrame: number },
+  meta: CorrectionMeta,
+): CorrectionsLayer {
+  return editEvent(
+    layer,
+    eventId,
+    {
+      ...(values.holeIndex === null ? {} : { holeIndex: values.holeIndex }),
+      startFrame: values.startFrame,
+      endFrame: values.endFrame,
+    },
+    meta,
+  );
+}
+
+/**
  * Deletes an event. A user-added event simply loses its `add` entry (and any
  * edit of it); an automatic event gets one `delete` entry, replacing any edit.
  */

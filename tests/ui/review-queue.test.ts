@@ -9,6 +9,7 @@ import type { StateRun } from '../../src/viz/quality-strip.js';
 import {
   describeQueue,
   eventsToCheck,
+  isConfirmed,
   spanIsUncertain,
   stepQueue,
 } from '../../src/ui/review-queue.js';
@@ -116,6 +117,27 @@ describe('stepQueue', () => {
 
   it('has nowhere to go in an empty queue', () => {
     expect(stepQueue([], null, 1)).toBeNull();
+  });
+});
+
+describe('isConfirmed', () => {
+  const kept = (): EventRecord => ({
+    ...event('a', 10, 20, 'corrected'),
+    autoShadow: { holeIndex: 3, startFrame: 10, endFrame: 20 },
+  });
+
+  it('reads a corrected event whose values are the automatic ones as a confirmation', () => {
+    expect(isConfirmed(kept())).toBe(true);
+  });
+
+  it('does not call a real edit a confirmation', () => {
+    expect(isConfirmed({ ...kept(), holeIndex: 4 })).toBe(false);
+    expect(isConfirmed({ ...kept(), endFrame: 24 })).toBe(false);
+  });
+
+  it('says nothing about an automatic event, or a correction with no automatic values', () => {
+    expect(isConfirmed(event('a', 10, 20))).toBe(false);
+    expect(isConfirmed(event('a', 10, 20, 'corrected'))).toBe(false);
   });
 });
 

@@ -64,6 +64,23 @@ export function eventsToCheck(
   return queue;
 }
 
+/**
+ * True when a corrected event says the same thing the automatic one did — the
+ * user looked at it and kept it ("Keep", K). The confirmation is not a stored
+ * flag: the correction is an edit whose values equal the automatic ones, so
+ * this compares the event with its own `autoShadow`. An event edited and then
+ * edited back reads as confirmed too, which is what it is.
+ */
+export function isConfirmed(event: EventRecord): boolean {
+  if (event.source !== 'corrected' || event.autoShadow === undefined) return false;
+  const auto = event.autoShadow;
+  return (
+    auto.holeIndex === event.holeIndex &&
+    auto.startFrame === event.startFrame &&
+    auto.endFrame === event.endFrame
+  );
+}
+
 /** `4 events to check`, or `1 event to check`, or `nothing to check`. */
 export function describeQueue(count: number): string {
   if (count === 0) return 'nothing to check';

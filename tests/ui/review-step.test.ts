@@ -19,7 +19,8 @@ import {
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
 import { NO_CORRECTIONS, editEvent, markRange } from '../../src/session/corrections.js';
-import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
+import { describeQueue, eventsToCheck, isConfirmed } from '../../src/ui/review-queue.js';
+import { eventRows } from '../../src/export/rows.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
@@ -543,6 +544,57 @@ describe('the review queue', () => {
 
     expect(queued().length).toBe(before.length - 1);
     expect(count()).toBe(describeQueue(before.length - 1));
+  });
+
+  it('keeps an event as it is: off the queue, the user’s, and in the exports', () => {
+    const video = harness.store.videos[0]!;
+    const before = queued();
+    expect(before.length).toBeGreaterThan(0);
+
+    const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Next flagged',
+    )!;
+    next.click();
+    const kept = harness.store.analysisFor(video.id)!.derived!.events.find((e) => e.id === before[0])!;
+
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+      (b) => b.textContent === 'Keep (K)',
+    )!;
+    expect(keep.disabled).toBe(false);
+    keep.click();
+
+    // One fewer to check, and the event is the user's with the automatic values intact.
+    expect(queued().length).toBe(before.length - 1);
+    expect(count()).toBe(describeQueue(before.length - 1));
+    const after = harness.store.analysisFor(video.id)!.derived!.events.find((e) => e.id === kept.id)!;
+    expect(after.source).toBe('corrected');
+    expect(after.holeIndex).toBe(kept.holeIndex);
+    expect(after.startFrame).toBe(kept.startFrame);
+    expect(after.endFrame).toBe(kept.endFrame);
+    expect(isConfirmed(after)).toBe(true);
+
+    // The corrections list says what it is, in the words a confirmation deserves.
+    const corrections = [...harness.step.body.querySelectorAll('.corrections-list li')].map(
+      (li) => li.textContent ?? '',
+    );
+    expect(corrections.some((text) => text.includes('confirmed by the user, no change'))).toBe(true);
+
+    // And the export row carries the source, not just the screen (D26).
+    const row = eventRows(harness.store.current, TOOL_VERSION).find(
+      (candidate) => candidate.videoId === video.id && candidate.eventId === kept.id,
+    )!;
+    expect(row.source).toBe('corrected');
+
+    // Reverting puts it back in the queue.
+    const confirmation = [...harness.step.body.querySelectorAll('.corrections-list li')].find((li) =>
+      (li.textContent ?? '').includes('confirmed by the user, no change'),
+    )!;
+    const revert = [...confirmation.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'Revert to automatic',
+    )!;
+    revert.click();
+    expect(queued().length).toBe(before.length);
+    expect(count()).toBe(describeQueue(before.length));
   });
 
   it('names the count per video in the selector', () => {

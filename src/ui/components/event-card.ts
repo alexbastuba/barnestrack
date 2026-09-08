@@ -19,6 +19,7 @@ import type { EventKind, EventRecord } from '../../contracts/events.js';
 import type { ReviewFlag, ReviewFlagCode } from '../../analysis/types.js';
 import { el } from '../dom.js';
 import { formatCm, formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
+import { isConfirmed } from '../review-queue.js';
 import type { Component, SeekCallbacks } from './types.js';
 
 export interface EventCardProps {
@@ -102,7 +103,7 @@ export function eventSummary(event: EventRecord): string {
   return (
     `${KIND_WORDS[event.kind]} at ${formatHole(event.holeIndex)}${target}, ` +
     `${formatSeconds(event.startTime_s)} to ${formatSeconds(event.endTime_s)}, ` +
-    `judged on the ${event.pointUsed}, ${event.source === 'corrected' ? 'corrected by a user' : 'automatic'}.`
+    `judged on the ${event.pointUsed}, ${event.source === 'corrected' ? (isConfirmed(event) ? 'confirmed by a user, unchanged' : 'corrected by a user') : 'automatic'}.`
   );
 }
 
@@ -146,6 +147,10 @@ export function createEventCard(
       corrected
         ? el('span', { class: 'badge badge-warn badge-user', text: 'user' })
         : el('span', { class: 'badge', text: 'auto' }),
+      ' ',
+      // A kept event is the user's, but it says the same thing the tool did.
+      // The word is there for the same reason "user" is: never colour alone.
+      corrected && isConfirmed(event) ? el('span', { class: 'badge badge-ok', text: 'confirmed' }) : false,
       ' ',
     ]);
 
