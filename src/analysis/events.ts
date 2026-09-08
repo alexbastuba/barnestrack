@@ -269,7 +269,20 @@ function findEntryRuns(
 }
 
 type RunOutcome =
-  | { kind: 'escape_entry'; hole: number; persistent: boolean; startFrame: number; byUser: boolean }
+  | {
+      kind: 'escape_entry';
+      hole: number;
+      persistent: boolean;
+      startFrame: number;
+      byUser: boolean;
+      /**
+       * D57, user-marked entries only: distance in px from the last positioned
+       * event point at or before the marked frame to its nearest hole, or NaN
+       * when there is no such frame. Above the entry radius the assertion is
+       * honoured and flagged `physically_unlikely_entry`.
+       */
+      assertionDistance_px: number;
+    }
   | { kind: 'investigation'; hole: number }
   | { kind: 'tracking_failure'; hole: number | null }
   | { kind: 'none' };
@@ -311,6 +324,16 @@ function classifyRun(
   if (run.inEscapeBoxFrom >= 0) {
     // the user says where the animal went in; whether it stayed follows the same O4 rule as any entry
     const markedDuration = a.t[run.end]! - a.t[run.inEscapeBoxFrom]!;
+    // D57: the assertion is always honoured, and checked against the evidence. The marked frames
+    // are unpositioned by construction, so the last event point at or before the marked frame is
+    // the closest the track ever came to saying where the animal was when it went in.
+    let seen = -1;
+    for (let i = run.inEscapeBoxFrom; i >= 0; i--) {
+      if (a.cValid[i] === 1) {
+        seen = i;
+        break;
+      }
+    }
     return {
       ...base,
       outcome: {
@@ -319,6 +342,7 @@ function classifyRun(
         persistent: run.toEnd || markedDuration >= p.escapeEntry.persistCutoff_s,
         startFrame: run.inEscapeBoxFrom,
         byUser: true,
+        assertionDistance_px: seen >= 0 ? pts.nearestDistance_px[seen]! : Number.NaN,
       },
     };
   }
@@ -332,7 +356,14 @@ function classifyRun(
       const persistent = run.toEnd || run.durationSeconds >= p.escapeEntry.persistCutoff_s;
       return {
         ...base,
-        outcome: { kind: 'escape_entry', hole, persistent, startFrame: run.start, byUser: false },
+        outcome: {
+          kind: 'escape_entry',
+          hole,
+          persistent,
+          startFrame: run.start,
+          byUser: false,
+          assertionDistance_px: Number.NaN,
+        },
       };
     }
     return { ...base, outcome: { kind: 'investigation', hole } };
@@ -651,13 +682,28 @@ export function detectAutoEvents(
       lastSeen >= 0 && pts.useNose[lastSeen] === 1 ? 'nose' : 'centroid';
     const evidence = runEvidence(c, a, frames, g, p, pts);
     if (o.kind === 'escape_entry') {
+      // D57: the marked entry stands, but an assertion the track contradicts says so out loud.
+      const unlikelyAssertion =
+        o.byUser &&
+        Number.isFinite(o.assertionDistance_px) &&
+        o.assertionDistance_px > g.escapeRadius_px;
+      const contradiction = unlikelyAssertion
+        ? ` The animal was last positioned ${cm1(o.assertionDistance_px / g.pxPerCm)} from the centre of its nearest hole (${(o.assertionDistance_px / g.holeRadius_px).toFixed(2)} × hole radius; entry radius ${p.escapeEntry.radiusFactor} ×), so the track does not put it at any hole when the range begins: the entry is kept as marked and flagged for review.`
+        : '';
       const head = o.byUser
-        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion${o.persistent ? `; persistent (${c.run.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}), so the trial ends here.` : `; the marked range lasts less than ${p.escapeEntry.persistCutoff_s} s and the animal is positioned again afterwards, so the trial continues.`}`
+        ? `Escape-box entry marked by the user from frame ${frames[start]!.frameIndex} (${s2(a.t[start]!)}): the animal is in the escape box at the target hole ${g.targetIndex} by assertion${o.persistent ? `; persistent (${c.run.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}), so the trial ends here.` : `; the marked range lasts less than ${p.escapeEntry.persistCutoff_s} s and the animal is positioned again afterwards, so the trial continues.`}${contradiction}`
         : `Escape-box entry at the target hole ${hole}: ${evidence} ${o.persistent ? `Persistent (${c.run.toEnd ? 'to the end of the video' : `≥ ${p.escapeEntry.persistCutoff_s} s`}): the trial ends at the first frame of the run.` : `Not persistent (< ${p.escapeEntry.persistCutoff_s} s and the animal was seen full-size again at the same hole), so the trial continues.`}`;
       const tail = spanStart >= 0 ? ` ${noseSentence(d)}` : '';
-      events.push(
-        record(ctx, 'escape_entry', hole, start, c.run.end, d, pointUsed, `${head}${tail}`),
-      );
+      const ev = record(ctx, 'escape_entry', hole, start, c.run.end, d, pointUsed, `${head}${tail}`);
+      events.push(ev);
+      if (unlikelyAssertion) {
+        flags.push({
+          code: 'physically_unlikely_entry',
+          eventId: ev.id,
+          frameIndex: ev.startFrame,
+          message: `The escape-box range starts where the animal was last seen ${cm1(o.assertionDistance_px / g.pxPerCm)} from any hole centre, beyond the ${p.escapeEntry.radiusFactor} × hole radius entry distance. The entry you marked is kept; check that the range starts where the animal went in.`,
+        });
+      }
     } else {
       const where = hole === null ? 'away from every hole' : `at ${holeName(g, hole)}`;
       const ev = record(

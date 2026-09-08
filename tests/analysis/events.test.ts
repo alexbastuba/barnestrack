@@ -505,6 +505,57 @@ describe('losses of detection (O4, D19)', () => {
     expect(long.auto.endReason).toBe('escape');
   });
 
+  it('honours an escape-box range the track contradicts, and flags it (D57)', () => {
+    // The animal is marked as entering the box while it sits 6 cm from hole 3 — well beyond the
+    // entry radius, and not the target. The assertion still produces the entry the user asked
+    // for; the contradiction is raised as a review flag and stated in the evidence.
+    const away = holePoint(g, 3, 6);
+    const contradicted: Segment[] = [
+      { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
+      { kind: 'dwell', seconds: 0.5 },
+      { kind: 'dwell', seconds: 3 },
+    ];
+    const scripted = scriptTrack(contradicted, { g });
+    const from = scripted.segmentStarts[2]!;
+    const range = (script: Segment[]): CorrectionsLayer => ({
+      entries: [
+        {
+          id: 'r1',
+          kind: 'range',
+          timestamp: at(1),
+          source: 'user',
+          rangeType: 'in_escape_box',
+          startFrame: from,
+          endFrame: scriptTrack(script, { g }).frames.length - 1,
+        },
+      ],
+    });
+    const bad = run(contradicted, { corrections: range(contradicted) });
+    const badEntry = bad.auto.events.find((e) => e.kind === 'escape_entry')!;
+    expect(badEntry.startFrame).toBe(from);
+    expect(badEntry.holeIndex).toBe(g.targetIndex); // honoured: the entry is at the target
+    expect(bad.auto.persistentEscapeStartFrame).toBe(from);
+    expect(badEntry.evidence).toContain('by assertion');
+    expect(badEntry.evidence).toContain('the track does not put it at any hole');
+    expect(badEntry.evidence).toContain('flagged for review');
+    expect(bad.auto.flags.map((f) => f.code)).toEqual(['physically_unlikely_entry']);
+    expect(bad.auto.flags[0]!.eventId).toBe(badEntry.id);
+    expect(bad.auto.flags[0]!.message).toContain('The entry you marked is kept');
+
+    // the same range where the animal really is at the target hole raises nothing
+    const atTarget: Segment[] = [
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', seconds: 3 },
+    ];
+    const good = run(atTarget, { corrections: range(atTarget) });
+    const goodEntry = good.auto.events.find((e) => e.kind === 'escape_entry')!;
+    expect(goodEntry.startFrame).toBe(from);
+    expect(goodEntry.evidence).toContain('by assertion');
+    expect(goodEntry.evidence).not.toContain('the track does not put it at any hole');
+    expect(good.auto.flags).toEqual([]);
+  });
+
   it('takes a user-marked in-escape-box range to the end of the video as a persistent entry from its first frame', () => {
     const scripted = scriptTrack(
       [
