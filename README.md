@@ -4,7 +4,7 @@ Turn a folder of Barnes maze videos into latencies, errors, path measures and se
 calls that you can defend six months later — in a browser tab, with nothing to install.
 
 **Live:** <https://barnestrack.pages.dev>
-**Demo video:** <!-- DEMO_URL --> _placeholder — link added when the recording is made._
+**Demo video:** <https://youtu.be/1WjdhPpNm9Q>
 **Nothing to hand?** Press **Load example cohort** on the Videos step to open a worked cohort with
 every result already computed.
 
