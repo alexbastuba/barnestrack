@@ -85,20 +85,27 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
-`npm test` runs 1,090 unit tests, all passing. Most cover the pure layers — metrics, event
-detection, cleaning, strategy, maze geometry, the export writers, the session file and the MP4
-parser; a smaller set covers the DOM-free parts of the interface. Sixteen skip without
-`BARNESTRACK_SAMPLE_DIR` (below); fifteen of those are the sample-video tests and one skips for its
-own reason, so pointing that variable at the clips leaves a single skip and 1,089 passing.
+`npm test` runs 1,165 unit tests, all passing, with 18 skipped. Most cover the pure layers —
+metrics, event detection, cleaning, strategy, maze geometry, the export writers, the session file
+and the MP4 parser; a smaller set covers the DOM-free parts of the interface. Of the skips, fifteen
+are the sample-video tests, two rebuild the example bundle and one skips for its own reason, so
+with both variables below set it is 1,182 passing and a single skip.
 
-Two optional extras:
+Three optional extras:
 
 - `BARNESTRACK_SAMPLE_DIR=/path/to/data/barnes-maze npm test` includes the tests that read the
   sample videos. Without it those tests skip themselves and say so. No video is committed to this
   repository; the clips live in the sample-data repository.
+- `BARNESTRACK_DEMO_SESSION=/path/to/session.barnestrack.json npm test` includes the two tests that
+  regenerate the bundled example cohort from the demo take's saved session
+  (`scripts/build-example-bundle.ts`). That file is 11 MB and is not committed either.
 - `npx playwright test` runs the browser checks against your installed Google Chrome. They are not
   part of CI; [`tests/browser/README.md`](tests/browser/README.md) says what each spec covers and
   records what was verified by hand instead.
+
+[`examples/outputs/`](examples/outputs/) holds the CSVs and `parameters.json` this tool exported
+during the recorded demo, unmodified — what the deliverable actually looks like, without running
+anything.
 
 CI runs lint, typecheck, tests and the build on every push
 ([`.github/workflows`](.github/workflows)).
@@ -113,7 +120,8 @@ can be reproduced from the record rather than from memory.
 
 The full record, with the reasoning for each, is in [`docs/decisions.md`](docs/decisions.md); the
 file formats and internal representations are in
-[`docs/data-contracts.md`](docs/data-contracts.md). The themes:
+[`docs/data-contracts.md`](docs/data-contracts.md). Dnn and Onn cite entries in
+`docs/decisions.md`; the O entries were open questions, all closed on 2026-09-07. The themes:
 
 **A page, not a service (D2, D3, D41).** BarnesTrack is a static client-side build with no server,
 no accounts, no API keys and no runtime network requests at all — no CDN script, no web font, no
