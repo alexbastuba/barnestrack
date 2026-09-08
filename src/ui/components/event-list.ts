@@ -21,6 +21,8 @@ import { pluralise } from './format.js';
 export interface EventListProps {
   events: readonly EventRecord[];
   flags: readonly ReviewFlag[];
+  /** The ids of the events the user has confirmed as they stand (`Keep`). */
+  confirmed?: ReadonlySet<string>;
 }
 
 const KINDS: readonly EventKind[] = ['investigation', 'escape_entry', 'tracking_failure'];
@@ -120,7 +122,7 @@ export function createEventList(
       for (const event of events) {
         const existing = cards.get(event.id);
         if (existing) existing.destroy();
-        cards.set(event.id, createEventCard(list, { event, flags: current.flags }, callbacks));
+        cards.set(event.id, createEventCard(list, { event, flags: current.flags, confirmed: current.confirmed?.has(event.id) === true }, callbacks));
       }
       order = wanted;
     }

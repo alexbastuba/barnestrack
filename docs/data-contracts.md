@@ -136,6 +136,15 @@ superseding the session-level "calibration" field named in D9's prose).
   range tools, event corrections, trial-start adjustment, strategy override, a confirmed
   non-escape (`no_escape`, D63: one per video, with a reason) — each carrying
   `source: 'user'` and an ISO 8601 `timestamp` (D25). Never mutates `auto`.
+  An `EventCorrection` may also carry **`confirmed: true`** — the Review step's `Keep`: the user
+  read the event and it is right as it stands. It is only ever set on an `action: 'edit'` whose
+  `holeIndex`, `startFrame` and `endFrame` are the automatic ones, so a reader that does not know
+  the field still reads something true — an edit that changes nothing. Additive within
+  `schemaVersion: 1` on D63's precedent; a file written without it loads unchanged and reads as an
+  ordinary edit. It is what tells a confirmation apart from an event edited and then edited back,
+  and a confirmation is **excluded from `metrics.correctionCount`** (`src/analysis/derive.ts`), so
+  `correction_count` stays a count of hand edits. A later edit that changes something replaces the
+  entry and does not carry the flag forward.
 - **`derived`** — `{ cleanedTrack, events, metrics, quality } | null`. Everything recomputed from
   `auto ⊕ corrections` on load: safe to discard and recompute at any time; never treated as the
   source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration value (D44).

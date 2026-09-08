@@ -18,8 +18,8 @@ import {
 } from '../../src/ui/components/index.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { analyseAllVideos } from '../../src/session/analyse.js';
-import { NO_CORRECTIONS, editEvent, markRange } from '../../src/session/corrections.js';
-import { describeQueue, eventsToCheck, isConfirmed } from '../../src/ui/review-queue.js';
+import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange } from '../../src/session/corrections.js';
+import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
 import { eventRows } from '../../src/export/rows.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
@@ -550,6 +550,7 @@ describe('the review queue', () => {
     const video = harness.store.videos[0]!;
     const before = queued();
     expect(before.length).toBeGreaterThan(0);
+    const correctionsBefore = harness.store.analysisFor(video.id)!.derived!.metrics.correctionCount;
 
     const next = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
       (b) => b.textContent === 'Next flagged',
@@ -571,7 +572,11 @@ describe('the review queue', () => {
     expect(after.holeIndex).toBe(kept.holeIndex);
     expect(after.startFrame).toBe(kept.startFrame);
     expect(after.endFrame).toBe(kept.endFrame);
-    expect(isConfirmed(after)).toBe(true);
+    expect([...confirmedEventIds(harness.store.analysisFor(video.id)!.corrections)]).toEqual([kept.id]);
+    // A confirmation is not a hand edit, so it must not inflate `correction_count`.
+    expect(harness.store.analysisFor(video.id)!.derived!.metrics.correctionCount).toBe(
+      correctionsBefore,
+    );
 
     // The corrections list says what it is, in the words a confirmation deserves.
     const corrections = [...harness.step.body.querySelectorAll('.corrections-list li')].map(

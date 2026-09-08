@@ -92,6 +92,16 @@ export interface EventCorrection extends CorrectionBase {
   holeIndex?: number;
   startFrame?: FrameIndex;
   endFrame?: FrameIndex;
+  /**
+   * "I looked at this event and it is right as it stands" — the Review step's
+   * `Keep`. Only ever set on an `edit` whose values are the automatic ones, so
+   * a reader that does not know this field still gets a correct, if duller,
+   * reading: an edit that changes nothing (additive within schema version 1,
+   * the precedent D63 set). It is what tells a confirmation apart from an event
+   * a user edited and then edited back, and confirmations are excluded from
+   * `metrics.correctionCount`.
+   */
+  confirmed?: true;
 }
 
 export interface TrialStartCorrection extends CorrectionBase {

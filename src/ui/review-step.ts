@@ -30,7 +30,7 @@ import type { DerivedAnalysis } from '../analysis/derive.js';
 import { nearestHoleIndex } from '../analysis/geometry.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { CorrectionEntry, CorrectionsLayer, VideoDescriptor } from '../contracts/session.js';
+import type { CorrectionsLayer, VideoDescriptor } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
@@ -46,6 +46,7 @@ import {
 import {
   addEvent,
   confirmEvent,
+  confirmedEventIds,
   deleteEvent,
   describeCorrection,
   editEvent,
@@ -105,7 +106,7 @@ import {
   type ReviewFiguresProps,
 } from './review-figures.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
-import { describeQueue, eventsToCheck, isConfirmed, stepQueue } from './review-queue.js';
+import { describeQueue, eventsToCheck, stepQueue } from './review-queue.js';
 import { Scrubber } from './scrubber.js';
 import { stateRuns } from '../viz/quality-strip.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
@@ -211,6 +212,17 @@ export function createReviewStep(context: AppContext): Step {
   function currentLayer(): CorrectionsLayer | null {
     const video = currentVideo();
     return video ? (store.analysisFor(video.id)?.corrections ?? null) : null;
+  }
+
+  /**
+   * The events this video's user has kept as they stand. Read from the
+   * corrections layer, where the `confirmed` flag lives — the derived event
+   * cannot carry it, and equal values alone would also match an event someone
+   * edited and edited back.
+   */
+  function confirmed(): ReadonlySet<string> {
+    const layer = currentLayer();
+    return layer ? confirmedEventIds(layer) : new Set<string>();
   }
 
   function frameCount(): number {
@@ -501,7 +513,7 @@ export function createReviewStep(context: AppContext): Step {
     ];
     const reason = queueReason(ev);
     if (reason) parts.push(`flagged: ${reason}`);
-    if (ev.source === 'corrected') parts.push(isConfirmed(ev) ? 'user · confirmed, no change' : 'corrected by hand');
+    if (ev.source === 'corrected') parts.push(confirmed().has(ev.id) ? 'user · confirmed, no change' : 'corrected by hand');
     return parts.join(' · ');
   }
 
@@ -1529,7 +1541,7 @@ export function createReviewStep(context: AppContext): Step {
         el('td', {
           text:
             ev.source === 'corrected'
-              ? isConfirmed(ev)
+              ? confirmed().has(ev.id)
                 ? 'user · confirmed, no change'
                 : ev.autoShadow
                   ? `user (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
@@ -1610,20 +1622,6 @@ export function createReviewStep(context: AppContext): Step {
     replaceChildren(framesBody, rows);
   }
 
-  /**
-   * `describeCorrection` with one thing it cannot know: an event edit whose
-   * values are the automatic ones is a confirmation, not an edit, and the only
-   * way to tell is to look at the event it addresses (there is no stored flag —
-   * see `confirmEvent`). Everything else is the shared pure sentence.
-   */
-  function describeEntry(entry: CorrectionEntry): string {
-    if (entry.kind === 'event' && entry.action === 'edit' && entry.eventId !== undefined) {
-      const ev = analysis?.events.find((candidate) => candidate.id === entry.eventId);
-      if (ev && isConfirmed(ev)) return `Event ${entry.eventId} confirmed by the user, no change`;
-    }
-    return describeCorrection(entry);
-  }
-
   function renderCorrections(): void {
     const layer = currentLayer();
     if (!layer || !analysis) {
@@ -1645,7 +1643,7 @@ export function createReviewStep(context: AppContext): Step {
           const frame =
             entry.kind === 'point' || entry.kind === 'trial_start' ? entry.frameIndex : entry.kind === 'range' ? entry.startFrame : entry.kind === 'event' ? (entry.startFrame ?? null) : null;
           return el('li', { class: orphan ? 'is-orphan' : '' }, [
-            el('span', { text: describeEntry(entry) }),
+            el('span', { text: describeCorrection(entry) }),
             ' ',
             el('span', { class: 'hint', text: `(${entry.timestamp.replace('T', ' ').slice(0, 19)})` }),
             ' ',
@@ -1860,7 +1858,7 @@ export function createReviewStep(context: AppContext): Step {
       metricsComponent = createMetricsCard(metricsPanel, metricsProps, strategyCallbacks);
     }
 
-    const eventsProps: EventListProps = { events: analysis.events, flags: analysis.reviewFlags };
+    const eventsProps: EventListProps = { events: analysis.events, flags: analysis.reviewFlags, confirmed: confirmed() };
     if (eventsComponent) {
       eventsComponent.update(eventsProps);
     } else {

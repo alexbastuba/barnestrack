@@ -244,7 +244,13 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     a,
     strategy,
     noEscapeConfirmed: noEscape !== null,
-    correctionCount: corrections.entries.length,
+    // A confirmation ("Keep": an event correction marked `confirmed`) says the
+    // tool was right, so counting it as a correction would report a hand edit
+    // that never happened — a queue of thirty good events walked with K would
+    // export `correction_count = 30` (D11, D26).
+    correctionCount: corrections.entries.filter(
+      (entry) => !(entry.kind === 'event' && entry.confirmed === true),
+    ).length,
     parameters,
   });
   const quality = qualityReport({

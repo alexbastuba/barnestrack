@@ -321,15 +321,19 @@ export function editEvent(
 
 /**
  * Keeps an event exactly as the tool found it: an edit whose values are the
- * automatic ones. The event becomes the user's — `source: 'corrected'`, with
- * the automatic values kept as its `autoShadow` — so it leaves the list of
- * events to check, and "revert to automatic" puts it back.
+ * automatic ones, marked `confirmed: true`. The event becomes the user's —
+ * `source: 'corrected'`, with the automatic values kept as its `autoShadow` —
+ * so it leaves the list of events to check, and "revert to automatic" puts it
+ * back.
  *
- * There is no `confirmed` flag in the D9 contract, so a confirmation *is* the
- * equal-values edit: everything downstream already recomputes from it, and
- * `src/analysis/events.ts` already writes "no change to hole or frames" into
- * the event's evidence. A reader tells a confirmation from a real edit by
- * comparing the event with its own `autoShadow`, not by a stored field.
+ * The flag is what separates "I checked it" from an event a user edited and
+ * then edited back to the same values; it is additive within schema version 1,
+ * so a reader that ignores it sees a harmless no-change edit. A later real edit
+ * of the same event replaces the entry through `editEvent`, which never copies
+ * the flag forward — an edit that changes something is not a confirmation.
+ *
+ * A user-added event is not confirmable: it is already the user's, and its
+ * `add` entry carries the values themselves, so there is nothing to confirm.
  */
 export function confirmEvent(
   layer: CorrectionsLayer,
@@ -337,7 +341,7 @@ export function confirmEvent(
   values: { holeIndex: number | null; startFrame: number; endFrame: number },
   meta: CorrectionMeta,
 ): CorrectionsLayer {
-  return editEvent(
+  const edited = editEvent(
     layer,
     eventId,
     {
@@ -347,6 +351,29 @@ export function confirmEvent(
     },
     meta,
   );
+  return layerOf(
+    edited.entries.map((entry) =>
+      entry.kind === 'event' && entry.action === 'edit' && entry.eventId === eventId
+        ? { ...entry, confirmed: true as const }
+        : entry,
+    ),
+  );
+}
+
+/** The ids of the events a user has confirmed as they stand (`Keep`). */
+export function confirmedEventIds(layer: CorrectionsLayer): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const entry of layer.entries) {
+    if (entry.kind === 'event' && entry.confirmed === true && entry.eventId !== undefined) {
+      ids.add(entry.eventId);
+    }
+  }
+  return ids;
+}
+
+/** True when this entry is a confirmation rather than an edit that changed something. */
+export function isConfirmation(entry: CorrectionEntry): boolean {
+  return entry.kind === 'event' && entry.confirmed === true;
 }
 
 /**
@@ -554,6 +581,7 @@ export function describeCorrection(entry: CorrectionEntry): string {
         return `Investigation added at hole ${entry.holeIndex}, frames ${entry.startFrame}–${entry.endFrame}`;
       }
       if (entry.action === 'delete') return `Event ${entry.eventId} deleted`;
+      if (entry.confirmed === true) return `Event ${entry.eventId} confirmed by the user, no change`;
       const changes: string[] = [];
       if (entry.holeIndex !== undefined) changes.push(`hole → ${entry.holeIndex}`);
       if (entry.startFrame !== undefined || entry.endFrame !== undefined) {

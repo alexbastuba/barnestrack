@@ -15,6 +15,7 @@ import {
   clearPoint,
   clearRange,
   confirmEvent,
+  confirmedEventIds,
   correctionsAtFrame,
   deleteEvent,
   describeCorrection,
@@ -238,7 +239,12 @@ describe('event corrections', () => {
       holeIndex: target.holeIndex,
       startFrame: target.startFrame,
       endFrame: target.endFrame,
+      confirmed: true,
     });
+    expect([...confirmedEventIds(kept)]).toEqual([target.id]);
+    expect(describeCorrection(kept.entries[0]!)).toBe(
+      `Event ${target.id} confirmed by the user, no change`,
+    );
 
     const after = run(script, frozen(kept));
     const confirmed = after.events.find((e) => e.id === target.id)!;
@@ -246,8 +252,9 @@ describe('event corrections', () => {
     expect(confirmed.holeIndex).toBe(target.holeIndex);
     expect(confirmed.startFrame).toBe(target.startFrame);
     expect(confirmed.endFrame).toBe(target.endFrame);
-    // The automatic values are kept beside it, and equal to it: that equality
-    // is what the UI reads back as "confirmed" — there is no stored flag.
+    // The automatic values are kept beside it and are equal to it; the stored
+    // `confirmed` flag is what says the user meant it, rather than having
+    // edited the event and edited it back.
     expect(confirmed.autoShadow).toEqual({
       holeIndex: target.holeIndex,
       startFrame: target.startFrame,
@@ -257,7 +264,26 @@ describe('event corrections', () => {
     expect(confirmed.pointUsed).toBe(target.pointUsed);
     expect(confirmed.minNoseDistance_cm).toEqual(target.minNoseDistance_cm);
 
+    // A confirmation is not a hand edit, so it is not counted as one (D11, D26).
+    expect(after.metrics.correctionCount).toBe(0);
+
     expect(run(script, revertEvent(kept, target.id)).events).toEqual(before.events);
+  });
+
+  it('a later real edit of a confirmed event is an edit again, not a confirmation', () => {
+    const before = run(script, NO_CORRECTIONS);
+    const target = before.events.find((e) => e.holeIndex === 5)!;
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      target.id,
+      { holeIndex: target.holeIndex, startFrame: target.startFrame, endFrame: target.endFrame },
+      meta(),
+    );
+    const moved = editEvent(frozen(kept), target.id, { holeIndex: 6 }, meta());
+    expect(moved.entries).toHaveLength(1);
+    expect((moved.entries[0] as { confirmed?: true }).confirmed).toBeUndefined();
+    expect(confirmedEventIds(moved).size).toBe(0);
+    expect(run(script, moved).metrics.correctionCount).toBe(1);
   });
 
   it('confirms an event with no hole without inventing one', () => {
