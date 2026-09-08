@@ -29,7 +29,7 @@ export interface StrategyFeatures {
   longestAdjacentRunHoles: number[];
   /** Entries into the centre zone during the search phase. */
   centreCrossings: number;
-  /** Straight line from the start to where the target was reached ÷ smoothed path there; > 1 only when gaps hide path. */
+  /** Illouz et al. 2020, Fig. 1C (D61): straight line between the centroid at the first and last positioned frames of the trial window ÷ the smoothed path over that window; > 1 only when gaps hide path. */
   pathEfficiency: number;
   /** Cumulative absolute heading change over smoothed steps of at least `tortuosityMinStep_cm`, radians. */
   tortuosity_rad: number;
@@ -233,24 +233,27 @@ export function computeStrategyFeatures(
     if (run.length > bestRun.length) bestRun = [...run];
   }
 
-  let startX = Number.NaN;
-  let startY = Number.NaN;
-  for (let i = start; i <= phaseEnd; i++) {
-    if (a.cValid[i] === 1) {
-      startX = a.cx[i]!;
-      startY = a.cy[i]!;
-      break;
-    }
+  // D61 (Illouz et al. 2020, Fig. 1C): path efficiency is the straight line between the centroid
+  // at the first and last positioned frames *of the trial window*, over the smoothed path across
+  // that same window. It was start→target over the search phase, which agrees with Illouz's only
+  // when the target is reached. A reported feature, not a rule input.
+  let firstPositioned = -1;
+  let lastPositioned = -1;
+  for (let i = start; i <= bounds.endFrame; i++) {
+    if (a.cValid[i] === 0) continue;
+    if (firstPositioned < 0) firstPositioned = i;
+    lastPositioned = i;
   }
-  const path = pathOver(kinematics, a, start, phaseEnd);
-  let straight = Number.NaN;
-  if (Number.isFinite(startX)) {
-    if (target !== null && a.cValid[phaseEnd] === 1) {
-      straight = Math.hypot(a.cx[phaseEnd]! - startX, a.cy[phaseEnd]! - startY);
-    } else {
-      straight = Math.hypot(g.holeX[g.targetIndex]! - startX, g.holeY[g.targetIndex]! - startY);
-    }
-  }
+  const path = pathOver(kinematics, a, start, bounds.endFrame);
+  const straight =
+    firstPositioned >= 0 && lastPositioned > firstPositioned
+      ? Math.hypot(
+          a.cx[lastPositioned]! - a.cx[firstPositioned]!,
+          a.cy[lastPositioned]! - a.cy[firstPositioned]!,
+        )
+      : firstPositioned >= 0
+        ? 0
+        : Number.NaN;
 
   return {
     errors: errors.length,
@@ -392,7 +395,7 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
         ? (next?.strategy ?? 'spatial')
         : (others.find((r) => r.fired)?.strategy ?? 'random');
     reasoning.push(
-      `Features over the search phase (trial start to ${features.targetReached ? 'the first target visit' : 'the trial end; the target was never reached'}): ${features.errors} error${features.errors === 1 ? '' : 's'}, holes visited ${features.sequence.length > 0 ? features.sequence.join('→') : 'none'}, max hole distance from the target ${features.maxHoleDistanceFromTarget}, longest adjacent run ${features.longestAdjacentRun}, centre crossings ${features.centreCrossings}, path efficiency ${Number.isFinite(features.pathEfficiency) ? features.pathEfficiency.toFixed(2) : 'n/a'}, tortuosity ${Number.isFinite(features.tortuosity_rad) ? `${features.tortuosity_rad.toFixed(2)} rad` : 'n/a'}.`,
+      `Features over the search phase (trial start to ${features.targetReached ? 'the first target visit' : 'the trial end; the target was never reached'}): ${features.errors} error${features.errors === 1 ? '' : 's'}, holes visited ${features.sequence.length > 0 ? features.sequence.join('→') : 'none'}, max hole distance from the target ${features.maxHoleDistanceFromTarget}, longest adjacent run ${features.longestAdjacentRun}, centre crossings ${features.centreCrossings}, path efficiency over the whole trial window ${Number.isFinite(features.pathEfficiency) ? features.pathEfficiency.toFixed(2) : 'n/a'} (straight line between the first and last positioned frames ÷ smoothed path; Illouz et al. 2020, Fig. 1C), tortuosity ${Number.isFinite(features.tortuosity_rad) ? `${features.tortuosity_rad.toFixed(2)} rad` : 'n/a'}.`,
     );
     for (const r of rules) {
       // a rule that fired but lost to an earlier one in the order says so, never "did not fire"

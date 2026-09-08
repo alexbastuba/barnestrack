@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
 import type { CorrectionsLayer } from '../../src/contracts/session.js';
-import { testGeometry } from './maze-fixture.js';
+import { TEST_PLATFORM, testGeometry } from './maze-fixture.js';
 import { pipeline } from './pipeline.js';
 import { holePoint, visitHoles, type Segment } from './synthetic-track.js';
 
@@ -104,6 +104,35 @@ describe('classifyStrategy (O7)', () => {
     // 12→11→11→10 is a run of three; 9 and 8 are the target's neighbour and the target (D58)
     expect(r.strategy.features.longestAdjacentRun).toBe(3);
     expect(r.metrics.primaryErrors).toBe(5); // repeat visits are separate errors (O2)
+  });
+
+  it('measures path efficiency over the whole trial window, Illouz-style (D61)', () => {
+    // An L: 60 px east, then 80 px south. The straight line between the first and last positioned
+    // frames is hypot(60, 80) = 100 px and the path is 60 + 80 = 140 px, so the efficiency is
+    // 100/140 whatever the animal did at the target on the way.
+    const cx = TEST_PLATFORM.cx;
+    const cy = TEST_PLATFORM.cy;
+    const l = pipeline([
+      { kind: 'moveTo', x: cx + 60, y: cy, seconds: 2 },
+      { kind: 'moveTo', x: cx + 60, y: cy + 80, seconds: 2 },
+    ]);
+    expect(l.strategy.features.pathEfficiency).toBeCloseTo(100 / 140, 2);
+
+    // D61's actual change: the denominator is the trial window, not the search phase. A direct
+    // approach to the target followed by a long wander is efficient over the approach and
+    // inefficient over the trial, and the reported number is now the second.
+    const wander = pipeline([
+      ...visitHoles([7]),
+      ...visitHoles([17]),
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 1 },
+    ]);
+    expect(wander.strategy.features.targetReached).toBe(true);
+    expect(wander.strategy.features.pathEfficiency).toBeLessThan(0.5);
+    expect(wander.strategy.reasoning.join('\n')).toContain(
+      'path efficiency over the whole trial window',
+    );
+    expect(wander.strategy.reasoning.join('\n')).toContain('Illouz et al. 2020, Fig. 1C');
   });
 
   it('measures path efficiency and tortuosity from the smoothed path', () => {
