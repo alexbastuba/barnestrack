@@ -26,8 +26,10 @@ export interface TrialMetrics {
   /**
    * A human has recorded "the animal never entered the escape box" (D63). It
    * reports the correction being in force, not that it holds: a confirmation
-   * contradicted by a later escape entry is still true here, with `escaped`
-   * true and `status` review beside it.
+   * contradicted by a later escape entry is still true here, with `status`
+   * review beside it — and `escaped` true only when that entry ended the trial,
+   * since an entry too short to be persistent contradicts the confirmation
+   * without making the trial an escape.
    */
   noEscapeConfirmed: boolean;
   status: TrialStatus;

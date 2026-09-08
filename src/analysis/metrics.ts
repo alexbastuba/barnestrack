@@ -50,8 +50,17 @@ export function firstTargetEvent(events: readonly EventRecord[]): EventRecord | 
 }
 
 export function computeMetrics(input: MetricsInput): TrialMetrics {
-  const { bounds, events, flags, kinematics, a, strategy, noEscapeConfirmed, correctionCount, parameters } =
-    input;
+  const {
+    bounds,
+    events,
+    flags,
+    kinematics,
+    a,
+    strategy,
+    noEscapeConfirmed,
+    correctionCount,
+    parameters,
+  } = input;
   const start = bounds.startFrame;
   const end = bounds.endFrame;
   const noTrial = start === null || end === null;

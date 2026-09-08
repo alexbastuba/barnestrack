@@ -137,8 +137,13 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
   const escape = endingEscape(analysis, parameters);
 
   // D63: a trial reading `ok` with no escape is reading `ok` because a person said so, and the
-  // card says whose claim it is and why. A contradicted confirmation has a flag, which wins here.
-  const confirmed = metrics.noEscapeConfirmed && !metrics.escaped;
+  // card says whose claim it is and why. The flag is the test, not `escaped`: an escape entry too
+  // short to end the trial contradicts the confirmation while leaving `escaped` false, and testing
+  // `escaped` printed "confirmed by the user: the animal never went in" one row above "an escape
+  // entry was detected … contradicting the confirmation". The entry wins, here as everywhere.
+  const confirmed =
+    metrics.noEscapeConfirmed &&
+    !analysis.reviewFlags.some((flag) => flag.code === 'no_escape_contradicted');
   const statusReason =
     analysis.reviewFlags.length > 0
       ? analysis.reviewFlags.map((flag) => flag.message).join(' ')

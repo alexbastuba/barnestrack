@@ -676,10 +676,20 @@ describe('confirming that a trial had no escape', () => {
     expect(metricValue('Escaped')).toBe('yes'); // the entry wins
     expect(metricValue('Status')).toBe('review');
     expect(metricNote('Status')).toContain('contradicting the confirmation');
+    // and the card does not assert the confirmation one row above the contradiction
+    expect(metricNote('Escaped')).not.toContain('confirmed by the user');
     // The confirmation is still on file and still the user's to withdraw.
     expect(box().checked).toBe(true);
     expect(box().disabled).toBe(false);
     expect(hint()).toContain('Contradicted');
+  });
+
+  it('keeps a reason typed but not yet ticked across an unrelated re-render', () => {
+    // Typing the reason and then going back to the video to check it is the
+    // normal order of work; a render that blanked the field lost the sentence.
+    reason().value = 'I watched every second of this';
+    harness.step.refresh();
+    expect(reason().value).toBe('I watched every second of this');
   });
 
   it('re-commits the reason when it is edited, without a second correction', () => {

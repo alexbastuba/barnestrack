@@ -20,6 +20,25 @@ session it is found (D39).
   is honest; the exported number is not obviously wrong to a reader who does not open the card.
   Smallest fix: flag when the marked frame's last positioned event point is within the entry radius
   of a hole that is not the target, naming that hole — a second branch beside the one D57 added.
+- **A trial carrying a non-persistent escape entry cannot be confirmed as a non-escape without
+  deleting the entry first (D63).** An animal that puts its head into the escape hole for a second
+  or two, backs out and never goes in produces an `escape_entry` that is over
+  `escapeEntry.minDuration_s` but under `escapeEntry.persistCutoff_s`: `escaped` stays false, the
+  trial stays `review`, and the confirmation checkbox is disabled, because a confirmation standing
+  beside any escape entry is contradicted by design (the entry wins). The trial is a genuine
+  non-escaper and the tool will not let it be recorded as one in a single action. The way through
+  is to delete the event and then confirm — two corrections, both revertable, and the hint says so
+  — but that asks the user to erase the tool's evidence in order to agree with it, which is the
+  wrong shape. Smallest fix: let a confirmation stand against a *non-persistent* entry with a
+  softer flag that does not force `review`, keeping the hard contradiction for an entry that
+  actually ended the trial. That is a D63 amendment and needs Alex's sign-off.
+- **A trial can read `ok` on one anonymous person's word (D63, O14).** A confirmed non-escape moves
+  the status to `ok`, and the correction carries `source: 'user'` and a timestamp but no reviewer
+  identity, because O14 leaves reviewer identity unbuilt. In a cohort scored by two people, an
+  exported `no_escape_confirmed = true` cannot be attributed, and `status = ok` no longer means
+  only "the tool found an escape and flagged nothing" — it can mean "somebody said so". The reason
+  string is the only attribution, and it is free text. Adding a reviewer identity to
+  `CorrectionBase` is the fix O14 already names; D63 raises what it costs to leave out.
 - **The two halves of the definitions panel read differently.** Since chunk 10a the 24 parameter
   definitions end in their unit alone, while every metric definition still ends in a decision id —
   "…never from frame 0 (seconds; O5)." — because `tests/ui/review-format.test.ts` pins

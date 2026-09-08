@@ -852,7 +852,10 @@ export function createReviewStep(context: AppContext): Step {
     // user could not untick their own correction (D25: every correction is revertable).
     noEscapeBox.disabled = analysis === null || (firstEntry !== null && entry === null);
     noEscapeReason.disabled = noEscapeBox.disabled;
-    if (document.activeElement !== noEscapeReason) noEscapeReason.value = entry?.reason ?? '';
+    // Only write back a reason there is one for. Blanking the field on every render threw away a
+    // reason typed but not yet ticked as soon as anything else re-rendered — clicking the timeline
+    // to check the video, which is exactly what a user does before confirming.
+    if (entry !== null && document.activeElement !== noEscapeReason) noEscapeReason.value = entry.reason;
 
     const endFrame = analysis ? positionToFrame(analysis.cleanedTrack, analysis.trial.endFrame) : null;
     const when =
@@ -868,7 +871,7 @@ export function createReviewStep(context: AppContext): Step {
         : contradicted
           ? `Contradicted: an escape entry at ${when}${shortOfEnding} stands against this confirmation, so the trial is still for review. Untick this, or revert what produced the entry.`
           : firstEntry !== null
-            ? `Nothing to confirm: this trial has an escape entry at ${when}${shortOfEnding}.`
+            ? `Nothing to confirm: this trial has an escape entry at ${when}${shortOfEnding}.${escaped ? '' : ' If that entry is not real, delete it first and then confirm.'}`
             : 'Ticking this says the animal genuinely never went in, which is what lets the trial read ok.';
   }
 
