@@ -516,7 +516,7 @@ export function createReviewStep(context: AppContext): Step {
     keepButton.disabled = ev === null || analysis === null || ev.kind !== 'investigation';
     keepButton.title =
       ev !== null && ev.kind !== 'investigation'
-        ? `An ${KIND_WORDS[ev.kind]} cannot be kept: confirming it would recompute the distances it was judged on.`
+        ? `This ${KIND_WORDS[ev.kind]} cannot be kept: confirming it would recompute the distances it was judged on.`
         : '';
     const line = ev
       ? describeCurrentEvent(ev)
