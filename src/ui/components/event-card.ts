@@ -53,6 +53,7 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   orphaned_correction: 'orphaned correction',
   correction_out_of_range: 'correction out of range',
   stale_auto_layer: 'stale automatic track',
+  no_escape_contradicted: 'contradicted non-escape',
 };
 
 /** The review flags that belong to one event. */

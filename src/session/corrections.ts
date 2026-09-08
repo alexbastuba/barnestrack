@@ -20,6 +20,7 @@ import type {
   CorrectionEntry,
   CorrectionsLayer,
   EventCorrection,
+  NoEscapeCorrection,
   PointCorrection,
   RangeCorrection,
   RangeCorrectionType,
@@ -402,6 +403,37 @@ export function setStrategyOverride(
 }
 
 // ---------------------------------------------------------------------------
+// Confirmed non-escape (D63): one entry per video, like the strategy override
+// ---------------------------------------------------------------------------
+
+export function noEscapeCorrection(layer: CorrectionsLayer): NoEscapeCorrection | null {
+  let latest: NoEscapeCorrection | null = null;
+  for (const entry of layer.entries) {
+    if (entry.kind === 'no_escape' && (latest === null || entry.timestamp >= latest.timestamp)) {
+      latest = entry;
+    }
+  }
+  return latest;
+}
+
+/** Records "the animal never entered the escape box", with the reason. A second call replaces the first. */
+export function setNoEscape(
+  layer: CorrectionsLayer,
+  reason: string,
+  meta: CorrectionMeta,
+): CorrectionsLayer {
+  const existing = noEscapeCorrection(layer);
+  const entry: NoEscapeCorrection = {
+    kind: 'no_escape',
+    id: existing?.id ?? meta.id,
+    timestamp: meta.timestamp,
+    source: 'user',
+    reason,
+  };
+  return layerOf([...drop(layer, (e) => e.kind === 'no_escape'), entry]);
+}
+
+// ---------------------------------------------------------------------------
 // Revert to automatic (D25): one item at a time
 // ---------------------------------------------------------------------------
 
@@ -423,6 +455,11 @@ export function revertTrialStart(layer: CorrectionsLayer): CorrectionsLayer {
 
 export function revertStrategyOverride(layer: CorrectionsLayer): CorrectionsLayer {
   const entries = drop(layer, (e) => e.kind === 'strategy_override');
+  return entries.length === layer.entries.length ? layer : layerOf(entries);
+}
+
+export function revertNoEscape(layer: CorrectionsLayer): CorrectionsLayer {
+  const entries = drop(layer, (e) => e.kind === 'no_escape');
   return entries.length === layer.entries.length ? layer : layerOf(entries);
 }
 
@@ -498,5 +535,7 @@ export function describeCorrection(entry: CorrectionEntry): string {
       return `Trial start moved to frame ${entry.frameIndex}`;
     case 'strategy_override':
       return `Strategy set to ${STRATEGY_WORDS[entry.strategy]} by hand${entry.reason ? `: ${entry.reason}` : ''}`;
+    case 'no_escape':
+      return `Confirmed: the animal never entered the escape box${entry.reason ? `: ${entry.reason}` : ''}`;
   }
 }

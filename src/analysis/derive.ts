@@ -14,7 +14,7 @@ import type { Parameters } from '../contracts/parameters.js';
 import type { AutoLayer, CorrectionsLayer, DerivedLayer } from '../contracts/session.js';
 import type { Mp4Index } from '../video/mp4-index.js';
 import { cleanTrack, type CleaningReport } from './clean.js';
-import { applyTrackCorrections } from './corrections.js';
+import { applyTrackCorrections, latestCorrection } from './corrections.js';
 import {
   applyEventCorrections,
   detectAutoEvents,
@@ -209,6 +209,19 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     corrections,
     parameters,
   });
+  // D63: the human's "this animal never entered the escape box". It is contradicted the moment an
+  // escape entry ends the trial — a threshold change or a range correction can produce one after
+  // the confirmation was recorded — and then the entry wins: `escaped` stays true, and this flag
+  // sends the trial back to review with the disagreement named.
+  const noEscape = latestCorrection(corrections.entries, 'no_escape');
+  if (noEscape !== null && bounds.endReason === 'escape') {
+    reviewFlags.push({
+      code: 'no_escape_contradicted',
+      correctionId: noEscape.id,
+      message: `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${noEscape.reason ? ` ("${noEscape.reason}")` : ''}. The entry stands: revert the confirmation, or revert what produced the entry.`,
+    });
+  }
+
   const metrics = computeMetrics({
     bounds,
     events: correctedEvents.events,
@@ -216,6 +229,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     kinematics,
     a,
     strategy,
+    noEscapeConfirmed: noEscape !== null,
     correctionCount: corrections.entries.length,
     parameters,
   });

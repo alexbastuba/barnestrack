@@ -56,6 +56,7 @@ const sample: TrialMetrics = {
   strategy: 'spatial',
   strategySource: 'auto',
   escaped: false,
+  noEscapeConfirmed: false,
   status: 'review',
   trackedFraction: 0.7612,
   correctionCount: 3,

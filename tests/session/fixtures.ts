@@ -131,6 +131,7 @@ export function videoAnalysis(): VideoAnalysis {
         strategy: 'spatial',
         strategySource: 'auto',
         escaped: false,
+        noEscapeConfirmed: false,
         status: 'review',
         trackedFraction: 0.97,
         correctionCount: 1,

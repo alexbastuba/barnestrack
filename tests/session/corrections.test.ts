@@ -20,13 +20,16 @@ import {
   editEvent,
   eventCorrectionsFor,
   markRange,
+  noEscapeCorrection,
   orphanedCorrections,
   pointCorrectionAt,
   rangesCovering,
   revertCorrection,
   revertEvent,
+  revertNoEscape,
   revertStrategyOverride,
   revertTrialStart,
+  setNoEscape,
   setPoint,
   setStrategyOverride,
   setTrialStart,
@@ -313,6 +316,15 @@ describe('trial start and strategy override', () => {
     expect(overridden.metrics.strategySource).toBe('corrected');
     expect(run(script, revertStrategyOverride(again)).metrics.strategySource).toBe('auto');
     expect(revertStrategyOverride(NO_CORRECTIONS)).toBe(NO_CORRECTIONS);
+
+    // D63: the confirmed non-escape is the same shape — one entry per video, keeping its id
+    const said = setNoEscape(frozen(NO_CORRECTIONS), 'never went in', meta());
+    const resaid = setNoEscape(frozen(said), 'watched it twice', meta());
+    expect(resaid.entries).toHaveLength(1);
+    expect(noEscapeCorrection(resaid)?.reason).toBe('watched it twice');
+    expect(noEscapeCorrection(resaid)?.id).toBe(said.entries[0]!.id);
+    expect(noEscapeCorrection(revertNoEscape(resaid))).toBeNull();
+    expect(revertNoEscape(NO_CORRECTIONS)).toBe(NO_CORRECTIONS);
   });
 });
 
@@ -342,6 +354,9 @@ describe('describeCorrection', () => {
     );
     expect(describeCorrection(setStrategyOverride(NO_CORRECTIONS, 'serial', 'walked the ring', m).entries[0]!)).toBe(
       'Strategy set to serial by hand: walked the ring',
+    );
+    expect(describeCorrection(setNoEscape(NO_CORRECTIONS, 'sat on the platform', m).entries[0]!)).toBe(
+      'Confirmed: the animal never entered the escape box: sat on the platform',
     );
   });
 });

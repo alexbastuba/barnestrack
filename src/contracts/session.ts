@@ -59,7 +59,8 @@ export type CorrectionEntry =
   | RangeCorrection
   | EventCorrection
   | TrialStartCorrection
-  | StrategyOverrideCorrection;
+  | StrategyOverrideCorrection
+  | NoEscapeCorrection;
 
 interface CorrectionBase {
   id: string;
@@ -103,6 +104,19 @@ export type SearchStrategy = 'spatial' | 'serial' | 'random';
 export interface StrategyOverrideCorrection extends CorrectionBase {
   kind: 'strategy_override';
   strategy: SearchStrategy;
+  reason: string;
+}
+
+/**
+ * "Confirmed: the animal never entered the escape box" — one per video, with a
+ * reason, revertable like every other correction (D63). It asserts nothing about
+ * a frame: a trial with no escape entry is `review` by construction because the
+ * tool cannot tell a non-escaper from a missed entry, and this is the human
+ * saying which it was. An escape entry appearing afterwards contradicts it, and
+ * the entry wins.
+ */
+export interface NoEscapeCorrection extends CorrectionBase {
+  kind: 'no_escape';
   reason: string;
 }
 

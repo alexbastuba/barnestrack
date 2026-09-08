@@ -257,6 +257,7 @@ describe('a review flag on an event', () => {
       orphaned_correction: true,
       correction_out_of_range: true,
       stale_auto_layer: true,
+      no_escape_contradicted: true,
     };
     const codes = Object.keys(every) as ReviewFlagCode[];
     for (const code of codes) {

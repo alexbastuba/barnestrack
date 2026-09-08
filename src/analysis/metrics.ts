@@ -21,6 +21,8 @@ export interface MetricsInput {
   /** The cleaned track as arrays. */
   a: TrackArrays;
   strategy: { strategy: SearchStrategy; strategySource: 'auto' | 'corrected' };
+  /** A `no_escape` correction is in force: the human says this animal never entered (D63). */
+  noEscapeConfirmed: boolean;
   correctionCount: number;
   parameters: Parameters;
 }
@@ -48,7 +50,8 @@ export function firstTargetEvent(events: readonly EventRecord[]): EventRecord | 
 }
 
 export function computeMetrics(input: MetricsInput): TrialMetrics {
-  const { bounds, events, flags, kinematics, a, strategy, correctionCount, parameters } = input;
+  const { bounds, events, flags, kinematics, a, strategy, noEscapeConfirmed, correctionCount, parameters } =
+    input;
   const start = bounds.startFrame;
   const end = bounds.endFrame;
   const noTrial = start === null || end === null;
@@ -86,9 +89,13 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     trackedFraction = tracked / (end - start + 1);
   }
 
+  // A trial with no escape entry is `review` by construction: the tool cannot tell a non-escaper
+  // from a missed entry. D63 lets a human say which it was, and a confirmed non-escape reads `ok`
+  // unless something else was flagged — including the contradiction flag `derive()` raises when an
+  // escape entry turns up beside the confirmation, so the entry wins without a special case here.
   const status: TrialMetrics['status'] = noTrial
     ? 'unresolved'
-    : flags.length > 0 || !escaped
+    : flags.length > 0 || (!escaped && !noEscapeConfirmed)
       ? 'review'
       : 'ok';
 
@@ -106,6 +113,7 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     strategy: strategy.strategy,
     strategySource: strategy.strategySource,
     escaped,
+    noEscapeConfirmed,
     status,
     trackedFraction,
     correctionCount,

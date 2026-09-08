@@ -294,8 +294,10 @@ export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   strategySource:
     'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—; D23).',
   escaped: 'Whether a persistent escape-box entry ended the trial (yes/no; O4).',
+  noEscapeConfirmed:
+    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry found afterwards contradicts the confirmation and the entry wins (yes/no; D63).',
   status:
-    'ok when the animal escaped and nothing needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed (—; O5).',
+    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed (—; O5).',
   trackedFraction:
     'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier (fraction; D30).',
   correctionCount: 'Number of corrections in this video’s corrections layer (count; D25).',

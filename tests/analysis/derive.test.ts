@@ -9,6 +9,7 @@ import {
 import type { Parameters } from '../../src/contracts/parameters.js';
 import type { CorrectionEntry } from '../../src/contracts/session.js';
 import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
+import { revertNoEscape } from '../../src/session/corrections.js';
 import { TEST_RESOLUTION, testGeometry, testMazeMap } from './maze-fixture.js';
 import { holePoint, scriptTrack, visitHoles, type Segment } from './synthetic-track.js';
 import { deepFreeze } from './track-builder.js';
@@ -621,5 +622,87 @@ describe('derive', () => {
       `derive timing: 5,539 frames, ${derive(input).events.length} events — median ${median.toFixed(1)} ms of ${times.map((t) => t.toFixed(1)).join(' / ')} ms`,
     );
     expect(median).toBeLessThan(250); // the acceptance figure (< 50 ms on the development Mac) is recorded in prototypes/analysis/RESULTS.md
+  });
+});
+
+/*
+ * D63. A trial with no escape entry is `review` by construction, because the tool cannot tell a
+ * non-escaper from a missed entry. These tests are about the one thing that can settle it — a
+ * person saying which it was — and about what happens when an escape entry turns up afterwards.
+ *
+ * The script is the one the escape-box range tests use: an investigation at the target and then
+ * three seconds in the open, so the trial runs to the end of the video with no entry, and a range
+ * correction can manufacture one on demand.
+ */
+describe('a confirmed non-escape (D63)', () => {
+  const noEscapeScript: Segment[] = [
+    { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+    { kind: 'dwell', hole: 7, seconds: 0.5 },
+    { kind: 'dwell', seconds: 3 },
+  ];
+
+  const confirmation: CorrectionEntry = {
+    id: 'n1',
+    kind: 'no_escape',
+    timestamp: at(2),
+    source: 'user',
+    reason: 'watched it to the end; the animal sat on the platform',
+  };
+
+  /** A range correction that puts the animal in the escape box to the end of the clip. */
+  const entryToEnd: CorrectionEntry = {
+    id: 'r1',
+    kind: 'range',
+    timestamp: at(1),
+    source: 'user',
+    rangeType: 'in_escape_box',
+    startFrame: scriptTrack(noEscapeScript, { g }).segmentStarts[2]! + 15,
+    endFrame: 10_000,
+  };
+
+  it('reads ok with escaped false and no total latency', () => {
+    const before = derive(inputFor(noEscapeScript).input);
+    expect(before.metrics.status).toBe('review');
+    expect(before.metrics.noEscapeConfirmed).toBe(false);
+
+    const d = derive(inputFor(noEscapeScript, { corrections: [confirmation] }).input);
+    expect(d.metrics.status).toBe('ok');
+    expect(d.metrics.escaped).toBe(false);
+    expect(d.metrics.noEscapeConfirmed).toBe(true);
+    expect(d.metrics.totalLatency_s).toBeNull();
+    expect(d.reviewFlags).toEqual([]);
+  });
+
+  it('goes back to review, flagged, when an escape entry appears beside it', () => {
+    const d = derive(
+      inputFor(noEscapeScript, { corrections: [confirmation, entryToEnd] }).input,
+    );
+    // the entry wins: the trial escaped, and the disagreement is named rather than resolved
+    expect(d.metrics.escaped).toBe(true);
+    expect(d.trial.endReason).toBe('escape');
+    expect(d.metrics.noEscapeConfirmed).toBe(true);
+    expect(d.metrics.status).toBe('review');
+    const flag = d.reviewFlags.find((f) => f.code === 'no_escape_contradicted');
+    expect(flag).toBeDefined();
+    expect(flag!.correctionId).toBe('n1');
+    expect(flag!.message).toContain('the animal sat on the platform');
+  });
+
+  it('leaves the trial at review once the confirmation is reverted', () => {
+    // `revertNoEscape` drops the entry; deriving without it is what the store then recomputes
+    const reverted = revertNoEscape({ entries: [confirmation] });
+    expect(reverted.entries).toEqual([]);
+    const d = derive(inputFor(noEscapeScript, { corrections: [...reverted.entries] }).input);
+    expect(d.metrics.status).toBe('review');
+    expect(d.metrics.noEscapeConfirmed).toBe(false);
+  });
+
+  it('does not clear a review flag that has nothing to do with escaping', () => {
+    const { input } = inputFor(noEscapeScript, { corrections: [confirmation] });
+    // D51: an automatic layer keyed by other tracking parameters always raises `stale_auto_layer`
+    const d = derive({ ...input, auto: { ...input.auto, parametersHash: 'deadbeef'.repeat(8) } });
+    expect(d.reviewFlags.map((f) => f.code)).toContain('stale_auto_layer');
+    expect(d.metrics.noEscapeConfirmed).toBe(true);
+    expect(d.metrics.status).toBe('review');
   });
 });

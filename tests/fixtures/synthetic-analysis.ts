@@ -841,6 +841,7 @@ function buildMetrics(
     strategy: script.strategy,
     strategySource: 'auto',
     escaped: escape !== undefined,
+    noEscapeConfirmed: false,
     status: escape && !events.some((event) => event.kind === 'tracking_failure') ? 'ok' : 'review',
     trackedFraction: round(trackedFraction, 4),
     correctionCount,

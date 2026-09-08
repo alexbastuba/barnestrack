@@ -75,6 +75,7 @@ export function metricValueText(metrics: TrialMetrics, key: MetricKey): string {
     case 'trackedFraction':
       return formatPercentage(value as number);
     case 'escaped':
+    case 'noEscapeConfirmed':
       return value ? 'yes' : 'no';
     case 'primaryErrors':
     case 'totalErrors':

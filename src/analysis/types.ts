@@ -7,7 +7,9 @@ export type ReviewFlagCode =
   | 'orphaned_correction'
   | 'correction_out_of_range'
   /** The automatic layer was produced by other tracking parameters than the ones in force (D51). */
-  | 'stale_auto_layer';
+  | 'stale_auto_layer'
+  /** A confirmed non-escape now has an escape entry beside it; the entry wins (D63). */
+  | 'no_escape_contradicted';
 
 /** Something a human should look at before trusting the trial; every one sets the status to review. */
 export interface ReviewFlag {

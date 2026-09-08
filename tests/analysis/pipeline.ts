@@ -69,6 +69,7 @@ export function pipeline(segments: Segment[], opts: PipelineOptions = {}) {
     kinematics,
     a,
     strategy,
+    noEscapeConfirmed: corrections.entries.some((entry) => entry.kind === 'no_escape'),
     correctionCount: corrections.entries.length,
     parameters: p,
   });
