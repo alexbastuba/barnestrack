@@ -2018,24 +2018,40 @@ button.metric-value:hover:not(:disabled) {
   font-weight: 600;
 }
 
-.example-fetch-row {
+/*
+ * The network-consent dialog (D2). A native <dialog>, so the browser traps
+ * focus, Escape closes it and the page behind it goes inert. Sized in ch so the
+ * sentence keeps a readable measure at 200 % zoom (D37).
+ */
+.example-dialog {
+  max-width: 60ch;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.example-dialog::backdrop {
+  background: rgb(22 25 29 / 45%);
+}
+
+.example-dialog h3 {
+  margin: 0 0 0.5rem;
+}
+
+.example-file-list {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.example-dialog-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
-}
-
-/* Its label names the file and its size, so it is long; let it wrap left-aligned
-   rather than push the hint off the row at 200 % zoom (D37). */
-.example-fetch {
-  flex: 0 1 auto;
-  text-align: left;
-}
-
-/* Wide enough to keep the D2 sentence on two or three lines, not eight. */
-.example-fetch-row .hint {
-  flex: 1 1 22rem;
-  max-width: 44rem;
+  margin-top: 1rem;
 }
 
 .example-banner,

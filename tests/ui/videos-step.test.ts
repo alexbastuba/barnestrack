@@ -80,7 +80,7 @@ describe('the Videos step mounts the example cohort panel', () => {
   it('starts with the banner, the provenance line and the fetch row hidden', () => {
     const { body } = makeStep();
     // Nothing is loaded, so none of the three has anything to qualify yet.
-    for (const selector of ['.example-banner', '.example-provenance', '.example-fetch-row']) {
+    for (const selector of ['.example-banner', '.example-provenance']) {
       expect(body.querySelector<HTMLElement>(selector)?.hidden, selector).toBe(true);
     }
   });
@@ -99,7 +99,6 @@ describe('the Videos step mounts the example cohort panel', () => {
     expect(body.querySelectorAll('.example-cohort')).toHaveLength(1);
     expect(body.querySelector<HTMLElement>('.example-banner')?.hidden).toBe(false);
     expect(body.querySelector<HTMLElement>('.example-provenance')?.hidden).toBe(false);
-    expect(body.querySelector<HTMLElement>('.example-fetch-row')?.hidden).toBe(false);
   });
 
   it('leaves the panel in place while one of its controls is disabled', () => {
@@ -227,6 +226,9 @@ describe('the Videos step says when it is done and how to go on', () => {
       (button) => button.textContent === LOAD_BUTTON_LABEL,
     )!;
     load.click();
+    // The load button opens the network-consent dialog; confirming it is what
+    // starts the load (D2).
+    panel.querySelector<HTMLButtonElement>('.example-dialog .primary')!.click();
     // `onLoad` is async: it disables the focused button, awaits the bundle, and
     // that await is what used to leave focus on <body>.
     await vi.waitFor(() => expect(store.videos.length).toBeGreaterThan(0));
