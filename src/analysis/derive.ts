@@ -129,7 +129,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
               code: 'correction_out_of_range',
               eventId: ev.id,
               frameIndex: ev.startFrame,
-              message: `Escape entry ${ev.id} starts at frame ${ev.startFrame}, before the trial start at frame ${cleaned.track[proposal.startFrame]!.frameIndex}; it cannot end the trial (D21). Check the correction that placed it.`,
+              message: `Escape entry ${ev.id} starts at frame ${ev.startFrame}, before the trial start at frame ${cleaned.track[proposal.startFrame]!.frameIndex}; it cannot end the trial. Check the correction that placed it.`,
             });
           }
           continue;

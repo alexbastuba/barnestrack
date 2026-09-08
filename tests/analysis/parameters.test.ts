@@ -96,13 +96,19 @@ describe('definitions', () => {
     expect(new Set(Object.keys(PARAMETER_UNITS))).toEqual(new Set(paths));
   });
 
-  it('name the decision each analysis default comes from, with its unit, in the sentence', () => {
+  it('end in their unit, name no decision number, and record the decision separately', () => {
     for (const path of parameterPaths(DEFAULT_PARAMETERS)) {
       if (path.startsWith('tracking.')) continue;
+      // The sentence a user reads ends in the unit and nothing else: this project's decision
+      // numbers mean nothing to them, and where a sentence needs a source it cites the paper.
+      expect(PARAMETER_DEFINITIONS[path], path).toMatch(/\([^()]+\)\.$/);
+      expect(PARAMETER_DEFINITIONS[path], path).not.toMatch(/\([OD]\d/);
+      expect(PARAMETER_DEFINITIONS[path], path).not.toMatch(/; [OD]\d+\)/);
       // an open decision (O-number) or, for the D30 tier thresholds, a closed one
-      expect(PARAMETER_DEFINITIONS[path], path).toMatch(/\(.+; [OD]\d+\)\.$/);
       expect(PARAMETER_DECISIONS[path], path).toMatch(/^[OD]\d+$/);
     }
+    // the strategy rules cite Gawel et al. 2019, Table 1 rather than D58
+    expect(PARAMETER_DEFINITIONS['strategy.serialMinRun']).toContain('Gawel et al. 2019, Table 1');
     expect(PARAMETER_DECISIONS['strategy.serialMinRun']).toBe('O7');
     expect(PARAMETER_DECISIONS['quality.goodMinPositionedFraction']).toBe('D30');
     expect(PARAMETER_DECISIONS['trialCensoring.censorToCutoff']).toBe('O5');

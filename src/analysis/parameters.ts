@@ -84,53 +84,53 @@ export type ParameterPath = AnalysisParameterPath | TrackingParameterPath;
 
 const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'holeInvestigation.radiusFactor':
-    'An investigation is counted while the event point (the nose when its heading confidence clears the cutoff, otherwise the centroid) is within this multiple of the hole radius of a hole centre (× hole radius; O1).',
+    'An investigation is counted while the event point (the nose when its heading confidence clears the cutoff, otherwise the centroid) is within this multiple of the hole radius of a hole centre (× hole radius).',
   'holeInvestigation.minDuration_s':
-    'Time at a hole, from the first to the last frame within the radius, that a bout needs to count as an investigation (seconds; O1).',
+    'Time at a hole, from the first to the last frame within the radius, that a bout needs to count as an investigation (seconds).',
   'holeInvestigation.mergeGap_s':
-    'Bouts at the same hole separated by less than this merge into one investigation; a longer gap makes the return a separate event (seconds; O1).',
+    'Bouts at the same hole separated by less than this merge into one investigation; a longer gap makes the return a separate event (seconds).',
   'escapeEntry.radiusFactor':
-    'An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run (× hole radius; O4).',
+    'An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run (× hole radius).',
   'escapeEntry.minDuration_s':
-    'A run at the target must last at least this long, from its first to its last frame and with no full-size detection elsewhere during it, to be an entry; a run that continues to the last frame of the clip is an entry whatever its duration, because nothing afterwards could contradict it. The same run at a non-target hole is an investigation flagged physically unlikely, and a loss of detection this long away from any hole is a tracking failure (seconds; O4).',
+    'A run at the target must last at least this long, from its first to its last frame and with no full-size detection elsewhere during it, to be an entry; a run that continues to the last frame of the clip is an entry whatever its duration, because nothing afterwards could contradict it. The same run at a non-target hole is an investigation flagged physically unlikely, and a loss of detection this long away from any hole is a tracking failure (seconds).',
   'escapeEntry.persistCutoff_s':
-    'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds; O4).',
+    'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds).',
   trialCutoff_s:
-    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review (seconds; O5).',
+    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review (seconds).',
   'targetQuadrant.holeSpan':
-    'The target quadrant is the sector of the platform reaching this many hole spacings either side of the target hole; 2.5 holes on a 20-hole ring is a 90° sector (holes; O6).',
+    'The target quadrant is the sector of the platform reaching this many hole spacings either side of the target hole; 2.5 holes on a 20-hole ring is a 90° sector (holes).',
   kinematicsSmoothingWindowFrames:
-    'Width of the median filter applied to centroid positions before path length and speed are computed; the stored track and the events use the raw positions (frames; O9).',
+    'Width of the median filter applied to centroid positions before path length and speed are computed; the stored track and the events use the raw positions (frames).',
   'gapFilling.enabled':
-    'Whether short gaps in the derived track are filled by linear interpolation between the frames either side; filled points are marked filled, drawn hollow and counted, and the automatic track is never changed. Off by default: no data is better than invented data, so a gap stays a gap, is drawn as one, and enters no kinematic value unless a lab turns filling on (on/off; O10).',
+    'Whether short gaps in the derived track are filled by linear interpolation between the frames either side; filled points are marked filled, drawn hollow and counted, and the automatic track is never changed. Off by default: no data is better than invented data, so a gap stays a gap, is drawn as one, and enters no kinematic value unless a lab turns filling on (on/off).',
   'gapFilling.maxDuration_s':
-    'Only gaps no longer than this, measured between the positioned frames either side, are filled — and never when either of those frames is within one hole radius of a hole, because a gap at a hole is evidence, not noise (seconds; O10).',
+    'Only gaps no longer than this, measured between the positioned frames either side, are filled — and never when either of those frames is within one hole radius of a hole, because a gap at a hole is evidence, not noise (seconds).',
   'kinematics.speedWindowFrames':
-    'Speed at a frame is the path travelled over the centred window of this many frames either side, divided by the span of their timestamps (frames; O11).',
+    'Speed at a frame is the path travelled over the centred window of this many frames either side, divided by the span of their timestamps (frames).',
   'kinematics.duplicateTimestampFactor':
-    'Consecutive frames whose timestamps differ by less than this fraction of the nominal frame interval carry a duplicate stamp: the second is skipped for speed and for the outlier test, while its position still counts for path length (fraction of the nominal interval; O11).',
+    'Consecutive frames whose timestamps differ by less than this fraction of the nominal frame interval carry a duplicate stamp: the second is skipped for speed and for the outlier test, while its position still counts for path length (fraction of the nominal interval).',
   'kinematics.dropGapFactor':
-    'Consecutive frames whose timestamps differ by more than this multiple of the nominal frame interval are a dropped-frame gap: counted in the quality report, while path length keeps the straight segment (× nominal interval; O11).',
+    'Consecutive frames whose timestamps differ by more than this multiple of the nominal frame interval are a dropped-frame gap: counted in the quality report, while path length keeps the straight segment (× nominal interval).',
   noseConfidenceCutoff:
-    'Events use the nose as the event point when its heading confidence is at least this, or when the nose was placed by hand; otherwise they use the centroid, and every event records which point was used (0–1; O16).',
+    'Events use the nose as the event point when its heading confidence is at least this, or when the nose was placed by hand; otherwise they use the centroid, and every event records which point was used (0–1).',
   outlierVelocityThreshold_cmPerS:
-    'A centroid that moves faster than this from the previous positioned frame is an outlier: the frame is marked invalid for events and kinematics and the point is kept, never replaced (cm/s; O17).',
+    'A centroid that moves faster than this from the previous positioned frame is an outlier: the frame is marked invalid for events and kinematics and the point is kept, never replaced (cm/s).',
   'trialCensoring.censorToCutoff':
-    'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off; O5).',
+    'When on, a trial that never reached the escape box reports the cutoff time as its total latency instead of a blank, for statistics; escaped stays false and the status stays review (on/off).',
   'strategy.spatialMaxErrors':
-    'Spatial search (Gawel et al. 2019, Table 1): reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target, each within the spatial hole distance of it, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): reaching the target with no error before it is spatial by definition; otherwise at most this many non-target investigations before the target, each within the spatial hole distance of it, with at most the spatial number of centre crossings; the rules are tried in the order spatial, serial, random and the first to fire wins (count).',
   'strategy.spatialMaxHoleDistance':
-    'Spatial search (Gawel et al. 2019, Table 1): every error hole lies within this many holes of the target around the ring — 1 is the paper’s "adjacent to the target hole" (holes; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): every error hole lies within this many holes of the target around the ring — 1 is the paper’s "adjacent to the target hole" (holes).',
   'strategy.spatialMaxCentreCrossings':
-    'Spatial search (Gawel et al. 2019, Table 1): at most this many entries into the centre zone before the target; 0 is the paper’s "with no crossing of the centre between hole searches" (count; O7).',
+    'Spatial search (Gawel et al. 2019, Table 1): at most this many entries into the centre zone before the target; 0 is the paper’s "with no crossing of the centre between hole searches" (count).',
   'strategy.serialMinRun':
-    'Serial search (Gawel et al. 2019, Table 1): a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before the first target visit; holes adjacent to the target and the target itself do not count towards the run, as the paper’s "in a serial manner… but not adjacent to target hole" requires (count; O7).',
+    'Serial search (Gawel et al. 2019, Table 1): a run of at least this many investigations of adjacent holes in one direction around the ring — a change of direction ends the run — with no centre crossing during it, before the first target visit; holes adjacent to the target and the target itself do not count towards the run, as the paper’s "in a serial manner… but not adjacent to target hole" requires (count).',
   'strategy.centreZoneRadiusFraction':
-    'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction; O7).',
+    'The centre zone is the disc of this fraction of the platform radius; entering it between two investigations is one centre crossing (fraction).',
   'quality.goodMinPositionedFraction':
-    'A video is GOOD when at least this fraction of the trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count); judged over the trial window so empty pre-trial frames do not count against it (fraction; D30).',
+    'A video is GOOD when at least this fraction of the trial frames were positioned by the tracker (tracked or low confidence; filled frames do not count); judged over the trial window so empty pre-trial frames do not count against it (fraction).',
   'quality.poorMaxPositionedFraction':
-    'A video is POOR when fewer than this fraction of the trial frames were positioned by the tracker (tracked or low confidence); between the two thresholds it is REVIEW (fraction; D30).',
+    'A video is POOR when fewer than this fraction of the trial frames were positioned by the tracker (tracked or low confidence); between the two thresholds it is REVIEW (fraction).',
 };
 
 const TRACKING_KEYS = Object.keys(TRACKING_PARAMETER_DEFINITIONS) as (keyof TrackingParameters)[];
@@ -185,14 +185,50 @@ export const PARAMETER_UNITS: Record<ParameterPath, string> = {
   'tracking.fragmentMergeDistance_cm': 'cm',
 };
 
-/** The decision each parameter's default comes from, for the parameters sheet. */
-export const PARAMETER_DECISIONS: Record<ParameterPath, string> = Object.fromEntries(
-  (Object.keys(PARAMETER_DEFINITIONS) as ParameterPath[]).map((path) => {
-    if (path.startsWith('tracking.')) return [path, 'D6'];
-    const match = /\b([OD]\d+)\)\.?$/.exec(PARAMETER_DEFINITIONS[path]);
-    return [path, match?.[1] ?? ''];
-  }),
-) as Record<ParameterPath, string>;
+/**
+ * The decision each parameter's default comes from, for the parameters sheet
+ * and the panel's "decision" line.
+ *
+ * Written out rather than parsed from the definition text: a definition is what
+ * the user reads, and a user-facing sentence should say what the threshold
+ * means and cite a paper where there is one — not carry this project's internal
+ * decision numbers. The provenance still belongs in an export, so it lives here
+ * as its own field.
+ */
+const ANALYSIS_PARAMETER_DECISIONS: Record<AnalysisParameterPath, string> = {
+  'holeInvestigation.radiusFactor': 'O1',
+  'holeInvestigation.minDuration_s': 'O1',
+  'holeInvestigation.mergeGap_s': 'O1',
+  'escapeEntry.radiusFactor': 'O4',
+  'escapeEntry.minDuration_s': 'O4',
+  'escapeEntry.persistCutoff_s': 'O4',
+  trialCutoff_s: 'O5',
+  'targetQuadrant.holeSpan': 'O6',
+  kinematicsSmoothingWindowFrames: 'O9',
+  'gapFilling.enabled': 'O10',
+  'gapFilling.maxDuration_s': 'O10',
+  'kinematics.speedWindowFrames': 'O11',
+  'kinematics.duplicateTimestampFactor': 'O11',
+  'kinematics.dropGapFactor': 'O11',
+  noseConfidenceCutoff: 'O16',
+  outlierVelocityThreshold_cmPerS: 'O17',
+  'trialCensoring.censorToCutoff': 'O5',
+  'strategy.spatialMaxErrors': 'O7',
+  'strategy.spatialMaxHoleDistance': 'O7',
+  'strategy.spatialMaxCentreCrossings': 'O7',
+  'strategy.serialMinRun': 'O7',
+  'strategy.centreZoneRadiusFraction': 'O7',
+  'quality.goodMinPositionedFraction': 'D30',
+  'quality.poorMaxPositionedFraction': 'D30',
+};
+
+export const PARAMETER_DECISIONS: Record<ParameterPath, string> = {
+  ...ANALYSIS_PARAMETER_DECISIONS,
+  ...(Object.fromEntries(TRACKING_KEYS.map((key) => [`tracking.${key}`, 'D6'])) as Record<
+    TrackingParameterPath,
+    string
+  >),
+};
 
 /**
  * Every leaf path of a `Parameters` value, in definition order: a path that
@@ -319,13 +355,13 @@ export const ANALYSIS_MODEL = {
 
 export const ANALYSIS_MODEL_DEFINITIONS: Record<keyof typeof ANALYSIS_MODEL, string> = {
   entryPartialReasons:
-    'The low-confidence detection reasons that mean the animal is only partly visible (its rear at a hole, a body split by a hole shadow); such a frame within the entry radius of a hole is part of an entry run rather than a full-size detection (O4).',
+    'The low-confidence detection reasons that mean the animal is only partly visible (its rear at a hole, a body split by a hole shadow); such a frame within the entry radius of a hole is part of an entry run rather than a full-size detection.',
   blobTrendWindowFrames:
     'Number of frames before a loss of detection over which the blob-area trend (shrinking as the animal enters a hole) is described in the event evidence.',
   blobTrendFallRatio:
-    'The loss evidence reads "blob area fell" when the last positioned area before the loss is below this fraction of the first area in the trend window (D19).',
+    'The loss evidence reads "blob area fell" when the last positioned area before the loss is below this fraction of the first area in the trend window of frames before it.',
   blobTrendRiseRatio:
-    'The loss evidence reads "blob area rose" when the last positioned area before the loss is above this multiple of the first area in the trend window; between the two it "was steady" (D19).',
+    'The loss evidence reads "blob area rose" when the last positioned area before the loss is above this multiple of the first area in the trend window; between the two it "was steady".',
   tortuosityMinStep_cm:
     'Heading change is accumulated only over smoothed steps at least this long, so a stationary animal does not read as tortuous (cm).',
   noseConfidenceHistogramBins:
