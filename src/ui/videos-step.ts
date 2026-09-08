@@ -15,6 +15,7 @@ import { FrameSource } from '../video/frame-source.js';
 import type { Mp4Index } from '../video/mp4-index.js';
 import { hasDirectoryPicker, pickDirectoryFiles } from './directory-picker.js';
 import { button, el, formatBytes, formatDuration, replaceChildren, type Child } from './dom.js';
+import { createNextStepButton, videosMissing } from './next-step.js';
 import type { AppContext, Step } from './step.js';
 
 const PRIVACY_NOTE = 'Processed locally — this file never leaves your computer.';
@@ -100,7 +101,8 @@ export function createVideosStep(context: AppContext): Step {
   notLoaded.hidden = true;
   const rejectionList = notLoaded.querySelector('ul') as HTMLUListElement;
 
-  body.append(pickers, listEmpty, list, notesBox, notLoaded);
+  const nextStep = createNextStepButton(context, 'maze', 'Maze');
+  body.append(pickers, listEmpty, list, notesBox, notLoaded, nextStep.element);
 
   // ---- drag and drop --------------------------------------------------------
 
@@ -219,6 +221,7 @@ export function createVideosStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
+    nextStep.update(videosMissing(store));
     if (store.epoch !== lastEpoch) {
       // Reset, load or restore replaced the session; "Not loaded" and the
       // duplicate notes described the one before it.
@@ -410,7 +413,14 @@ export function createVideosStep(context: AppContext): Step {
   }
 
   function newExamplePanel(): HTMLElement {
-    return mountExampleCohortPanel({ store, announce: context.announce, onChange: render });
+    return mountExampleCohortPanel({
+      store,
+      announce: context.announce,
+      onChange: render,
+      // The load disables the button focus was on, so without this focus lands
+      // on <body> and a keyboard user loses their place (D37).
+      onLoaded: () => nextStep.focus(),
+    });
   }
 
   /*
@@ -471,6 +481,9 @@ export function createVideosStep(context: AppContext): Step {
     ],
     body,
     blocked: () => null,
+    done: () => videosMissing(store) === null,
+    doneLabel: () =>
+      `${store.videos.length} video${store.videos.length === 1 ? '' : 's'} loaded`,
     refresh: render,
   };
 }

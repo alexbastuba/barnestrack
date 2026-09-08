@@ -11,15 +11,16 @@
  * It asserts the wiring, not the panel — the panel's own behaviour is covered
  * offline in `tests/demo/` and in Chrome in `tests/browser/app-smoke.spec.ts`.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SessionFile, VideoDescriptor } from '../../src/contracts/session.js';
 import { EXAMPLE_SESSION_NAME } from '../../src/demo/example-cohort.js';
-import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
+import { LOAD_BUTTON_LABEL, mountExampleCohortPanel } from '../../src/demo/example-cohort-ui.js';
 import { createSessionFile } from '../../src/session/session-file.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import type { AppContext } from '../../src/ui/step.js';
 import type { Step } from '../../src/ui/step.js';
+import { createNextStepButton, videosMissing } from '../../src/ui/next-step.js';
 import { createVideosStep } from '../../src/ui/videos-step.js';
 
 const TOOL_VERSION = 'barnestrack v0.0.0 (test)';
@@ -151,3 +152,99 @@ describe('the Videos step mounts the example cohort panel', () => {
     expect(body.querySelector('.example-progress')?.getAttribute('aria-live')).toBe('off');
   });
 });
+
+describe('the Videos step says when it is done and how to go on', () => {
+  const nextButton = (body: HTMLElement): HTMLButtonElement =>
+    body.querySelector<HTMLButtonElement>('.next-step-button')!;
+
+  it('offers a Next step button, disabled with a reason while no video is loaded', () => {
+    const { step, body } = makeStep();
+    step.refresh();
+    const next = nextButton(body);
+    expect(next.textContent).toBe('Next step → Maze');
+    expect(next.disabled).toBe(true);
+    expect(next.classList.contains('primary')).toBe(false);
+    const hint = body.querySelector<HTMLElement>('.next-step-hint')!;
+    expect(hint.hidden).toBe(false);
+    expect(hint.textContent).toBe('Load at least one video to go on.');
+  });
+
+  it('enables it as the primary action once a video is in, and drops the hint', () => {
+    const { step, body, store } = makeStep();
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+    const next = nextButton(body);
+    expect(next.disabled).toBe(false);
+    expect(next.classList.contains('primary')).toBe(true);
+    expect(body.querySelector<HTMLElement>('.next-step-hint')!.hidden).toBe(true);
+  });
+
+  it('is not done with no video, and done in its own words with one', () => {
+    const { step, store } = makeStep();
+    expect(step.done()).toBe(false);
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+    expect(step.done()).toBe(true);
+    expect(step.doneLabel?.()).toBe('1 video loaded');
+  });
+
+  it('goes to the Maze step when the button is pressed', () => {
+    const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION);
+    const shown: string[] = [];
+    const step = createVideosStep({
+      store,
+      toolVersion: TOOL_VERSION,
+      announce: () => {},
+      showStep: (id) => shown.push(id),
+    });
+    store.replaceSession(exampleSessionFile());
+    step.refresh();
+    nextButton(step.body).click();
+    expect(shown).toEqual(['maze']);
+  });
+
+  it('puts focus on the way forward after the example cohort loads, not on <body>', async () => {
+    const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION);
+    document.body.replaceChildren();
+    const next = createNextStepButton(
+      { store, toolVersion: TOOL_VERSION, announce: () => {}, showStep: () => {} },
+      'maze',
+      'Maze',
+    );
+    document.body.append(next.element);
+
+    const panel = mountExampleCohortPanel({
+      store,
+      announce: () => {},
+      onChange: () => next.update(videosMissing(store)),
+      onLoaded: () => next.focus(),
+      loaderOptions: { fetchImpl: fakeBundleFetch() },
+    });
+    document.body.append(panel);
+    next.update(videosMissing(store));
+
+    const load = [...panel.querySelectorAll('button')].find(
+      (button) => button.textContent === LOAD_BUTTON_LABEL,
+    )!;
+    load.click();
+    // `onLoad` is async: it disables the focused button, awaits the bundle, and
+    // that await is what used to leave focus on <body>.
+    await vi.waitFor(() => expect(store.videos.length).toBeGreaterThan(0));
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(document.querySelector('.next-step-button')),
+    );
+    document.body.replaceChildren();
+  });
+});
+
+/** Serves the example bundle from memory, so no test touches the network (D2). */
+function fakeBundleFetch(): (input: string | URL) => Promise<Response> {
+  const body = JSON.stringify(exampleSessionFile());
+  return () =>
+    Promise.resolve(
+      new Response(new Blob([body]).stream().pipeThrough(new CompressionStream('gzip')), {
+        status: 200,
+        headers: { 'content-type': 'application/gzip' },
+      }),
+    );
+}

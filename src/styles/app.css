@@ -334,6 +334,16 @@ label {
   margin-left: auto;
 }
 
+/* Finished, and said in words as well as in colour (D26, D37). */
+.step-tab .step-state.is-done {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.step-tab .step-state.is-done::before {
+  content: '✓ ';
+}
+
 .step-tab.is-current {
   border-color: var(--accent);
   border-bottom-width: 0.25rem;
@@ -346,6 +356,27 @@ label {
 
 .step-tab.is-current .step-state {
   color: var(--accent);
+}
+
+/*
+ * The way on from a step: bottom-right of the panel, the primary action only
+ * when the step is actually finished, with the reason it is not beside it.
+ */
+.next-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.next-step-hint {
+  margin: 0;
+  flex: 1 1 16rem;
+  text-align: right;
 }
 
 /* ---- panels --------------------------------------------------------------- */

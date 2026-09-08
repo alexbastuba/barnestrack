@@ -41,6 +41,12 @@ export interface ExampleCohortPanelContext {
   announce: (message: string) => void;
   /** Called after the store changes, so the step can re-render. */
   onChange?: () => void;
+  /**
+   * Called once the cohort is in. `onLoad` disables its own focused button
+   * before awaiting, which drops focus to `<body>`; the step uses this to put
+   * focus on the way forward instead of nowhere (D37).
+   */
+  onLoaded?: () => void;
   /** Injected in tests. */
   loaderOptions?: ExampleLoaderOptions;
 }
@@ -175,6 +181,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   async function onLoad(): Promise<void> {
     loadButton.disabled = true;
     say('Loading the example cohort…');
+    let loaded = false;
     try {
       const result = await loadExampleCohort(store, {
         ...context.loaderOptions,
@@ -183,6 +190,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
 
       switch (result.kind) {
         case 'loaded':
+          loaded = true;
           say(
             `Example cohort loaded: ${result.session.videos.length} videos with results, ` +
               `no video files attached. ${EXAMPLE_PROVENANCE_TEXT}`,
@@ -201,6 +209,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     } finally {
       loadButton.disabled = false;
       refresh();
+      // After the re-render, so the button focus lands on is the current one.
+      if (loaded) context.onLoaded?.();
     }
   }
 

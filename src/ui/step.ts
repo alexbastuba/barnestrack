@@ -25,6 +25,14 @@ export interface Step {
   body: HTMLElement;
   /** Why this step has nothing to show yet, or null when its inputs are present. */
   blocked(): string | null;
+  /**
+   * Whether this step's work is finished — every video loaded, every maze set,
+   * every video tracked. The stepper says so, and it is what enables the step's
+   * "Next step" button. A step that is only *able* to run is `ready`, not done.
+   */
+  done(): boolean;
+  /** What the badge says when `done()`; "done" when a step gives no wording. */
+  doneLabel?(): string;
   refresh(): void;
   /** Called when the step becomes visible. */
   onShow?(): void;

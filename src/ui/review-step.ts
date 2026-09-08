@@ -1636,6 +1636,10 @@ export function createReviewStep(context: AppContext): Step {
       if (!store.videos.some((v) => store.analysisFor(v.id) !== undefined)) return 'no video has been tracked yet — run the Track step';
       return null;
     },
+    // The last step, and the one whose work is never "finished" by a rule: the
+    // queue above the timeline says how much is left, and only a person can say
+    // the review is over.
+    done: () => false,
     refresh: render,
     onShow: () => {
       render();

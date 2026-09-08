@@ -47,6 +47,7 @@ import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
 import { Scrubber } from './scrubber.js';
 import { button, el, replaceChildren, uniqueId } from './dom.js';
+import { createNextStepButton, mazeMissing, mazeSetCount } from './next-step.js';
 import { downloadText, pickFiles } from './download.js';
 import { drawHole, drawLabel } from './overlay-draw.js';
 import type { AppContext, Step } from './step.js';
@@ -763,6 +764,13 @@ export function createMazeStep(context: AppContext): Step {
   const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value));
 
   const modeStatus = el('p', { class: 'mode-status' });
+  /**
+   * How far through the cohort the maze is. Per-video confirmation is session
+   * state and is not built here, so this counts the videos the map has actually
+   * been placed in rather than the ones a user has signed off.
+   */
+  const mazeProgress = el('p', { class: 'maze-progress', attrs: { role: 'status' } });
+  const nextStep = createNextStepButton(context, 'track', 'Track');
   const clickBadge = el('p', { class: 'click-badge', attrs: { 'aria-live': 'off' } });
   const mirrorBody = el('tbody');
   const mirrorSummary = el('p', { class: 'mirror-summary' });
@@ -835,11 +843,13 @@ export function createMazeStep(context: AppContext): Step {
       ]),
       clickBadge,
     ]),
+    mazeProgress,
     modeStatus,
     scrubber.element,
     canvasView.element,
     controls,
     mirror,
+    nextStep.element,
   );
 
   // ---- render ---------------------------------------------------------------
@@ -849,6 +859,10 @@ export function createMazeStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
+    const total = store.videos.length;
+    mazeProgress.textContent =
+      total === 0 ? '' : `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+    nextStep.update(mazeMissing(store));
     if (store.epoch !== lastEpoch) {
       // Load, reset or restore replaced the whole session: nothing cached here
       // refers to it any more.
@@ -1065,6 +1079,8 @@ export function createMazeStep(context: AppContext): Step {
     body,
     blocked: () =>
       store.videos.length === 0 ? 'load at least one video on the Videos step first' : null,
+    done: () => mazeMissing(store) === null,
+    doneLabel: () => 'maze confirmed',
     refresh: render,
     onShow: () => {
       canvasView.fit();
