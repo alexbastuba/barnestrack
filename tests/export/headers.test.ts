@@ -17,6 +17,7 @@ const DOCUMENTED_TRIAL_HEADERS = [
   'day',
   'trial_label',
   'group',
+  'target_hole',
   'trial_start_s',
   'primary_latency_s',
   'total_latency_s',

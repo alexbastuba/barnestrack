@@ -38,6 +38,7 @@ const TRIAL_COLUMN_META: Record<keyof TrialRow, ColumnMeta> = {
   day: { header: 'day', unit: '' },
   trialLabel: { header: 'trial_label', unit: '' },
   group: { header: 'group', unit: '' },
+  targetHole: { header: 'target_hole', unit: 'hole index' },
   trialStart_s: { header: 'trial_start_s', unit: 's' },
   primaryLatency_s: { header: 'primary_latency_s', unit: 's' },
   totalLatency_s: { header: 'total_latency_s', unit: 's' },

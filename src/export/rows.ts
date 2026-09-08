@@ -126,6 +126,8 @@ export function trialRows(
       day: descriptor.metadata.day ?? null,
       trialLabel: descriptor.metadata.trial ?? null,
       group: descriptor.metadata.group ?? null,
+      // D62: the map's target hole, so the row says which hole every latency and error is about
+      targetHole: session.mazeMap?.target.holeIndex ?? null,
       trialStart_s: seconds(metrics.trialStart_s),
       primaryLatency_s: seconds(metrics.primaryLatency_s),
       totalLatency_s: seconds(metrics.totalLatency_s),

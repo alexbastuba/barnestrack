@@ -22,7 +22,7 @@ keeps the cohort name as it was typed. The six files:
 
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trials.csv`                      | trial                         | 35 columns; the headline numbers                                                                            |
+| `trials.csv`                      | trial                         | 36 columns; the headline numbers                                                                            |
 | `events.csv`                      | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
@@ -42,7 +42,7 @@ Reading conventions that apply to all three CSVs:
 Header, verbatim:
 
 ```
-session_id,video_id,animal,day,trial_label,group,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,status,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
+session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,status,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
 ```
 
 Identifiers and metadata: `session_id` (the cohort name — see the warning under Rules),
@@ -263,7 +263,7 @@ synthetic, and two of these trials "escape" where no real clip does.
 `trials.csv`, header and all three rows, with long columns elided as `…`:
 
 ```
-session_id,video_id,animal,day,trial_label,group,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,…
+session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,…
 Barnes cohort A,video-test50,M12,1,1,control,2.4,95.923,,7,12,596.65,…
 Barnes cohort A,video-test51,M12,4,1,control,1.2,19.24,45.1,1,2,110.99,…
 Barnes cohort A,video-test53,M07,1,1,lesion,1,25.04,27.343,4,4,374.24,…

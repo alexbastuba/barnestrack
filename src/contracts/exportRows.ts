@@ -29,6 +29,12 @@ export interface TrialRow extends ExportProvenance {
   day: string | null;
   trialLabel: string | null;
   group: string | null;
+  /**
+   * D62: the target hole under the maze map's numbering (D49), null when the
+   * session has no map. Gawel's protocol rotates the platform between trials,
+   * so a row without its target is not interpretable on its own.
+   */
+  targetHole: number | null;
 
   trialStart_s: number | null;
   primaryLatency_s: number | null;

@@ -24,6 +24,17 @@ describe('trialRows', () => {
     }
   });
 
+  it('names the map’s target hole on every row, and leaves it blank without a map (D62)', () => {
+    const rows = trialRows(session);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.targetHole).toBe(session.mazeMap!.target.holeIndex);
+    // Gawel's protocol rotates the platform between trials, so the column has to move with the map
+    const rotated = { ...session, mazeMap: { ...session.mazeMap!, target: { holeIndex: 13 } } };
+    expect(trialRows(rotated).map((r) => r.targetHole)).toEqual(rows.map(() => 13));
+    // a session with no map has no analyses either (D47), but the column is nullable regardless
+    expect(trialRows({ ...session, mazeMap: null }).every((r) => r.targetHole === null)).toBe(true);
+  });
+
   it('carries every event-defining threshold as its own column (D11)', () => {
     const row = trialRows(session)[0];
     expect(row).toBeDefined();

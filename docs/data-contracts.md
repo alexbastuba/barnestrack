@@ -432,6 +432,7 @@ session file, and one XLSX with the same sheets plus `parameters` and `readme`. 
 | Column | Unit | Source |
 | --- | --- | --- |
 | `session_id`, `video_id`, `animal`, `day`, `trial_label`, `group` | — | identifiers / O12 metadata |
+| `target_hole` | hole index (nullable: no maze map) | D62 — the map's target under D49's numbering |
 | `trial_start_s` | s (nullable: no trial start) | O5 |
 | `primary_latency_s` | s (nullable) | O3 |
 | `total_latency_s` | s (nullable) | O4 |
