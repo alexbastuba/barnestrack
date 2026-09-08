@@ -323,14 +323,14 @@ is in [`docs/known-limitations.md`](docs/known-limitations.md). The three that m
   of the frames that have a blob — and on every frame that has none — while a cue that does exist
   usually stands alone. Events therefore record which point they were judged on, the quality
   report states the fraction judged on the nose, and the interface labels the nose experimental.
-- **The example cohort's track is a scripted trajectory, not a real animal.** The bundle behind
-  **Load example cohort** carries the three sample videos' real fingerprints and durations over a
-  synthetic track, so the demo renders every view without asking anyone to download a video. Its
-  latencies, errors, paths and strategies are no longer scripted alongside it: every derived layer
-  in the bundle is computed by this tool's own `derive()` from the track it ships, and a test
-  re-derives the committed document to prove it. The panel says on screen that the results are
-  illustrative. Attach a real file — drop it, or confirm the download in the example-cohort
-  dialog — and every number is recomputed from the frames.
+- **The example cohort ships without its videos.** The bundle behind **Load example cohort** is
+  the session saved from the recorded demo run of the three sample clips, corrections included, so
+  the demo renders every view without asking anyone to download a video — but frames and manual
+  correction still need the file. Its latencies, errors, paths and strategies are not stored
+  values: every derived layer in the bundle is computed by this tool's own `derive()` from the
+  track it ships, and a test re-derives the committed document to prove it. The panel says on
+  screen where the numbers came from. Attach a real file — drop it, or confirm the download in the
+  example-cohort dialog — and the frames come back.
 
 ## Data handling and cost
 

@@ -383,12 +383,13 @@ test.describe('the example cohort, driven through the loader module', () => {
     await expect(page.locator('.video-card h3')).toHaveText(['mine.mp4']);
   });
 
-  test('says on screen that the example numbers are illustrative', async ({ page }) => {
+  test('says on screen where the example numbers came from', async ({ page }) => {
     await loadExampleViaModule(page);
     await mountPanel(page);
 
     await expect(page.locator('.example-provenance')).toHaveText(
-      'These results are illustrative, not a real tracking run of these clips.',
+      'These are real results: the tracking run recorded in the demo at commit bc81fe7, ' +
+        'with the corrections made during it.',
     );
   });
 

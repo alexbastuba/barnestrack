@@ -5,9 +5,8 @@
  * fixture's invented ones could never accept the clip the fetch button
  * downloads, and the failure would only show up in a browser.
  *
- * Deliberately no assertion about a metric's value: Monday's demo take replaces
- * the synthetic analysis with real outputs, and this file must not need editing
- * when it does.
+ * Deliberately no assertion about a metric's value: the bundle is now the demo
+ * take's real session, and re-recording it must not mean editing this file.
  */
 import { gunzipSync } from 'node:zlib';
 import { readFileSync, statSync } from 'node:fs';
@@ -19,11 +18,12 @@ import { parseSessionDocument } from '../../src/session/session-file.js';
 import { fingerprintsMatch } from '../../src/session/attach.js';
 import { hashParameters } from '../../src/analysis/parameters.js';
 import { trialRows } from '../../src/export/rows.js';
-import { DETECTION_REASONS } from '../../src/analysis/tracker/select.js';
 import {
+  DEMO_SESSION_ENV,
   EXAMPLE_SESSION_NAME,
   SAMPLE_FINGERPRINTS,
   buildExampleSession,
+  demoSessionAvailable,
   hashProblems,
 } from '../../scripts/build-example-bundle.js';
 
@@ -36,18 +36,13 @@ const COMMIT_BLOB_LIMIT_BYTES = 2 * 1024 * 1024;
 const STILL_LIMIT_BYTES = 60 * 1024;
 
 /**
- * The prose the synthetic fixture writes where the contract wants one of the
- * tracker's eight names. Recorded in docs/known-limitations.md; goes away with
- * the demo take, since the real tracker emits DETECTION_REASONS.
+ * Rebuilding the bundle needs the demo take's 11 MB session file, which is not
+ * in the repo (see `scripts/build-example-bundle.ts`). Everything above asserts
+ * against the *committed* artifact and always runs; only the two tests that
+ * re-run the builder need the source, and they skip with a named reason rather
+ * than failing on a machine that does not have it.
  */
-const KNOWN_OFF_CONTRACT_REASONS = [
-  'single mouse-sized component inside the platform mask',
-  'blob smaller than half the expected body area (small_blob)',
-  'component larger than three times the expected body area (oversized_blob)',
-  'no foreground component above the area prior',
-  'foreground component below the area prior for two frames',
-  'no foreground component inside the platform mask (last seen at the target hole)',
-];
+const withSource = demoSessionAvailable() ? it : it.skip;
 
 function committedSessionText(): string {
   return gunzipSync(readFileSync(BUNDLE_PATH)).toString('utf-8');
@@ -127,35 +122,7 @@ describe('the committed example bundle', () => {
     expect(stamped).toEqual([hashParameters(parameters)]);
   });
 
-  it('has a recorded reason on every frame, and no new off-contract ones', () => {
-    const parsed = parseSessionDocument(committedSessionText());
-    if (!parsed.ok) throw new Error(parsed.message);
-
-    const seen = new Set<string>();
-    for (const analysis of Object.values(parsed.session.analyses)) {
-      for (const frame of analysis.auto.frames) {
-        expect(frame.reason, 'every frame carries a reason (D16)').not.toBe('');
-        seen.add(frame.reason);
-      }
-    }
-
-    // data-contracts.md §2 fixes the vocabulary to the tracker's own eight. The
-    // synthetic fixture writes prose instead; the real tracker already emits
-    // DETECTION_REASONS, so the demo take resolves this with no code change.
-    // Pinned to the exact known sentences rather than asserted away: new prose
-    // fails here, and when the last one disappears this test fails too, which
-    // is the signal to delete it along with the known-limitations entry.
-    const offContract = [...seen].filter(
-      (reason) => !(DETECTION_REASONS as readonly string[]).includes(reason),
-    );
-    expect(
-      [...offContract].sort(),
-      'off-contract reasons changed — if they are gone, delete this test and the ' +
-        'known-limitations entry that records them',
-    ).toEqual([...KNOWN_OFF_CONTRACT_REASONS].sort());
-  });
-
-  it('detects a hash that does not reconcile, so the guard is not vacuous', async () => {
+  withSource(`[${DEMO_SESSION_ENV}] detects a hash that does not reconcile`, async () => {
     const built = await buildExampleSession();
     const [videoId, analysis] = Object.entries(built.analyses)[0]!;
 
@@ -175,7 +142,7 @@ describe('the committed example bundle', () => {
     expect(hashProblems(tampered)[0]).toContain(videoId);
   });
 
-  it('matches what the builder produces now, so the artifact is not stale', async () => {
+  withSource(`[${DEMO_SESSION_ENV}] matches what the builder produces now`, async () => {
     const rebuilt = await buildExampleSession();
     const committed = parseSessionDocument(committedSessionText());
     if (!committed.ok) throw new Error(committed.message);

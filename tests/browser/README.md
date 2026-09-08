@@ -282,7 +282,8 @@ port 4180, with `indexedDB.deleteDatabase('barnestrack')` first for a clean prof
 - **Keyboard-only load.** From the "Choose videos" file input, two `Tab` presses reach the
   `Load example cohort` button — file input, "Choose a folder", the button — and `Enter` loads.
   After it: the live region reads "Example cohort loaded: 3 videos with results, no video files
-  attached. These results are illustrative, not a real tracking run of these clips.", the session
+  attached. These are real results: the tracking run recorded in the demo at commit bc81fe7, with
+  the corrections made during it.", the session
   name reads `Example cohort`, three `.video-card`s are badged "video not attached", and all four
   step tabs read `ready`. The panel sets no `tabindex`; its buttons are ordinary `<button>`s.
 

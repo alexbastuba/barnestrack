@@ -3,14 +3,20 @@
  *
  *   npx tsx scripts/build-example-bundle.ts
  *
- * The track is the synthetic fixture's, so it is a scripted trajectory rather
- * than a real animal; the demo take replaces `sourceSession()` with the real
- * outputs and nothing else here changes. The *numbers*, however, are this
- * tool's: since A2 every `derived` layer is recomputed with `derive()` from the
- * bundle's own `auto ⊕ corrections` under its own parameters, so what the demo
- * shows is what the app computes from the track it ships. The loader never
- * assumes anything about the numbers — it validates the shape and adopts the
- * document.
+ * The track is the real one: the session saved from the recorded demo take at
+ * `bc81fe7`, with the corrections made during it. It is read from the path in
+ * `BARNESTRACK_DEMO_SESSION` — the file is 11 MB and is never committed (the
+ * pre-commit guard refuses any staged blob over 2 MB), so rebuilding the bundle
+ * needs that variable set:
+ *
+ *   BARNESTRACK_DEMO_SESSION="$HOME/Downloads/Salk Demo.barnestrack.json" \
+ *     npx tsx scripts/build-example-bundle.ts
+ *
+ * The *numbers* are this tool's: since A2 every `derived` layer is recomputed
+ * with `derive()` from the bundle's own `auto ⊕ corrections` under its own
+ * parameters, so what the demo shows is what the app computes from the track it
+ * ships. The loader never assumes anything about the numbers — it validates the
+ * shape and adopts the document.
  *
  * The fingerprints, however, must be real. `fingerprintsMatch` compares
  * `byteLength` and `sha256`, so a session carrying the fixture's invented
@@ -18,10 +24,10 @@
  * computed from the sample videos when `BARNESTRACK_SAMPLE_DIR` points at them,
  * and otherwise taken from the values recorded below.
  *
- * Output is gzipped: serialized the way the app writes a session file it is
- * 11,619,675 bytes (11.1 MiB; 5.7 MB with the whitespace stripped), and the
- * pre-commit guard refuses any staged blob over 2 MB. Gzipped it is ~494 kB.
- * See docs/known-limitations.md.
+ * Output is gzipped: serialized the way the app writes a session file the take's
+ * cohort is 11,260,060 bytes (10.7 MiB), and the pre-commit guard refuses any
+ * staged blob over 2 MB. Gzipped it is 599,002 bytes (~585 kB). See
+ * docs/known-limitations.md.
  */
 import { gzipSync } from 'node:zlib';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -36,7 +42,6 @@ import { parseMp4Index } from '../src/video/mp4-index.js';
 import {
   FIXTURE_PARAMETERS_HASH,
   FIXTURE_TRACKING_HASH,
-  syntheticSession,
 } from '../tests/fixtures/synthetic-analysis.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -72,9 +77,34 @@ export const SAMPLE_FINGERPRINTS: Record<string, VideoFingerprint> = {
   },
 };
 
-/** Swap this for the real take's session when the demo pass is recorded. */
+/** Where the demo take's saved session lives. Never in the repo: it is 11 MB. */
+export const DEMO_SESSION_ENV = 'BARNESTRACK_DEMO_SESSION';
+
+/** True when the source session is reachable, so the bundle can be rebuilt. */
+export function demoSessionAvailable(): boolean {
+  const path = process.env[DEMO_SESSION_ENV];
+  return path !== undefined && existsSync(path);
+}
+
+/**
+ * The recorded demo take's session, read from `BARNESTRACK_DEMO_SESSION`.
+ *
+ * Read through the app's own parser rather than `JSON.parse`, so a source file
+ * this build accepts is one the "Load session file" path would accept too.
+ */
 function sourceSession(): SessionFile {
-  return syntheticSession();
+  const path = process.env[DEMO_SESSION_ENV];
+  if (path === undefined) {
+    throw new Error(
+      `build-example-bundle: set ${DEMO_SESSION_ENV} to the demo take's session file ` +
+        '(it is 11 MB and is not committed).',
+    );
+  }
+  const parsed = parseSessionDocument(readFileSync(path, 'utf-8'));
+  if (!parsed.ok) {
+    throw new Error(`build-example-bundle: ${path} is not a session file — ${parsed.message}`);
+  }
+  return parsed.session;
 }
 
 /**
