@@ -341,14 +341,6 @@ session it is found (D39).
   build A unless the export caller passes the build version explicitly, which the export button
   does. Smallest fix: restamp `session.toolVersion` whenever this build writes a derived cache
   (`setDerivedLayer`).
-- **`events.csv` rounds `duration_s` independently of its start and end (trust audit A10).**
-  `seconds()` in `src/export/rows.ts` rounds each of `start_time_s`, `end_time_s` and `duration_s`
-  to 3 dp separately, while the contract states `durationSeconds = endTime_s − startTime_s`.
-  Measured (`notes/audit/a6-consistency.ts` #6): the maximum disagreement is 1.00e-3 s on all three
-  sample videos — `auto-investigation-h13-f155` writes 10.344 and 11.278 with `duration_s 0.934`.
-  A reader recomputing duration from the columns disagrees with the file by a millisecond, and a
-  bout at exactly `hole_investigation_min_duration_s` can read as below it. Smallest fix: write
-  `duration_s` as `round(end, 3) − round(start, 3)`, or export the times at full precision.
 
 ## Excluded scope
 
@@ -546,11 +538,14 @@ session it is found (D39).
   ends with its head in hole 19 (top right) and test53 in hole 2 (about four o'clock on the right),
   both with the rear visible, and neither hole is the recorded target (hole 7, a placeholder from
   the chunk-3 handoff — there is no ground truth for which hole held the escape box). Under the
-  revised O4 (a run of partial detections counts) test53's head-in-hole run would be a persistent
-  entry with the target at hole 2 (frames 833–904, 2.37 s), while test51's run at hole 19 is
-  15 frames at 14.985 fps = 0.93 s first-to-last, under the 1.0 s minimum, and stays an
-  investigation whichever hole is the target (`prototypes/analysis/RESULTS.md`). So all three trials
-  are `review`.
+  revised O4 (a run of partial detections counts) and D59 (a run reaching the last frame of the clip
+  needs no minimum duration), **both** head-in-hole runs are persistent escape entries when the map
+  names the hole the animal entered: test53 at frames 833–904 (2.37 s, escape at 27.83 s) and
+  test51 at frames 735–740 (0.27 s, escape at 44.04 s) — the latter is what D59 changed, since its
+  run is 15 frames at 14.985 fps = 0.93 s first-to-last, under the 1.0 s minimum, and only reaches
+  the end of the clip (`prototypes/analysis/RESULTS.md`, signature checks). Under the recorded map
+  those runs are instead investigations flagged "physically unlikely — review", so all three trials
+  are still `review`.
 - **Trial starts land where the contact sheets say.** Frame 150 for test50 and test53 (the animal
   appears at the rim after an empty platform) and frame 75 for test51 (the first frame after the
   cylinder is lifted). No `oversized_blob` frame exists in any clip, so the O5 clause "after the

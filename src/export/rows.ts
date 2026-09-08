@@ -176,7 +176,10 @@ export function eventRows(
         endFrame: event.endFrame,
         startTime_s: seconds(event.startTime_s),
         endTime_s: seconds(event.endTime_s),
-        durationSeconds: seconds(event.durationSeconds),
+        // A10: the written duration is the difference of the written times, not the rounded
+        // difference of the unrounded ones — a reader recomputing it from the columns must get
+        // the number in the file, and a bout at exactly the minimum must not read as below it.
+        durationSeconds: round(seconds(event.endTime_s) - seconds(event.startTime_s), 3),
         pointUsed: event.pointUsed,
         minNoseDistance_cm: centimetres(event.minNoseDistance_cm),
         minCentroidDistance_cm: centimetres(event.minCentroidDistance_cm),

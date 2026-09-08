@@ -24,6 +24,18 @@ describe('trialRows', () => {
     }
   });
 
+  it('writes a duration that is the difference of the times beside it (A10)', () => {
+    // The contract says durationSeconds = endTime_s − startTime_s. Rounding each of the three
+    // independently to 3 dp broke that by up to a millisecond, so a reader recomputing the
+    // duration from the columns disagreed with the file — and a bout at exactly the minimum
+    // duration could read as below it.
+    const rows = eventRows(session);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.durationSeconds, row.eventId).toBeCloseTo(row.endTime_s - row.startTime_s, 12);
+    }
+  });
+
   it('names the map’s target hole on every row, and leaves it blank without a map (D62)', () => {
     const rows = trialRows(session);
     expect(rows.length).toBeGreaterThan(0);
