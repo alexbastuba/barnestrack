@@ -322,7 +322,10 @@ function classifyRun(
       },
     };
   }
-  const longEnough = run.durationSeconds >= p.escapeEntry.minDuration_s;
+  // D59: a run that continues to the last frame of the clip needs no minimum duration. Protocol
+  // keeps the animal in the box until the trial is ended, so such a run cannot be a head-poke —
+  // and there is no later evidence that could ever contradict it.
+  const longEnough = run.toEnd || run.durationSeconds >= p.escapeEntry.minDuration_s;
   const entryShaped = hole >= 0 && longEnough && (run.reappear < 0 || reappearNearSameHole);
   if (entryShaped) {
     if (hole === g.targetIndex) {

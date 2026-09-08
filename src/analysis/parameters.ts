@@ -92,7 +92,7 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'escapeEntry.radiusFactor':
     'An escape-box entry is a run of frames at the target hole in which the animal is not detected, or is seen only as a small or fragmented blob within this multiple of the hole radius of the target centre; a full-size detection anywhere ends the run (× hole radius; O4).',
   'escapeEntry.minDuration_s':
-    'A run at the target must last at least this long, from its first to its last frame and with no full-size detection elsewhere during it, to be an entry; the same run at a non-target hole is an investigation flagged physically unlikely, and a loss of detection this long away from any hole is a tracking failure (seconds; O4).',
+    'A run at the target must last at least this long, from its first to its last frame and with no full-size detection elsewhere during it, to be an entry; a run that continues to the last frame of the clip is an entry whatever its duration, because nothing afterwards could contradict it. The same run at a non-target hole is an investigation flagged physically unlikely, and a loss of detection this long away from any hole is a tracking failure (seconds; O4).',
   'escapeEntry.persistCutoff_s':
     'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds; O4).',
   trialCutoff_s:

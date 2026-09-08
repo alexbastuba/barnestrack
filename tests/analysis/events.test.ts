@@ -213,6 +213,51 @@ describe('losses of detection (O4, D19)', () => {
     expect(Object.keys(entry).sort()).toEqual(EVENT_KEYS);
   });
 
+  it('needs no minimum duration from a run at the target that reaches the last frame (D59)', () => {
+    // 0.9 s at 30 fps is below escapeEntry.minDuration_s (1.0 s). Reaching the last frame of the
+    // clip makes it an entry anyway; one frame short of the end it is not.
+    const { auto, segmentStarts } = run([...approachTarget, { kind: 'lost', seconds: 0.9 }], {
+      fps: 30,
+    });
+    expect(kinds(auto.events)).toEqual(['investigation@7', 'escape_entry@7']);
+    const entry = auto.events[1]!;
+    expect(entry.durationSeconds).toBeLessThan(DEFAULT_PARAMETERS.escapeEntry.minDuration_s);
+    expect(entry.startFrame).toBe(segmentStarts[2]);
+    expect(entry.evidence).toContain('to the end of the video');
+    expect(entry.evidence).toContain('Persistent (to the end of the video)');
+    expect(auto.persistentEscapeStartFrame).toBe(segmentStarts[2]);
+    expect(auto.endReason).toBe('escape');
+
+    // the same run, no longer at the end of the clip: too short to be an entry
+    const notAtEnd = run(
+      [...approachTarget, { kind: 'lost', seconds: 0.9 }, { kind: 'dwell', hole: 7, seconds: 0.5 }],
+      { fps: 30 },
+    );
+    // the 0.9 s loss splits the dwell in two rather than becoming an entry of its own
+    expect(kinds(notAtEnd.auto.events)).toEqual(['investigation@7', 'investigation@7']);
+    expect(notAtEnd.auto.persistentEscapeStartFrame).toBeNull();
+    expect(notAtEnd.auto.endReason).toBe('end_of_video');
+  });
+
+  it('makes a short loss away from every hole that reaches the last frame a tracking failure (D59)', () => {
+    // The consequence of D59 outside the target: `longEnough` is duration-or-to-the-end for every
+    // reading of a run, so a 0.9 s loss in the open that ends the clip is now reported as a
+    // tracking failure rather than passing unremarked. Honest, and the quality report says so.
+    const away = holePoint(g, 3, 6);
+    const { auto } = run(
+      [
+        { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
+        { kind: 'dwell', seconds: 0.5 },
+        { kind: 'lost', seconds: 0.9 },
+      ],
+      { fps: 30 },
+    );
+    expect(kinds(auto.events)).toEqual(['tracking_failure@null']);
+    expect(auto.events[0]!.durationSeconds).toBeLessThan(
+      DEFAULT_PARAMETERS.escapeEntry.minDuration_s,
+    );
+  });
+
   it('reads a loss at the target of at least three seconds as persistent even when the animal reappears later', () => {
     const { auto, segmentStarts } = run([
       ...approachTarget,
@@ -400,12 +445,15 @@ describe('losses of detection (O4, D19)', () => {
   });
 
   it('ends a run at a full-size detection elsewhere, so two short partial runs are not one entry', () => {
+    // the trailing dwell keeps the second partial run off the last frame, where D59 would make it
+    // an entry however short it is
     const { auto } = run([
       ...approachTarget,
       partial(0.6),
       { kind: 'moveToCentre', seconds: 0.2 },
       { kind: 'moveToHole', hole: 7, seconds: 0.2 },
       partial(0.6),
+      { kind: 'dwell', hole: 7, seconds: 0.3 },
     ]);
     expect(auto.events.every((e) => e.kind === 'investigation')).toBe(true);
     expect(auto.persistentEscapeStartFrame).toBeNull();
@@ -413,7 +461,9 @@ describe('losses of detection (O4, D19)', () => {
   });
 
   it('leaves a partial run shorter than the entry minimum, or of another low-confidence reason, as dwell', () => {
-    const short = run([...approachTarget, partial(0.5)]);
+    // again away from the last frame: the duration rule is what is under test here, not D59's
+    // to-the-end clause, which the D59 case above covers
+    const short = run([...approachTarget, partial(0.5), { kind: 'dwell', hole: 7, seconds: 0.3 }]);
     expect(kinds(short.auto.events)).toEqual(['investigation@7']);
     expect(short.auto.events[0]!.endFrame).toBe(short.frames.length - 1); // the dwell keeps its frames
     const rim = run([...approachTarget, partial(3, 7, { reason: 'partial_at_rim' })]);
