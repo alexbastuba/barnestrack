@@ -1,0 +1,62 @@
+{
+  "holeInvestigation": {
+    "radiusFactor": 1.5,
+    "minDuration_s": 0.2,
+    "mergeGap_s": 0.5
+  },
+  "escapeEntry": {
+    "radiusFactor": 1,
+    "minDuration_s": 1,
+    "persistCutoff_s": 3
+  },
+  "trialCutoff_s": 180,
+  "targetQuadrant": {
+    "holeSpan": 2.5
+  },
+  "kinematicsSmoothingWindowFrames": 3,
+  "gapFilling": {
+    "enabled": false,
+    "maxDuration_s": 0.1
+  },
+  "kinematics": {
+    "speedWindowFrames": 2,
+    "duplicateTimestampFactor": 0.25,
+    "dropGapFactor": 1.5
+  },
+  "noseConfidenceCutoff": 0.5,
+  "outlierVelocityThreshold_cmPerS": 150,
+  "trialCensoring": {
+    "censorToCutoff": false
+  },
+  "strategy": {
+    "spatialMaxErrors": 2,
+    "spatialMaxHoleDistance": 1,
+    "spatialMaxCentreCrossings": 0,
+    "serialMinRun": 2,
+    "centreZoneRadiusFraction": 0.5
+  },
+  "quality": {
+    "goodMinPositionedFraction": 0.9,
+    "poorMaxPositionedFraction": 0.7
+  },
+  "tracking": {
+    "backgroundSampleCount": 150,
+    "backgroundExcludeRanges": [],
+    "platformMaskMargin_cm": 1.5,
+    "threshold": {
+      "mode": "otsu",
+      "manualValue": 40
+    },
+    "minBlobArea_cm2": 4,
+    "maxBlobArea_cm2": 80,
+    "expectedBlobArea_cm2": null,
+    "oversizedBlobFactor": 3,
+    "smallBlobFactor": 0.5,
+    "tailOpeningRadius_cm": 0.8,
+    "noseCueWindowFrames": 3,
+    "noseMovingSpeed_cmPerS": 8,
+    "rimContactMargin_cm": 1,
+    "proximityRadius_cm": 6,
+    "fragmentMergeDistance_cm": 8
+  }
+}
