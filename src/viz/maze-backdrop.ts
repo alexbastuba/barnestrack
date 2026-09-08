@@ -21,13 +21,24 @@ export interface MazeView {
   radius: number;
 }
 
-/** Room left outside the platform rim for the hole numbers. */
-const LABEL_MARGIN = 1.16;
+/**
+ * Room left outside the platform rim for the hole numbers, in figure pixels per
+ * side. The numbers sit *outside* the disc — inside it they land on the path,
+ * the heat cells and the hole discs themselves — so the fit has to reserve the
+ * space rather than discover it: `LABEL_OFFSET` puts a label's centre this far
+ * past the rim, and the gutter covers that plus half a line of text.
+ *
+ * One constant, applied here where every figure's view is built, so no figure
+ * can leave the ring room its neighbours do not.
+ */
+const LABEL_OFFSET = 10;
+const LABEL_GUTTER = ANNOTATION_SIZE + 12;
 
 export function mazeView(frame: FigureFrame, source: TrialSource): MazeView {
   const { plot } = frame;
   const platform = source.map.platform;
-  const pixelScale = Math.min(plot.width, plot.height) / (platform.r * 2 * LABEL_MARGIN);
+  const half = Math.min(plot.width, plot.height) / 2;
+  const pixelScale = Math.max(half - LABEL_GUTTER, 1) / platform.r;
   const centre = { x: plot.x + plot.width / 2, y: plot.y + plot.height / 2 };
   return {
     source,
@@ -39,6 +50,23 @@ export function mazeView(frame: FigureFrame, source: TrialSource): MazeView {
       x: centre.x + (point.x - platform.cx) * pixelScale,
       y: centre.y + (point.y - platform.cy) * pixelScale,
     }),
+  };
+}
+
+/**
+ * Where the number for one hole is drawn: on the ray from the platform centre
+ * through the hole, just outside the rim — not just outside the hole. A hole is
+ * inset from the edge, so "hole radius + a few pixels" put the number back
+ * inside the disc, on top of whatever the figure was drawing there. Pure, so
+ * the fit and the placement can be checked without a canvas.
+ */
+export function holeLabelPoint(view: MazeView, hole: Point): Point {
+  const at = view.toFigure(hole);
+  const away = Math.hypot(at.x - view.centre.x, at.y - view.centre.y) || 1;
+  const outward = (view.radius + LABEL_OFFSET) / away;
+  return {
+    x: view.centre.x + (at.x - view.centre.x) * outward,
+    y: view.centre.y + (at.y - view.centre.y) * outward,
   };
 }
 
@@ -120,15 +148,10 @@ export function drawHoleRing(
     }
 
     if (options.holeNumbers !== false) {
-      const away = Math.hypot(at.x - view.centre.x, at.y - view.centre.y) || 1;
-      const outward = (away + holeRadius + 9) / away;
+      const label = holeLabelPoint(view, hole);
       ctx.fillStyle = isTarget ? palette.target : palette.inkSoft;
       ctx.font = figureFont(ANNOTATION_SIZE, isTarget ? 'bold' : 'normal');
-      ctx.fillText(
-        String(hole.holeIndex),
-        view.centre.x + (at.x - view.centre.x) * outward,
-        view.centre.y + (at.y - view.centre.y) * outward,
-      );
+      ctx.fillText(String(hole.holeIndex), label.x, label.y);
     }
   }
   ctx.restore();

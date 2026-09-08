@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { centroidPath, pathRuns, trialSource } from '../../src/viz/data.js';
+import { beginFigure } from '../../src/viz/figure.js';
+import { holeLabelPoint, mazeView } from '../../src/viz/maze-backdrop.js';
+import { ANNOTATION_SIZE } from '../../src/viz/theme.js';
+import { SPATIAL_MARGINS } from '../../src/viz/trial-figure.js';
 import { quadrantOverlayFigure } from '../../src/viz/quadrant-overlay.js';
 import { speedColoredPathFigure } from '../../src/viz/speed-colored-path.js';
 import { timeColoredPathFigure } from '../../src/viz/time-colored-path.js';
@@ -18,6 +22,63 @@ const FIGURES = [
   speedColoredPathFigure,
   quadrantOverlayFigure,
 ];
+
+/*
+ * Hole numbers belong in the margin outside the platform, not on it. Inside the
+ * disc they land on the path, the heat cells and the hole discs themselves, and
+ * the fit has to reserve the space rather than discover it — so both halves are
+ * checked: the placement, and that the placement fits.
+ */
+describe('the hole numbers sit outside the platform', () => {
+  const source = trialSource(data)!;
+
+  function viewFor(spec: { defaultSize: { width: number; height: number } }) {
+    const ctx = fakeContext();
+    const frame = beginFigure(ctx, LIGHT, {
+      title: 'test',
+      defaultSize: spec.defaultSize,
+      margins: SPATIAL_MARGINS,
+    });
+    return { ctx, frame, view: mazeView(frame, source) };
+  }
+
+  it('places every label past the rim and inside the plot rect', () => {
+    for (const figure of FIGURES) {
+      const { frame, view } = viewFor(figure);
+      expect(source.holes).toHaveLength(20);
+      for (const hole of source.holes) {
+        const label = holeLabelPoint(view, hole);
+        const away = Math.hypot(label.x - view.centre.x, label.y - view.centre.y);
+        expect(away, `hole ${hole.holeIndex} of ${figure.id}`).toBeGreaterThan(view.radius);
+        // Inside the plot rect with room for the glyph itself, not merely on it.
+        const room = ANNOTATION_SIZE;
+        expect(label.x, `hole ${hole.holeIndex} of ${figure.id}`).toBeGreaterThanOrEqual(frame.plot.x + room / 2 - room);
+        expect(label.x).toBeLessThanOrEqual(frame.plot.x + frame.plot.width + room);
+        expect(label.y).toBeGreaterThanOrEqual(frame.plot.y - room);
+        expect(label.y).toBeLessThanOrEqual(frame.plot.y + frame.plot.height + room);
+      }
+    }
+  });
+
+  it('draws them where the geometry says, in the figure itself', () => {
+    // The trajectory figure has no colour bar, so every all-digit string it
+    // draws is a hole number and the two can be compared one for one.
+    const ctx = fakeContext();
+    trajectoryFigure.draw(ctx, data, LIGHT);
+    const { view } = viewFor(trajectoryFigure);
+    const drawn = new Map(
+      ctx.texts.filter((entry) => /^\d+$/.test(entry.text)).map((entry) => [entry.text, entry]),
+    );
+    expect(drawn.size).toBe(20);
+    for (const hole of source.holes) {
+      const entry = drawn.get(String(hole.holeIndex))!;
+      const expected = holeLabelPoint(view, hole);
+      expect(entry.x).toBeCloseTo(expected.x, 6);
+      expect(entry.y).toBeCloseTo(expected.y, 6);
+      expect(Math.hypot(entry.x - view.centre.x, entry.y - view.centre.y)).toBeGreaterThan(view.radius);
+    }
+  });
+});
 
 describe('the spatial path figures', () => {
   for (const figure of FIGURES) {
