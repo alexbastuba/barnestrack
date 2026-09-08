@@ -67,6 +67,20 @@ function numberFor(path: string): HTMLInputElement {
   return input;
 }
 
+/** Every block of the panel, each a collapsed disclosure. */
+function allBlocks(): HTMLDetailsElement[] {
+  return [...container.querySelectorAll<HTMLDetailsElement>('details.param-block')];
+}
+
+/** One block, by the title in its summary. */
+function blockNamed(title: string): HTMLDetailsElement {
+  const found = allBlocks().find((node) =>
+    node.querySelector('.block-title')?.textContent?.startsWith(title),
+  );
+  if (!found) throw new Error(`no parameter block titled ${title}`);
+  return found;
+}
+
 describe('every parameter is on screen with its definition', () => {
   it('renders a row for every leaf of Parameters, walked rather than listed', () => {
     mount();
@@ -218,9 +232,7 @@ describe('the thresholds D55 moved into Parameters', () => {
 describe('the tracking block', () => {
   it('is shown in full but has no editable control (D51)', () => {
     mount();
-    const trackingBlock = [...container.querySelectorAll('fieldset')].find((node) =>
-      node.querySelector('legend')?.textContent?.startsWith('Tracking'),
-    )!;
+    const trackingBlock = blockNamed('Tracking');
     expect(trackingBlock).toBeDefined();
     expect(trackingBlock.querySelectorAll('input, select, textarea')).toHaveLength(0);
     expect(trackingBlock.textContent).toContain('needs a new tracking pass');
@@ -408,9 +420,7 @@ describe('reset block to defaults', () => {
     };
     const { onParametersChange } = mount(changed);
 
-    const block = [...container.querySelectorAll('fieldset')].find((node) =>
-      node.querySelector('legend')?.textContent?.startsWith('Hole investigation'),
-    )!;
+    const block = blockNamed('Hole investigation');
     block.querySelector<HTMLButtonElement>('.reset-block')!.click();
     await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
 
@@ -422,10 +432,71 @@ describe('reset block to defaults', () => {
 
   it('is not offered for the read-only tracking block', () => {
     mount();
-    const trackingBlock = [...container.querySelectorAll('fieldset')].find((node) =>
-      node.querySelector('legend')?.textContent?.startsWith('Tracking'),
-    )!;
+    const trackingBlock = blockNamed('Tracking');
     expect(trackingBlock.querySelector('.reset-block')).toBeNull();
+  });
+});
+
+describe('collapsing a block', () => {
+  it('starts every block closed, including the read-only tracking one', () => {
+    mount();
+    expect(allBlocks().length).toBeGreaterThan(1);
+    for (const block of allBlocks()) {
+      expect(block.open, `${block.getAttribute('data-block')} starts open`).toBe(false);
+    }
+    expect(blockNamed('Tracking').open).toBe(false);
+  });
+
+  it('keeps a block the user opened open across an update()', () => {
+    const { panel } = mount();
+    const block = blockNamed('Hole investigation');
+    block.open = true;
+    block.dispatchEvent(new Event('toggle'));
+
+    panel.update({ parameters: { ...parameters, noseConfidenceCutoff: 0.9 } });
+
+    expect(block.isConnected, 'the block was remounted, not updated').toBe(true);
+    expect(block.open).toBe(true);
+    // Every other block is where it was.
+    expect(blockNamed('Trial cutoff').open).toBe(false);
+  });
+
+  it('names the block in its summary, as the group’s own label', () => {
+    mount();
+    const block = blockNamed('Hole investigation');
+    expect(block.getAttribute('role')).toBe('group');
+    const title = block.querySelector('.block-title')!;
+    expect(block.getAttribute('aria-labelledby')).toBe(title.id);
+    expect(title.textContent).toBe('Hole investigation');
+  });
+
+  it('marks a block holding a value off its default, in a word', () => {
+    const changed: Parameters = {
+      ...parameters,
+      holeInvestigation: { ...DEFAULT_PARAMETERS.holeInvestigation, radiusFactor: 2.5 },
+      trialCutoff_s: DEFAULT_PARAMETERS.trialCutoff_s,
+    };
+    mount(changed);
+    const mark = blockNamed('Hole investigation').querySelector<HTMLElement>('.param-changed')!;
+    expect(mark.textContent).toBe('changed');
+    expect(mark.hidden).toBe(false);
+    // A block still on its defaults says nothing.
+    expect(
+      blockNamed('Trial cutoff').querySelector<HTMLElement>('.param-changed')!.hidden,
+    ).toBe(true);
+  });
+
+  it('gains and loses the mark as the value moves, without a remount', async () => {
+    mount({ ...parameters, trialCutoff_s: DEFAULT_PARAMETERS.trialCutoff_s });
+    const mark = blockNamed('Trial cutoff').querySelector<HTMLElement>('.param-changed')!;
+    expect(mark.hidden).toBe(true);
+
+    const input = numberFor('trialCutoff_s');
+    input.value = String(DEFAULT_PARAMETERS.trialCutoff_s + 30);
+    input.dispatchEvent(new Event('input'));
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+    // The panel is driven by its props: the harness feeds the emitted set back.
+    expect(mark.isConnected).toBe(true);
   });
 });
 

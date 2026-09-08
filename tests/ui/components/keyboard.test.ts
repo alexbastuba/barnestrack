@@ -123,16 +123,21 @@ describe('the parameters panel tab order', () => {
     expect(number!.type).toBe('number');
   });
 
-  it('puts the block reset before that block’s rows', () => {
+  it('opens the block first, then its reset, then its rows', () => {
     const { parameters } = mountAll();
-    const block = parameters.querySelector('fieldset')!;
-    expect(focusable(block)[0]!.textContent).toBe('Reset block to defaults');
+    // Every block is a collapsed `<details>`, so its own summary is the first
+    // thing the keyboard reaches: you open the block, then reset or retune it.
+    const block = parameters.querySelector('details.param-block')!;
+    const order = focusable(block);
+    expect(order[0]!.tagName).toBe('SUMMARY');
+    expect(order[0]!.textContent).toContain('Hole investigation');
+    expect(order[1]!.textContent).toBe('Reset block to defaults');
   });
 
   it('leaves the read-only tracking block with only its disclosures in the tab order', () => {
     const { parameters } = mountAll();
-    const tracking = [...parameters.querySelectorAll('fieldset')].find((node) =>
-      node.querySelector('legend')?.textContent?.startsWith('Tracking'),
+    const tracking = [...parameters.querySelectorAll('details.param-block')].find((node) =>
+      node.querySelector('.block-title')?.textContent?.startsWith('Tracking'),
     )!;
     const tags = new Set(focusable(tracking).map((node) => node.tagName));
     expect(tags).toEqual(new Set(['SUMMARY']));

@@ -175,6 +175,14 @@ function markRow(row: Row, messages: readonly string[]): void {
   }
 }
 
+/** One top-level block of the contract, as a collapsible disclosure. */
+interface Block {
+  name: string;
+  paths: readonly ParameterPath[];
+  /** The word in the summary that says a value in this block is off its default. */
+  changed: HTMLElement;
+}
+
 interface Row {
   path: ParameterPath;
   element: HTMLElement;
@@ -196,6 +204,9 @@ export function createParametersPanel(
 
   const paths = parameterPaths(working);
   const rows: Row[] = [];
+  const blocks: Block[] = [];
+  /** The blocks the user has opened this session; not session-file state. */
+  const openBlocks = new Set<string>();
 
   const root = el('section', { class: 'parameters-panel' });
   const headingId = uniqueId('parameters-heading');
@@ -421,7 +432,22 @@ export function createParametersPanel(
     return numberRow(path);
   }
 
-  /** One fieldset per top-level block, in the contract's own order. */
+  /**
+   * One collapsed disclosure per top-level block, in the contract's own order.
+   *
+   * Thirteen blocks open at once is a wall of sliders between the user and the
+   * metrics below, so every block starts closed and the user opens the one they
+   * are retuning. A `<details>` keeps its own open state, and the blocks are
+   * built once and only ever `sync()`ed — never remounted — so a block the user
+   * opened is still open after a re-derive. `openBlocks` records the same thing
+   * for the session so the state is explicitly this component's, and it is
+   * deliberately not written to the session file: which panel a user had open
+   * is not data about the experiment.
+   *
+   * `role="group"` with `aria-labelledby` on the summary's own title keeps the
+   * grouping the `<fieldset>`/`<legend>` gave (D37); the "changed" mark is a
+   * word, so the state never rests on colour (D26).
+   */
   function buildBlocks(): HTMLElement[] {
     const order: string[] = [];
     const grouped = new Map<string, ParameterPath[]>();
@@ -437,11 +463,26 @@ export function createParametersPanel(
     return order.map((block) => {
       const blockPaths = grouped.get(block)!;
       const readOnly = block === 'tracking';
-      const fieldset = el('fieldset', { class: 'param-block' });
-      const legend = el('legend', {
+      const title = el('span', {
+        id: uniqueId('param-block-title'),
+        class: 'block-title',
         text: BLOCK_LABELS[block] ?? labelForPath(blockPaths[0]!),
       });
-      fieldset.append(legend);
+      const changed = el('span', {
+        class: 'param-changed',
+        text: 'changed',
+        attrs: { hidden: true },
+      });
+      const fieldset = el('details', {
+        class: 'param-block',
+        attrs: { role: 'group', 'aria-labelledby': title.id, 'data-block': block },
+      });
+      fieldset.append(el('summary', {}, [title, changed]));
+      fieldset.addEventListener('toggle', () => {
+        if (fieldset.open) openBlocks.add(block);
+        else openBlocks.delete(block);
+      });
+      blocks.push({ name: block, paths: blockPaths, changed });
 
       if (readOnly) {
         fieldset.classList.add('is-readonly');
@@ -477,6 +518,16 @@ export function createParametersPanel(
 
   function render(): void {
     for (const row of rows) row.sync();
+    // Structural, not `!==`: a tracking leaf is an object or an array, and two
+    // equal exclude-range lists are different references on every re-derive.
+    for (const block of blocks) {
+      const changed = block.paths.some(
+        (path) =>
+          JSON.stringify(parameterAt(working, path)) !==
+          JSON.stringify(parameterAt(DEFAULT_PARAMETERS, path)),
+      );
+      block.changed.hidden = !changed;
+    }
     badge.textContent = describeDiff(current.previous, current.next);
   }
 
