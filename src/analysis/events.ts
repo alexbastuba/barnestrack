@@ -697,42 +697,20 @@ export function detectAutoEvents(
 // parameter changes, matched deterministically.
 // ---------------------------------------------------------------------------
 
-const AUTO_ID = /^auto-(investigation|escape_entry|tracking_failure)-h(\d+|x)-f(\d+)$/;
-
-function parseAutoId(
-  id: string,
-): { kind: EventKind; hole: number | null; startFrame: number } | null {
-  const m = AUTO_ID.exec(id);
-  if (!m) return null;
-  return {
-    kind: m[1] as EventKind,
-    hole: m[2] === 'x' ? null : Number(m[2]),
-    startFrame: Number(m[3]),
-  };
-}
-
 /**
- * Exact id first; otherwise the automatic event of the same kind and hole
- * whose frame span contains the start frame named in the id (an edit also
- * matches an overlap with its own new span); the earliest such event wins.
+ * A correction addresses exactly the event whose id it names (A3, trust audit).
+ *
+ * Nothing else: an automatic id encodes a kind, a hole and a start frame, and a
+ * threshold change can move an event onto the frame a *different* correction
+ * names. Matching by span made the correction re-attach there, so one visit was
+ * exported twice and an event the user never touched came back labelled
+ * `corrected`. When the named event is gone the correction is pinned instead,
+ * and `applyEventCorrections` raises a review flag if the pinned span lands on
+ * an automatic event, which stays automatic.
  */
 function matchEvent(events: readonly EventRecord[], c: EventCorrection): EventRecord | null {
   if (c.eventId === undefined) return null;
-  const exact = events.find((e) => e.id === c.eventId);
-  if (exact) return exact;
-  const parsed = parseAutoId(c.eventId);
-  if (!parsed) return null;
-  const candidates = events
-    .filter((e) => e.source === 'auto' && e.kind === parsed.kind && e.holeIndex === parsed.hole)
-    .filter((e) => {
-      if (e.startFrame <= parsed.startFrame && parsed.startFrame <= e.endFrame) return true;
-      if (c.action === 'edit' && c.startFrame !== undefined && c.endFrame !== undefined) {
-        return e.startFrame <= c.endFrame && c.startFrame <= e.endFrame;
-      }
-      return false;
-    })
-    .sort((x, y) => x.startFrame - y.startFrame);
-  return candidates[0] ?? null;
+  return events.find((e) => e.id === c.eventId) ?? null;
 }
 
 export interface CorrectedEvents {
@@ -851,6 +829,21 @@ export function applyEventCorrections(
       ),
       source: 'corrected',
     };
+    if (target === null) {
+      // A3: the pinned correction keeps its own id and its own values. If its span happens to sit
+      // on an automatic event, say so — both ids — rather than quietly counting the visit twice.
+      const overlapping = events.filter(
+        (x) => x.source === 'auto' && x.startFrame <= ev.endFrame && ev.startFrame <= x.endFrame,
+      );
+      if (overlapping.length > 0) {
+        flags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          eventId: c.eventId,
+          message: `Event correction ${c.id} edits event ${c.eventId ?? '(none)'}, which no longer exists under the current parameters; its values are kept as pinned over frames ${ev.startFrame}–${ev.endFrame}, where the automatic event${overlapping.length === 1 ? '' : 's'} ${overlapping.map((x) => x.id).join(', ')} also sit${overlapping.length === 1 ? 's' : ''}. Those stay automatic and are counted separately: check whether the correction still belongs here.`,
+        });
+      }
+    }
     if (target !== null) {
       // a pinned orphan (corrected, no automatic values) stays without autoShadow: user values are never labelled automatic
       const shadow =

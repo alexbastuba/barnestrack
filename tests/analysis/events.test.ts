@@ -575,7 +575,7 @@ describe('event corrections (D20, D25)', () => {
     return { ...result, auto };
   }
 
-  it('deletes by exact id, and by a stale id whose start frame falls inside the same kind and hole', () => {
+  it('deletes by exact id only: a stale id never removes a different event (A3)', () => {
     const { auto } = run(script);
     const first = auto.events[0]!;
     const exact = corrected([
@@ -601,7 +601,86 @@ describe('event corrections (D20, D25)', () => {
         eventId: autoEventId('investigation', 3, first.startFrame + 3),
       },
     ]);
-    expect(kinds(stale.events)).toEqual(['investigation@5', 'investigation@3']);
+    // the id names a frame inside the same kind and hole, but no event carries it: nothing is
+    // removed, and the correction is reported rather than silently re-aimed
+    expect(kinds(stale.events)).toEqual(['investigation@3', 'investigation@5', 'investigation@3']);
+    expect(stale.applied).toBe(0);
+    expect(stale.flags.map((f) => f.code)).toEqual(['orphaned_correction']);
+  });
+
+  it('never re-attaches an event edit to a different automatic event (A3)', () => {
+    // The trust audit's a11 scenario, scripted: two bouts at hole 3 with a 0.8 s gap are two
+    // investigations at the 0.5 s merge gap and one merged event — with a different id — at a
+    // wider one. The user edits the second bout; changing the threshold must not hand that edit
+    // to the merged event, which the user never touched.
+    const twoBouts: Segment[] = [
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.4 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.4 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+    ];
+    const wide: Parameters = {
+      ...DEFAULT_PARAMETERS,
+      holeInvestigation: { ...DEFAULT_PARAMETERS.holeInvestigation, mergeGap_s: 5 },
+    };
+    const split = run(twoBouts);
+    expect(kinds(split.auto.events)).toEqual(['investigation@3', 'investigation@3']);
+    const first = split.auto.events[0]!;
+    const second = split.auto.events[1]!;
+    const merged = run(twoBouts, { p: wide });
+    expect(kinds(merged.auto.events)).toEqual(['investigation@3']);
+    expect(merged.auto.events[0]!.id).toBe(first.id);
+    expect(merged.auto.events[0]!.id).not.toBe(second.id);
+    expect(merged.auto.events[0]!.endFrame).toBeGreaterThanOrEqual(second.startFrame);
+
+    const edit = deepFreeze<CorrectionsLayer>({
+      entries: [
+        {
+          id: 'c1',
+          kind: 'event',
+          timestamp: at(1),
+          source: 'user',
+          action: 'edit',
+          eventId: second.id,
+          holeIndex: 4,
+          startFrame: second.startFrame,
+          endFrame: second.endFrame,
+        },
+      ],
+    });
+
+    // under the wider merge gap the edited event is gone: pinned, never re-aimed
+    const pinned = applyEventCorrections(
+      merged.ctx,
+      deepFreeze(merged.auto.events),
+      edit,
+      merged.auto.endFrame,
+    );
+    const pinnedCorrected = pinned.events.filter((e) => e.source === 'corrected');
+    const pinnedAuto = pinned.events.filter((e) => e.source === 'auto');
+    expect(pinnedCorrected).toHaveLength(1);
+    expect(pinnedCorrected[0]!.id).toBe(second.id);
+    expect(pinnedCorrected[0]!.holeIndex).toBe(4);
+    expect(pinnedCorrected[0]!.autoShadow).toBeUndefined();
+    expect(pinnedAuto.map((e) => `${e.id}@${e.holeIndex}`)).toEqual([`${first.id}@3`]);
+    // the overlap is reported, naming both ids, and the automatic event stays automatic
+    expect(pinned.flags.map((f) => f.code)).toEqual(['orphaned_correction']);
+    expect(pinned.flags[0]!.message).toContain(second.id);
+    expect(pinned.flags[0]!.message).toContain(first.id);
+
+    // and back at the default the edit finds its own event again, with no flag
+    const back = applyEventCorrections(
+      split.ctx,
+      deepFreeze(split.auto.events),
+      edit,
+      split.auto.endFrame,
+    );
+    expect(back.events.filter((e) => e.source === 'corrected').map((e) => e.id)).toEqual([
+      second.id,
+    ]);
+    expect(back.events.filter((e) => e.source === 'auto').map((e) => e.id)).toEqual([first.id]);
+    expect(back.flags).toEqual([]);
   });
 
   it('flags an orphaned delete instead of resurrecting or ignoring silently', () => {

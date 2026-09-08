@@ -338,11 +338,14 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   so the approach investigation ends where the run begins.
 - **Event ids and correction matching.** Automatic ids are deterministic from content:
   `auto-<kind>-h<holeIndex|x>-f<startFrame>`; user-added events are `user-<correctionId>`. An event
-  correction matches its automatic event by exact id first; otherwise by the automatic event of the
-  same kind and hole whose frame span contains the start frame named in the id (an `edit` also
-  matches an overlap with its own new span); otherwise it is orphaned — an orphaned `edit` still
-  produces its corrected event, pinned, without `autoShadow`; an orphaned `delete` is reported as a
-  review flag, never a silent resurrection. Corrections apply in `timestamp` then `id` order.
+  correction matches its automatic event by **exact id only** (A3, D25): an id encodes a start
+  frame, and a threshold change can move a different event onto it, so a span fallback made a
+  correction re-attach to an event the user never touched. Anything else is orphaned — an orphaned
+  `edit` still produces its corrected event, pinned, keeping its own id and without `autoShadow`,
+  and if that pinned span overlaps an automatic event the derived layer raises an
+  `orphaned_correction` review flag naming both ids while the automatic event stays automatic; an
+  orphaned `delete` is reported as a review flag, never a silent resurrection. Corrections apply in
+  `timestamp` then `id` order.
 - **Durations.** For every event kind `durationSeconds = endTime_s − startTime_s`, first to last
   frame of the event; the O1 and O4 minimum-duration tests use the same quantity. A quality-report
   gap's `durationSeconds` is the time between the positioned frames either side of it (the

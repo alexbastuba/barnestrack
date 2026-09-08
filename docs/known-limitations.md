@@ -165,11 +165,12 @@ session it is found (D39).
   hole 13". Picking the option with the arrows or the mouse avoids it. A fix would apply on blur or
   after a short pause.
 - **A parameter change can orphan an event correction.** Event corrections address automatic
-  events by an id made of kind, hole and start frame, matched exactly or by span (see
+  events by an id made of kind, hole and start frame, matched by exact id only since A3 (see
   `docs/data-contracts.md` §6). A change that moves an event away from the frame named in the id,
   or removes it, orphans the correction: an orphaned edit stays pinned as a corrected event
-  without `autoShadow`; an orphaned delete is reported as a review flag and the automatic event
-  stands. Unpinning is the user's action of removing the correction.
+  without `autoShadow`, and if its span overlaps an automatic event both ids are named in an
+  `orphaned_correction` review flag; an orphaned delete is reported as a review flag and the
+  automatic event stands. Unpinning is the user's action of removing the correction.
 - **Repeat visits split at the merge-gap boundary.** Bouts at the same hole 0.53 s apart are two
   investigations under the 0.5 s default (test51, hole 12): the repeat-visit count is sensitive to
   the merge gap near its own value. The gap is a visible O1 parameter.
