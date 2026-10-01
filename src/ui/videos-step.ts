@@ -310,7 +310,7 @@ export function createVideosStep(context: AppContext): Step {
         render();
         context.showStep('videos');
       },
-      { class: 'remove' },
+      { class: 'btn-quiet remove' },
     );
 
     const root = el('li', { class: 'video-card' }, [

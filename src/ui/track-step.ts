@@ -234,12 +234,12 @@ function createVideoCard(context: AppContext, videoId: VideoId, runner: Tracking
 
   const trackButton = button('Track', () => {
     runner.enqueue(videoId);
-  });
+  }, { class: 'btn-quiet' });
   // So a disabled button says why, not just that it is disabled.
   trackButton.setAttribute('aria-describedby', blockedNote.id);
   const cancelButton = button('Cancel', () => {
     runner.cancel(videoId);
-  });
+  }, { class: 'btn-quiet' });
 
   const progressText = el('p', {
     class: 'track-progress-text',

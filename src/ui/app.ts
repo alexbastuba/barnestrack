@@ -72,7 +72,7 @@ export function mountApp(
     const tab = el(
       'button',
       {
-        class: 'step-tab',
+        class: 'btn-quiet step-tab',
         id: `tab-${step.id}`,
         attrs: {
           role: 'tab',
@@ -249,7 +249,7 @@ export function mountApp(
   const confirmButton = button('Yes, reset everything', () => {
     void doReset();
   }, { class: 'btn-secondary danger' });
-  const cancelButton = button('Cancel', () => closeConfirm(true));
+  const cancelButton = button('Cancel', () => closeConfirm(true), { class: 'btn-quiet' });
   confirmRow.append(
     el('span', { class: 'confirm-text', text: 'Delete every video, the maze and all corrections?' }),
     confirmButton,

@@ -81,9 +81,9 @@ export class CanvasView {
 
     this.zoomReadout = el('span', { class: 'zoom-readout', text: '100 %' });
     const controls = el('div', { class: 'view-controls' }, [
-      button('Zoom in', () => this.zoomByStep(BUTTON_ZOOM_STEP), { attrs: { 'aria-label': 'Zoom in' } }),
-      button('Zoom out', () => this.zoomByStep(1 / BUTTON_ZOOM_STEP), { attrs: { 'aria-label': 'Zoom out' } }),
-      button('Fit', () => this.fit()),
+      button('Zoom in', () => this.zoomByStep(BUTTON_ZOOM_STEP), { class: 'btn-quiet', attrs: { 'aria-label': 'Zoom in' } }),
+      button('Zoom out', () => this.zoomByStep(1 / BUTTON_ZOOM_STEP), { class: 'btn-quiet', attrs: { 'aria-label': 'Zoom out' } }),
+      button('Fit', () => this.fit(), { class: 'btn-quiet' }),
       this.zoomReadout,
       el('span', {
         class: 'hint',

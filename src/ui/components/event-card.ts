@@ -115,7 +115,7 @@ export function createEventCard(
 ): Component<EventCardProps> {
   let current = props;
 
-  const card = el('button', { class: 'event-card' });
+  const card = el('button', { class: 'btn-quiet event-card' });
   card.type = 'button';
   card.addEventListener('click', () => {
     callbacks.onSeek(current.event.startFrame);
@@ -134,7 +134,7 @@ export function createEventCard(
   function render(): void {
     const { event, flags } = current;
     const corrected = event.source === 'corrected';
-    card.className = `event-card${corrected ? ' is-corrected' : ''}`;
+    card.className = `btn-quiet event-card${corrected ? ' is-corrected' : ''}`;
 
     // The trailing spaces are not decoration: this text is the button's
     // accessible name, and without them a screen reader reads

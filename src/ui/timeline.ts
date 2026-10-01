@@ -169,9 +169,9 @@ export class Timeline {
     this.zoomReadout = el('span', { class: 'zoom-readout' });
 
     const controls = el('div', { class: 'timeline-controls' }, [
-      button('Zoom in', () => this.zoomBy(ZOOM_STEP), { attrs: { 'aria-label': 'Zoom the timeline in' } }),
-      button('Zoom out', () => this.zoomBy(1 / ZOOM_STEP), { attrs: { 'aria-label': 'Zoom the timeline out' } }),
-      button('Whole clip', () => this.zoomFit()),
+      button('Zoom in', () => this.zoomBy(ZOOM_STEP), { class: 'btn-quiet', attrs: { 'aria-label': 'Zoom the timeline in' } }),
+      button('Zoom out', () => this.zoomBy(1 / ZOOM_STEP), { class: 'btn-quiet', attrs: { 'aria-label': 'Zoom the timeline out' } }),
+      button('Whole clip', () => this.zoomFit(), { class: 'btn-quiet' }),
       this.zoomReadout,
       el('div', { class: 'field timeline-window-field' }, [
         el('label', { text: 'Window start (frame)', attrs: { for: this.windowRange.id } }),
