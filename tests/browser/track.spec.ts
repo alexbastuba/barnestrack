@@ -111,7 +111,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('a generated maze clip, decode → track → analyse → export', () => {
-  test.skip(!ffmpegHasLibx264(), SKIP_REASON);
+  // Skips on a machine without ffmpeg, never in CI: there the job installs it,
+  // and a skip would turn the one end-to-end tracking check green by omission.
+  test.skip(!ffmpegHasLibx264() && process.env['CI'] === undefined, SKIP_REASON);
   let clip: SyntheticMazeClip;
   test.beforeAll(() => {
     clip = encodeSyntheticMazeClip();
