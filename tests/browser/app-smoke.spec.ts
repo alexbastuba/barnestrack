@@ -12,11 +12,12 @@
  *    These run today.
  *
  * 2. **The whole flow, against `npm run preview` of the built `dist/`.** Load
- *    the example cohort, read metrics and figures with no video attached, move
- *    a threshold and watch the event count change, download the export bundle,
- *    reload and find the session still there. This is what §4 asks for; it is
- *    skipped with a message naming the missing mount until chunks 6 and 9c are
- *    merged, and needs no edit when they are.
+ *    the example cohort by its results-only button, read a metric with no
+ *    video attached, keep an event from the keyboard, move a threshold and
+ *    watch the event count and the diff badge change, download the export
+ *    bundle and read the ZIP, then reload once the autosave has landed and find
+ *    the session and the correction still there. Skips only when `dist/` has
+ *    not been built; CI builds it first.
  *
  * Both servers are started here rather than in `playwright.config.ts`: that
  * config is shared with the other specs and outside this chunk's boundary.
@@ -35,6 +36,9 @@ import { expect, test, type Page } from '@playwright/test';
 // The label the panel actually renders, so renaming the button breaks the
 // locator rather than quietly widening the skip below.
 import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
+import { hashParameters } from '../../src/analysis/parameters.js';
+import type { Parameters } from '../../src/contracts/parameters.js';
+import { column, csvRows, downloadBundle } from './bundle-download.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -414,35 +418,42 @@ test.describe('the example cohort, driven through the loader module', () => {
   });
 });
 
+/** The six entries of D11, in the order `buildExportBundle` writes them. */
+const BUNDLE_ENTRIES = [
+  'trials.csv',
+  'events.csv',
+  'quality.csv',
+  'parameters.json',
+  'Example cohort.barnestrack.json',
+  'barnestrack_export.xlsx',
+];
+
+/** The identifier columns `trials.csv` opens with (docs/data-contracts.md §7, D11). */
+const TRIAL_IDENTITY_COLUMNS = ['session_id', 'video_id', 'animal', 'day', 'trial_label', 'group'];
+
+/** The one `.empty` the example cohort shows on purpose: test50 has no gap in its trial window. */
+const EXPECTED_VISIBLE_EMPTY = ['No gaps in the trial window: every frame was positioned.'];
+
 test.describe('the whole demo flow through the shipped UI', () => {
   test.skip(!distBuilt, 'no dist/ — run `npm run build` first');
-  // CI builds dist/ before Playwright, so this stopped skipping when 7b landed
-  // and has been red since. The assertions after the Review tab were written
-  // against selectors that never shipped; retuning them is 9c-b's un-skip work.
-  // Both stale selectors are named in docs/known-limitations.md.
-  test.skip(true, 'the assertions after the Review tab were written against selectors that never shipped; retuning them is 9c-b\'s un-skip work');
 
-  test('load, review, retune, export, reload', async ({ page }) => {
-    // The consent dialog's Confirm fetches all three clips from GitHub. This
-    // suite must not depend on the network (D2), so the requests are refused
-    // here; the offline path is covered in tests/ui/example-cohort-dialog.test.ts.
-    await page.route('https://raw.githubusercontent.com/**', (route) => route.abort());
+  test('load, review, correct, retune, export, reload', async ({ page }) => {
+    // The results-only path makes no request at all (D2, D33). The route is a
+    // tripwire, not a stub: anything reaching the sample-data repository is
+    // recorded and fails the run below.
+    const networkRequests: string[] = [];
+    await page.route('https://raw.githubusercontent.com/**', (route) => {
+      networkRequests.push(route.request().url());
+      return route.abort();
+    });
     await page.goto(PREVIEW_URL);
     await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
     await clearStoredSession(page);
     await page.reload();
 
-    const loadButton = page.getByRole('button', { name: LOAD_BUTTON_LABEL });
-    if ((await loadButton.count()) === 0) {
-      test.skip(
-        true,
-        'mountExampleCohortPanel is not mounted into src/ui/videos-step.ts, so there is no ' +
-          '"Load example cohort" button in the built app.',
-      );
-    }
-    await loadButton.click();
-    // Chunk 10b: consent to the one network request before it is made (D2).
-    await page.locator('.example-dialog .primary').click();
+    // 1. The example cohort, through the button and the "results only" choice.
+    await page.getByRole('button', { name: LOAD_BUTTON_LABEL }).click();
+    await page.getByRole('button', { name: 'Load the results only' }).click();
     await expect(page.locator('.video-card')).toHaveCount(3);
     await expect(page.locator('.video-card .badge')).toHaveText([
       'video not attached',
@@ -450,60 +461,101 @@ test.describe('the whole demo flow through the shipped UI', () => {
       'video not attached',
     ]);
 
-    // Review renders every result with no video attached.
+    // 2. A metric of the first trial, read with no video attached.
     await page.getByRole('tab', { name: /Review/ }).click();
     const reviewPanel = page.locator('#panel-review');
     await expect(reviewPanel).toBeVisible();
-
-    // Everything from here is chunk 7b's: the parameters panel to retune, the
-    // live event count to watch, and the export button — which 7b ships as
-    // "Export bundle (.zip)". Chunk 9c-a mounted the loader while 7b was still
-    // in flight, which un-skipped this test through the guard above, so the
-    // skip moved here rather than letting it fail on 7b's absence. Chunk 9c-b
-    // deletes this block once 7b is merged.
-    if ((await reviewPanel.getByRole('button', { name: /Export bundle/i }).count()) === 0) {
-      test.skip(
-        true,
-        "chunk 7b's Review export has not landed, so there is no \"Export bundle\" button to " +
-          'download and no live event count to retune against. Chunk 9c-b un-skips this after ' +
-          '7b is merged.',
-      );
-    }
-
-    await expect(reviewPanel.locator('.empty')).toHaveCount(0);
+    const primaryErrors = page
+      .locator('#review-metrics .metric-row')
+      .filter({ has: page.locator('.metric-name', { hasText: /^Primary errors$/ }) })
+      .locator('.metric-value');
+    await expect(primaryErrors).toHaveText(/^\d+$/);
+    const errorsBefore = Number(await primaryErrors.textContent());
+    console.log(`shipped UI: vid_01 primary errors ${errorsBefore} with no video attached`);
     await expect(reviewPanel.locator('canvas').first()).toBeVisible();
 
-    // A threshold change moves the event count (D20).
-    const eventCount = reviewPanel.locator('[data-testid="event-count"]').first();
-    const before = await eventCount.textContent();
-    const radiusFactor = page.getByLabel(/radius factor/i).first();
+    // Every `.empty` placeholder on the page is hidden, bar the one that is
+    // content: the quality panel's "no gaps" line for a gap-free trial.
+    const visibleEmpty = await page
+      .locator('.empty')
+      .evaluateAll((nodes) =>
+        nodes
+          .filter((node) => (node as HTMLElement).getClientRects().length > 0)
+          .map((node) => node.textContent ?? ''),
+      );
+    expect(visibleEmpty).toEqual(EXPECTED_VISIBLE_EMPTY);
+
+    // 3. Select an event from the keyboard and keep it: one more correction.
+    const corrections = page.locator('#panel-review .corrections-list li');
+    const correctionsBefore = await corrections.count();
+    await page.locator('#panel-review .timeline-surface').focus();
+    await page.keyboard.press('e');
+    await expect(page.locator('#review-events-mirror tbody tr.is-selected')).toHaveCount(1);
+    await page.keyboard.press('k');
+    await expect(corrections).toHaveCount(correctionsBefore + 1);
+    await expect(corrections.last()).toContainText('confirmed by the user, no change');
+    const keptEvent = /Event (\S+) confirmed by the user/.exec((await corrections.last().textContent()) ?? '')?.[1];
+    expect(keptEvent).toBeDefined();
+    console.log(`shipped UI: kept ${keptEvent} with K; corrections ${correctionsBefore} → ${correctionsBefore + 1}`);
+
+    // 4. A threshold through the parameters panel: the block opens first.
+    const qualityHash = page
+      .locator('#review-quality .metric-note')
+      .filter({ hasText: /^Parameters hash: / });
+    const hashBefore = await qualityHash.textContent();
+    const eventCount = reviewPanel.locator('.event-count');
+    const countBefore = await eventCount.textContent();
+    const badge = reviewPanel.locator('#review-parameters .diff-badge');
+    const badgeBefore = await badge.textContent();
+    const block = page.locator('#review-parameters details.param-block[data-block="holeInvestigation"]');
+    // `:scope >`: each row inside carries its own "Definition" disclosure.
+    await block.locator(':scope > summary').click();
+    await expect(block).toHaveAttribute('open', '');
+    const radiusFactor = block.getByLabel('Radius factor', { exact: true });
     await radiusFactor.fill('3');
     await radiusFactor.blur();
-    await expect(eventCount).not.toHaveText(before ?? '');
+    await expect(eventCount).not.toHaveText(countBefore ?? '');
+    await expect(qualityHash).not.toHaveText(hashBefore ?? '');
+    await expect(badge).not.toHaveText(badgeBefore ?? '');
+    await expect(badge).toHaveText(/\S/);
+    console.log(`shipped UI: event count "${countBefore}" → "${await eventCount.textContent()}"`);
+    console.log(`shipped UI: diff badge "${await badge.textContent()}"`);
+    const errorsAfter = Number(await primaryErrors.textContent());
 
-    // The export bundle carries the six files of D11.
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      // Chunk 7b's button, which did not exist when this spec was written.
-      page.getByRole('button', { name: /Export bundle \(\.zip\)/i }).click(),
-    ]);
-    const zipPath = await download.path();
-    const { readFileSync } = await import('node:fs');
-    // Entry names are stored uncompressed in the local headers, so the six
-    // files of D11 are readable without unpacking the archive.
-    const zipText = readFileSync(zipPath).toString('latin1');
-    for (const name of [
-      'trials.csv',
-      'events.csv',
-      'quality.csv',
-      'parameters.json',
-      'barnestrack_export.xlsx',
-      '.barnestrack.json',
-    ]) {
-      expect(zipText, `${name} missing from the export bundle`).toContain(name);
-    }
+    // 5. The bundle the browser downloads, opened and read.
+    const bundle = await downloadBundle(page);
+    console.log(`shipped UI: ${bundle.zipName} holds ${JSON.stringify([...bundle.entries.keys()])}`);
+    expect([...bundle.entries.keys()]).toEqual(BUNDLE_ENTRIES);
+    const trials = csvRows(bundle.text('trials.csv'));
+    console.log(`shipped UI: trials.csv header ${trials[0]!.join(',')}`);
+    expect(trials[0]!.slice(0, TRIAL_IDENTITY_COLUMNS.length)).toEqual(TRIAL_IDENTITY_COLUMNS);
+    expect(trials.slice(1)).toHaveLength(3);
 
+    // parameters.json is the parameter set itself (data-contracts §7), so its
+    // hash is reconciled here rather than read from a field: the set shipped in
+    // the ZIP hashes to every row's parameters_hash and to the hash on screen.
+    const shownHash = (await qualityHash.textContent())!.replace('Parameters hash: ', '');
+    const parametersJson = JSON.parse(bundle.text('parameters.json')) as Parameters;
+    expect(hashParameters(parametersJson)).toBe(shownHash);
+    expect(column(trials, 'parameters_hash')).toEqual([shownHash, shownHash, shownHash]);
+    for (const version of column(trials, 'tool_version')) expect(version).toMatch(/^barnestrack v\d+\.\d+\.\d+/);
+    // The number on screen is the number in the file.
+    expect(column(trials, 'primary_errors')[0]).toBe(String(errorsAfter));
+    expect(networkRequests).toEqual([]);
+
+    // 6. Reload once the autosave has landed (§1.2): the header's settled
+    // signal, driven by the store's autosaveState. The correction is compared
+    // as it reads now, after the retune: a parameter change can orphan an event
+    // correction (docs/known-limitations.md), and the list says so.
+    const correctionBeforeReload = await corrections.last().textContent();
+    expect(correctionBeforeReload).toContain(`Event ${keptEvent} confirmed by the user`);
+    await expect(page.locator('.save-state.is-saved')).toBeVisible({ timeout: 30_000 });
     await page.reload();
     await expect(page.locator('.video-card')).toHaveCount(3, { timeout: 30_000 });
+    await expect(page.locator('#session-name')).toHaveValue('Example cohort');
+    await page.getByRole('tab', { name: /Review/ }).click();
+    await expect(corrections).toHaveCount(correctionsBefore + 1);
+    await expect(corrections.last()).toHaveText(correctionBeforeReload ?? '');
+    await expect(qualityHash).toHaveText(`Parameters hash: ${shownHash}`);
   });
 });
