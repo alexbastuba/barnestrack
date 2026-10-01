@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import AxeBuilder from '@axe-core/playwright';
 import { chromium, type Page } from '@playwright/test';
 import { LOAD_BUTTON_LABEL } from '../src/demo/example-cohort-ui.js';
 
@@ -58,6 +59,8 @@ interface Measurement {
   primaryVisibleWithoutScroll: boolean;
   buttonsWithoutTier: string[];
   buttonsWithSeveralTiers: string[];
+  /** axe `color-contrast` failures on the whole page (D70: ≥ 4.5:1 for text). */
+  contrastFailures: string[];
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
@@ -111,12 +114,17 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
     },
     { step, tiers: TIERS },
   );
+  const contrast = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
+  const contrastFailures = contrast.violations.flatMap((violation) =>
+    violation.nodes.map((node) => `${node.target.join(' ')} · ${node.failureSummary?.split('\n').pop()?.trim() ?? ''}`),
+  );
   return {
     step,
     size,
     zoom,
     file,
     ...facts,
+    contrastFailures,
     primaryVisibleWithoutScroll: facts.primaries.some((primary) => !primary.disabled && primary.inViewport),
   };
 }
@@ -204,6 +212,7 @@ async function main(): Promise<void> {
         `primaries [${primaries}]`,
         r.buttonsWithoutTier.length > 0 ? `UNTIERED ${JSON.stringify(r.buttonsWithoutTier)}` : '',
         r.buttonsWithSeveralTiers.length > 0 ? `MULTI-TIER ${JSON.stringify(r.buttonsWithSeveralTiers)}` : '',
+        `contrast failures: ${r.contrastFailures.length}`,
       ]
         .filter((part) => part !== '')
         .join(' · '),
