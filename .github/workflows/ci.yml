@@ -38,9 +38,13 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      # track.spec.ts encodes its maze clip with ffmpeg and libx264 (D35);
+      # Ubuntu's ffmpeg package pulls in libx264.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - run: npm ci
 
-      # The spec serves the built dist/ as well as the dev server.
+      # app-smoke.spec.ts serves the built dist/ as well as the dev server.
       - run: npm run build
 
       # `channel: 'chrome'` drives the installed Google Chrome, never a
@@ -52,11 +56,13 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Google Chrome is not installed on this runner; the browser smoke test was skipped."
+            echo "::notice::Google Chrome is not installed on this runner; the browser smoke tests were skipped."
           fi
 
+      # The shipped-UI flow on the example cohort, and a generated clip through
+      # decode → track → analyse → export. A red spec fails this job and the run.
       - if: steps.chrome.outputs.present == 'true'
-        run: npx playwright test tests/browser/app-smoke.spec.ts
+        run: npm run test:browser:ci
 
       - if: always()
         uses: actions/upload-artifact@v4
