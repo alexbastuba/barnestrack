@@ -1490,7 +1490,7 @@ label {
 .figure-caption,
 .figure-note,
 .figure-missing,
-.export-contents {
+.export-meta dd {
   overflow-wrap: break-word;
 }
 
@@ -2187,8 +2187,45 @@ button.metric-value:hover:not(:disabled) {
   max-width: 44rem;
 }
 
-.export-contents {
-  margin: var(--s2) 0;
+/*
+ * The manifest (D70): which ZIP, which build, which parameters — then one row
+ * per file. The hash is 64 characters with no break point, so it may break
+ * anywhere rather than push the step sideways at 200 % zoom (D37).
+ */
+.export-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s1) var(--s3);
+  margin: 0 0 var(--s3);
+  font-size: var(--t-sm);
+}
+
+.export-meta dt {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.export-meta dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.export-meta code {
+  overflow-wrap: anywhere;
+}
+
+.manifest-scroll {
+  max-height: none;
+  margin-bottom: var(--s3);
+}
+
+.manifest-table thead th:last-child,
+.manifest-table td.manifest-contents {
+  text-align: left;
+}
+
+.manifest-table td.manifest-contents {
+  max-width: 60ch;
 }
 
 .export-blocked {
