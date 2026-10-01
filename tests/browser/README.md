@@ -72,8 +72,9 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   the reload finds 0 cards. It skips only when `dist/` is missing. The axe scan covers every step
   that renders (Videos, Maze, Track) and fails on `serious`/`critical` only; `KNOWN_VIOLATIONS` is
   **empty** since chunk 10b fixed the maze step's scroll container, so any serious or critical
-  finding fails the run. It makes no network request: the results-only path never fetches, and a
-  `page.route` tripwire on `raw.githubusercontent.com` fails the flow if anything tries; the fetch
+  finding fails the run. It makes no network request: the results-only path never fetches, every
+  request off the preview origin is recorded and fails the flow, and `raw.githubusercontent.com` is
+  refused outright; the fetch
   verifier is covered offline in `tests/demo/fetch-sample-clip.test.ts`, and the one live check
   there is opt-in through `BARNESTRACK_NET_TEST=1` (D2).
 

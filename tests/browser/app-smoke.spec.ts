@@ -438,14 +438,16 @@ test.describe('the whole demo flow through the shipped UI', () => {
   test.skip(!distBuilt, 'no dist/ — run `npm run build` first');
 
   test('load, review, correct, retune, export, reload', async ({ page }) => {
-    // The results-only path makes no request at all (D2, D33). The route is a
-    // tripwire, not a stub: anything reaching the sample-data repository is
-    // recorded and fails the run below.
+    // The results-only path makes no request off the page's own origin (D2,
+    // D33). Every other request is recorded and fails the run below; the
+    // sample-data repository is also refused outright, so a regression cannot
+    // download three clips before the assertion catches it.
     const networkRequests: string[] = [];
-    await page.route('https://raw.githubusercontent.com/**', (route) => {
-      networkRequests.push(route.request().url());
-      return route.abort();
+    page.on('request', (request) => {
+      const url = request.url();
+      if (!url.startsWith(PREVIEW_URL) && !/^(data|blob):/.test(url)) networkRequests.push(url);
     });
+    await page.route('https://raw.githubusercontent.com/**', (route) => route.abort());
     await page.goto(PREVIEW_URL);
     await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
     await clearStoredSession(page);
@@ -494,6 +496,9 @@ test.describe('the whole demo flow through the shipped UI', () => {
     await page.keyboard.press('k');
     await expect(corrections).toHaveCount(correctionsBefore + 1);
     await expect(corrections.last()).toContainText('confirmed by the user, no change');
+    // Matched to its automatic event under the parameters it was made with; the
+    // retune below orphans it, and the reload check compares that state.
+    await expect(corrections.last()).not.toContainText('no longer matches');
     const keptEvent = /Event (\S+) confirmed by the user/.exec((await corrections.last().textContent()) ?? '')?.[1];
     expect(keptEvent).toBeDefined();
     console.log(`shipped UI: kept ${keptEvent} with K; corrections ${correctionsBefore} → ${correctionsBefore + 1}`);
