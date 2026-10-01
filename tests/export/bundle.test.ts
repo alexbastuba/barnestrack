@@ -6,29 +6,10 @@ import { buildExportBundle, exportZipName, XLSX_FILE_NAME } from '../../src/expo
 import { trialRows } from '../../src/export/rows.js';
 import { parseSessionDocument } from '../../src/session/session-file.js';
 import { FIXTURE_PARAMETERS, syntheticSession } from '../fixtures/synthetic-analysis.js';
+import { entriesOf } from './zip-entries.js';
 
 const session = syntheticSession();
 const NOW = new Date('2026-09-06T11:30:00Z');
-
-async function entriesOf(zip: Blob): Promise<Map<string, Uint8Array>> {
-  const archive = new Uint8Array(await zip.arrayBuffer());
-  const view = new DataView(archive.buffer);
-  const decoder = new TextDecoder();
-  const out = new Map<string, Uint8Array>();
-  let offset = 0;
-  while (view.getUint32(offset, true) === 0x04034b50) {
-    const size = view.getUint32(offset + 22, true);
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const dataStart = offset + 30 + nameLength + extraLength;
-    out.set(
-      decoder.decode(archive.subarray(offset + 30, offset + 30 + nameLength)),
-      archive.subarray(dataStart, dataStart + size),
-    );
-    offset = dataStart + size;
-  }
-  return out;
-}
 
 describe('buildExportBundle', () => {
   it('offers the six documented files, individually and in the zip (D11)', async () => {
