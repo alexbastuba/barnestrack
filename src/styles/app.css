@@ -192,13 +192,28 @@ a:focus {
 
 /* ---- controls ------------------------------------------------------------- */
 
+/*
+ * Three button tiers (D70). Every button the app makes carries exactly one:
+ *
+ * - `btn-primary`: filled; at most one per step, the step's main action. A
+ *   disabled primary is drawn unfilled — a greyed button that still looks like
+ *   the thing to press is a lie — and keeps the sentence that says why.
+ * - `btn-secondary`: a 1 px outline, for standalone actions. The outline is
+ *   --ink-soft, not --line-strong, so it clears 3:1 on --paper-soft too.
+ * - `btn-quiet`: text only, for toggles, per-item actions and toolbar modes.
+ *
+ * The bare `button` rule is the secondary look, so a button made outside
+ * `src/ui/` (the example cohort's panel in `src/demo/`) still reads as one.
+ * `button.primary` is kept as an alias of `btn-primary` for that panel's
+ * dialog and for the Next-step button, which the tests key on.
+ */
 button {
   font: inherit;
   color: var(--ink);
   background: var(--paper);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--ink-soft);
   border-radius: var(--radius);
-  padding: var(--s2) var(--s3);
+  padding: var(--s1) var(--s3);
   cursor: pointer;
 }
 
@@ -210,31 +225,82 @@ button:hover:not(:disabled) {
 button:disabled {
   color: var(--ink-soft);
   background: var(--paper-soft);
+  border-color: var(--line-strong);
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+}
+
+.btn-primary,
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
+  font-weight: 600;
 }
 
+.btn-primary:hover:not(:disabled),
 button.primary:hover:not(:disabled) {
-  background: #083d70;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
-button.danger {
+.btn-primary:disabled,
+button.primary:disabled {
+  background: var(--paper-soft);
+  border-color: var(--line-strong);
+  color: var(--ink-soft);
+}
+
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+  padding: var(--s1) var(--s2);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background-color: var(--accent-soft);
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+.btn-quiet:disabled {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+/* A modifier, not a tier: the destructive confirm keeps its fill on hover. */
+button.danger,
+button.danger:hover:not(:disabled) {
   background: var(--danger);
   border-color: var(--danger);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
-/* Beats `button:hover`, which would otherwise wash out the active mode. */
+/* A pressed mode toggle. Beats every tier's hover, which would wash it out. */
 button.is-active,
 button.is-active:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
+  text-decoration: none;
+}
+
+/* The file input's own button reads as a secondary beside the tiered ones. */
+input[type='file']::file-selector-button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink-soft);
+  border-radius: var(--radius);
+  padding: var(--s1) var(--s3);
+  margin-right: var(--s2);
+  cursor: pointer;
 }
 
 input,
@@ -341,6 +407,13 @@ label {
   padding: var(--s2) var(--s3);
   border: 1px solid var(--line-strong);
   background: var(--paper);
+  color: var(--ink);
+}
+
+/* A tab is a quiet button that reads as a tab: no underline on hover. */
+.step-tab:hover:not(:disabled) {
+  border-color: var(--accent);
+  text-decoration: none;
 }
 
 .step-tab .step-number {
@@ -377,7 +450,7 @@ label {
 
 .step-tab.is-current {
   border-color: var(--accent);
-  border-bottom-width: 0.25rem;
+  border-bottom-width: var(--s1);
   background: var(--accent-soft);
 }
 
@@ -560,7 +633,7 @@ label {
 
 .badge-warn {
   border-color: var(--warn-line);
-  color: #6b4a00;
+  color: var(--warn-ink);
   background: var(--warn-bg);
 }
 
@@ -740,7 +813,7 @@ label {
   max-width: 100%;
   margin-inline: auto;
   max-height: 60vh;
-  background: #101315;
+  background: var(--stage);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   cursor: crosshair;
@@ -843,7 +916,7 @@ label {
 }
 
 .scale-readout.is-missing {
-  color: #6b4a00;
+  color: var(--warn-ink);
   background: var(--warn-bg);
   border: 1px solid var(--warn-line);
   border-radius: var(--radius);
@@ -1318,7 +1391,7 @@ label {
 }
 
 .legend-lost {
-  background: repeating-linear-gradient(45deg, var(--danger) 0 2px, #ffffff 2px 3px);
+  background: repeating-linear-gradient(45deg, var(--danger) 0 2px, var(--paper) 2px 3px);
 }
 
 .legend-filled {
@@ -1512,7 +1585,7 @@ button.metric-value:hover:not(:disabled) {
 }
 
 .corrections-list .orphan {
-  color: #6b4a00;
+  color: var(--warn-ink);
   background: var(--warn-bg);
   padding: 0 var(--s1);
 }
@@ -1747,8 +1820,10 @@ button.metric-value:hover:not(:disabled) {
   cursor: pointer;
 }
 
-.event-card:hover {
+.event-card:hover,
+.event-card:hover:not(:disabled) {
   border-color: var(--accent);
+  text-decoration: none;
 }
 
 .event-card-head {
