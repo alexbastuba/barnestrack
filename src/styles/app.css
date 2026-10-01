@@ -162,8 +162,8 @@ a:focus {
 }
 
 .skip-link:focus {
-  left: 0.5rem;
-  top: 0.5rem;
+  left: var(--s2);
+  top: var(--s2);
 }
 
 /* ---- header --------------------------------------------------------------- */
@@ -233,8 +233,12 @@ button {
   cursor: pointer;
 }
 
+/*
+ * `background-color`, not the `background` shorthand: the shorthand would reset
+ * `background-image` and wipe the D26 hatch off a corrected event card on hover.
+ */
 button:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background-color: var(--accent-soft);
   border-color: var(--accent);
 }
 
@@ -466,7 +470,7 @@ label {
 
 .step-tab.is-current {
   border-color: var(--accent);
-  border-bottom-width: var(--s1);
+  border-bottom-width: 0.25rem;
   background: var(--accent-soft);
 }
 
@@ -1564,8 +1568,10 @@ button.metric-value {
   cursor: pointer;
 }
 
+/* Keeps its dotted underline on hover; the quiet tier's hover would make it solid. */
 button.metric-value:hover:not(:disabled) {
   background: var(--accent-soft);
+  text-decoration: underline dotted;
 }
 
 .metric-plain {
@@ -2084,7 +2090,8 @@ button.metric-value:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 
-.seek-cell:hover {
+/* `:not(:disabled)` so it outranks the quiet tier's hover, which hides the border. */
+.seek-cell:hover:not(:disabled) {
   border-color: var(--accent);
 }
 

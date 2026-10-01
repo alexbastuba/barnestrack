@@ -67,9 +67,11 @@ export interface ExportManifest {
 }
 
 /**
- * The session as the export would write it: an analysis whose derived hash
- * disagrees with the parameters in force is a row the export refuses (D56), so
- * it is not counted either.
+ * The session as it stands, minus any analysis whose derived hash disagrees
+ * with the parameters in force (D56). Such a cache is not counted. The export
+ * re-derives every video before writing, so a stale cache that can be
+ * re-derived does reach the CSVs. If one is still stale after that, the export
+ * is refused as a whole rather than row by row.
  */
 function exportableSession(session: SessionFile): SessionFile {
   const stale = new Set(staleAnalyses(session));
@@ -206,6 +208,9 @@ export function createReviewExport(
   exportButton.setAttribute('aria-describedby', blocked.id);
 
   async function run(): Promise<void> {
+    // Redraw the manifest first: its ZIP name carries today's date, and the
+    // step may have stayed open since yesterday with no store change to refresh it.
+    update();
     exportButton.disabled = true;
     callbacks.onAnnounce('Re-deriving every video, then building the export…');
     try {
