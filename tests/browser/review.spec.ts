@@ -64,19 +64,24 @@ async function setNumber(page: Page, label: string, value: number): Promise<void
  * One row of the mounted parameters panel (chunk 7b). Rows are scoped by their
  * block, because two blocks have a "Min duration": the panel derives every
  * label from the parameter path, so a bare label is ambiguous by construction.
+ * Since chunk 10c every block is a closed `<details>`, so the block is opened
+ * first — a row inside a closed one is not visible and cannot be filled.
  */
-function parameterField(page: Page, block: string, label: string): Locator {
-  return page
-    .locator('#review-parameters fieldset.param-block', { has: page.getByText(block, { exact: false }) })
-    .filter({ hasText: block })
-    .first()
+async function parameterField(page: Page, block: string, label: string): Promise<Locator> {
+  const details = page
+    .locator('#review-parameters details.param-block')
+    .filter({ has: page.locator(':scope > summary .block-title', { hasText: block }) });
+  await expect(details).toHaveCount(1);
+  if ((await details.getAttribute('open')) === null) await details.locator(':scope > summary').click();
+  await expect(details).toHaveAttribute('open', '');
+  return details
     .locator('.param-row')
     .filter({ has: page.getByText(label, { exact: true }) })
     .locator('input[type="number"]');
 }
 
 async function setParameter(page: Page, block: string, label: string, value: number): Promise<void> {
-  const input = parameterField(page, block, label);
+  const input = await parameterField(page, block, label);
   await input.fill(String(value));
   await input.blur();
 }
@@ -218,7 +223,7 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   await page.locator('#review-events-mirror summary').first().click();
   await expect(page.locator('#review-events-mirror tbody tr').first()).toHaveClass(/is-corrected/);
   await expect(page.locator('#review-events-mirror tbody tr').first()).toContainText(`user (auto: hole ${hole}`);
-  await expect(parameterField(page, 'Hole investigation', 'Min duration')).toHaveValue('2');
+  await expect(await parameterField(page, 'Hole investigation', 'Min duration')).toHaveValue('2');
   await expect(page.locator('#panel-review .review-note')).toBeVisible();
   await expect(page.locator('#panel-review .review-note')).toContainText('not attached');
 });
