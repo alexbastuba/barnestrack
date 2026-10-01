@@ -100,6 +100,7 @@ h2,
 h3 {
   line-height: 1.25;
   margin: 0 0 var(--s2);
+  font-weight: 600;
 }
 
 h1 {
@@ -116,6 +117,21 @@ h3 {
 
 p {
   margin: 0 0 var(--s3);
+}
+
+/*
+ * Every table reads as an instrument readout (D70): tabular numerals so digits
+ * line up, a 1 px rule under each row. The tables the app builds are all
+ * `.mirror-table`, which also right-aligns its value cells.
+ */
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
 }
 
 :focus-visible {
@@ -484,6 +500,11 @@ label {
 }
 
 /* ---- panels --------------------------------------------------------------- */
+
+/*
+ * Flat (D70): a 1 px --line border, no shadow, no gradient. A panel's title
+ * row is --t-sm semibold; the step's own heading stays --t-lg.
+ */
 
 .panel {
   background: var(--paper);
@@ -869,7 +890,8 @@ label {
 }
 
 .maze-fieldset legend {
-  font-weight: 700;
+  font-size: var(--t-sm);
+  font-weight: 600;
   padding: 0 var(--s1);
 }
 
@@ -1027,7 +1049,8 @@ label {
 
 .track-card h3 {
   margin: 0 0 var(--s1);
-  font-size: var(--t-md);
+  font-size: var(--t-sm);
+  font-weight: 600;
 }
 
 .track-status {
@@ -1473,7 +1496,8 @@ label {
 
 .review-panel h3 {
   margin: 0 0 var(--s2);
-  font-size: var(--t-md);
+  font-size: var(--t-sm);
+  font-weight: 600;
 }
 
 .review-panel h4 {
@@ -2075,6 +2099,7 @@ button.metric-value:hover:not(:disabled) {
 .review-export h3 {
   margin: 0 0 var(--s2);
   font-size: var(--t-md);
+  font-weight: 600;
 }
 
 .review-figures h4 {
