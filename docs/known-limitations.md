@@ -118,10 +118,15 @@ session it is found (D39).
 - **A reload inside the autosave window can lose the last edit.** Changes are written to IndexedDB
   about half a second after the last one, and the page also asks the store to flush on `pagehide`.
   That flush cannot be awaited — the browser may discard an IndexedDB transaction opened while the
-  page is going away — so a reload in the moment after an edit can lose it. The header says
-  "Saving…" until the write lands, and "All changes saved in this browser" once it has; wait for
-  that before reloading. A fix would write synchronously on `visibilitychange` to a store that
-  supports it.
+  page is going away — so a reload in the moment after an edit can lose it, and a reload before the
+  first write lands loses everything since the last one: chunk 11's shipped-UI flow, run once with
+  its wait removed, reloaded seconds after loading the example cohort and found 0 of 3 cards. The
+  header says "Saving…" until the write lands, and "All changes saved in this browser" once it has;
+  wait for that before reloading. Until chunk 11 that header could read "saved" too early when two
+  writes overlapped (a large session outlives the 500 ms debounce): the first write finishing set
+  it while the newer state was still queued. It is now set only when the last queued write lands
+  (`src/session/session-store.ts:510`, `tests/session/autosave-state.test.ts`). A fix for the
+  reload itself would write synchronously on `visibilitychange` to a store that supports it.
 - **One autosave slot per browser, not per session.** The IndexedDB record is stored under a single
   `current` key, so two BarnesTrack tabs open at once overwrite each other's autosave without
   noticing: the last tab to make a change wins, and the other tab's cohort is gone after its next
@@ -472,53 +477,34 @@ session it is found (D39).
   materiality threshold (uncertain frames as a share of the span) or an explicit "keep automatic"
   mark; both are operational definitions and need Alex.
 
-- **Correction to the two entries above, and the offline message's wording.** The entry saying the
-  browser smoke run is "9 passed / 1 skipped with an empty allowlist" measured it with no `dist/`
-  present. After `npm run build` — which this project's own check list runs — the shipped-UI flow no
-  longer skips, and the run is **9 passed / 1 failed**: `tests/browser/app-smoke.spec.ts:467`,
-  `expect(locator('#panel-review').locator('.empty')).toHaveCount(0)` resolves to 2. Both matched
-  nodes are `hidden` — one from `src/ui/app.ts` and one from `src/ui/components/event-list.ts` — and
-  both exist at chunk 10b's base commit, so the assertion is stale rather than newly broken: it
-  counts hidden nodes. The one-line fix is `.empty:visible`. The axe scan itself does pass with the
-  empty allowlist; that part of the entry stands.
-  Separately, now that all three clips are fetched, the offline sentence names the wrong file for
-  two of them: all three failures read "download test53.mp4 yourself and drop it on the Videos step
-  instead". The repetition was fixed (the outcome line says one sentence, not three) but the wording
-  could not be: `tests/demo/fetch-sample-clip.test.ts` pins that string exactly and `tests/demo/` is
-  outside chunk 10b's ownership.
+- **Correction to the two entries above.** The entry saying the browser smoke run is "9 passed /
+  1 skipped with an empty allowlist" measured it with no `dist/` present; with `dist/` built the
+  shipped-UI flow ran and failed on stale selectors. Chunk 11 retuned and un-skipped that flow, so
+  that half of this correction no longer applies. What remains true: the axe scan passes with the
+  empty allowlist.
 
-- **The shipped-UI smoke flow is unverified end to end, on two selectors that never shipped.**
-  `tests/browser/app-smoke.spec.ts` > "the whole demo flow through the shipped UI" is the only test
-  that drives the built `dist/` through the real buttons — load the example cohort, read the metrics
-  with no video attached, move a threshold, export the bundle, reload. It skipped for most of the
-  project's life because `dist/` was absent; CI builds `dist/` before Playwright, so it stopped
-  skipping when chunk 7b landed and has been red since. Two of its assertions name a UI that was
-  never built: `reviewPanel.locator('.empty')` expects zero nodes, but the shell keeps a `p.empty`
-  per panel (`src/ui/app.ts`) and the event list keeps one for "every event is hidden by the filter"
-  (`src/ui/components/event-list.ts`) — both present and `hidden`, so the count is 2, not 0; and
-  `[data-testid="event-count"]` appears nowhere in `src/ui`, where the class rendered is
-  `.event-count`. Retuning those two (`.empty:visible` and `.event-count`) does get the flow past
-  both, verified in one run, but it then fails further on at the reload assertion
-  (`.video-card` is 0, not 3, after `page.reload()`), which is a different question about the
-  autosave in the built app rather than a stale selector. The flow is therefore re-skipped with that
-  reason rather than left red or half-fixed: un-skipping it is 9c-b's work, and until then the
-  shipped build is covered by the loader-driven half of this spec and by the manual pass recorded in
-  `tests/browser/README.md`, not end to end.
-- **`tests/browser/review.spec.ts` cannot reach a parameter row since the blocks collapse.** Chunk
-  10c made every parameters-panel block a closed `<details class="param-block">`, and that spec's
-  `parameterField()` (line 70) still locates `#review-parameters fieldset.param-block` and then
-  `fill()`s a `.param-row` input — the selector now misses, and the row would be hidden anyway
-  until its summary is clicked. The spec is skipped unless `BARNESTRACK_SAMPLE_DIR` is set and is
-  not in CI (the browser-smoke job runs `app-smoke.spec.ts`, which touches no parameter row), so
-  nothing green went red; but the chunk-6 acceptance checks it carries are unrunnable until it is
-  fixed. It was left alone because `tests/browser/` is outside chunk 10c's ownership. Smallest fix:
-  `details.param-block` in that locator, and a `summary` click (or `open = true`) before the fill.
 - **The offline message names test53 for all three clips.** `OFFLINE_MESSAGE` in
-  `src/demo/fetch-sample-clip.ts` tells a user who is offline to download "test53.mp4" whichever
-  clip failed, because all three are now fetched together. The sentence is pinned verbatim by
-  `tests/demo/fetch-sample-clip.test.ts`, which is outside the ownership of the chunks that have
-  touched it. Smallest fix: name the clip that failed (the descriptor is already in scope) and
-  re-point that assertion.
+  `src/demo/fetch-sample-clip.ts:70` tells a user who is offline to download "test53.mp4" whichever
+  clip failed. The real blocker is not that sentence but how failures are combined: naming the
+  failed clip makes the three offline failures three distinct sentences, and the aggregator in
+  `fetchAllClips` (`src/demo/example-cohort-ui.ts:302–309`) dedups only identical strings, so the
+  outcome line would say "Could not reach the sample-data repository" three times —
+  `tests/ui/example-cohort-dialog.test.ts:189` pins it to once (D37: a 470-character announcement).
+  Chunk 11 cut its change for that reason. Smallest fix, in the chunk that owns the UI: have the
+  aggregator merge the network failures into one sentence naming every clip that failed, then name
+  the clip in `OFFLINE_MESSAGE` and re-point `tests/demo/fetch-sample-clip.test.ts:174–186`.
+- **The generated tracking clip exercises the happy path only.** CI's end-to-end tracking check
+  (`tests/browser/track.spec.ts`, clip from `encodeSyntheticMazeClip` in
+  `tests/video/synthetic-clip.ts`) is one clean blob on a clean disc that walks to the target and
+  stays visible: 100 % positioned, one target investigation, status `review`. It has no escape
+  entry, no gap, no oversized start cylinder, no tail and no hole texture, so a regression in escape
+  detection, gap handling, trial-start proposal or nose cues on real footage would still pass it.
+  Those stay covered by the sample-video specs, which need `BARNESTRACK_SAMPLE_DIR` and are not in
+  CI. Smallest next step: a second generated clip in which the blob vanishes at the target for
+  more than `escapeEntry.persistCutoff_s`, asserting `escaped = true` and an `ok` status.
+- **CI's browser-smoke job is not a required check.** It fails the workflow on a red spec, but
+  whether a red run blocks a merge is a GitHub branch-protection setting, not a file in this
+  repository. It has to be set on the repository by its owner.
 
 ## Excluded scope
 
