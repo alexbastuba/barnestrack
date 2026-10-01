@@ -992,7 +992,8 @@ label {
   text-align: right;
 }
 
-.mirror-table tbody th {
+.mirror-table tbody th,
+.mirror-table thead th:first-child {
   text-align: left;
 }
 
@@ -2226,6 +2227,10 @@ button.metric-value:hover:not(:disabled) {
 
 .manifest-table td.manifest-contents {
   max-width: 60ch;
+}
+
+.manifest-table td:not(.manifest-contents) {
+  white-space: nowrap;
 }
 
 .export-blocked {
