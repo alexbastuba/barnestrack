@@ -1221,7 +1221,7 @@ export function createReviewStep(context: AppContext): Step {
     attrs: { 'aria-keyshortcuts': ']' },
   });
   const keepButton = button('Keep (K)', () => keepSelected(), {
-    class: 'queue-step',
+    class: 'btn-secondary queue-step',
     attrs: { 'aria-keyshortcuts': 'K' },
   });
   const currentEventLine = el('p', { class: 'current-event-line' });

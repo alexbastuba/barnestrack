@@ -854,10 +854,12 @@ export function createMazeStep(context: AppContext): Step {
   );
   const scaleReadout = el('p', { class: 'scale-readout' });
 
-  const exportButton = button('Export map', exportMap);
-  const importButton = button('Import map', () => void importMap());
+  const exportButton = button('Export map', exportMap, { class: 'btn-secondary' });
+  const importButton = button('Import map', () => void importMap(), { class: 'btn-secondary' });
   const applySelect = el('select', { id: 'maze-apply-from' });
-  const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value));
+  const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value), {
+    class: 'btn-secondary',
+  });
 
   const modeStatus = el('p', { class: 'mode-status' });
   /**

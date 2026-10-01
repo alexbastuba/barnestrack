@@ -67,7 +67,7 @@ export function createVideosStep(context: AppContext): Step {
 
   const folderButton = button('Choose a folder', () => {
     void pickDirectoryFiles().then((files) => ingest(files));
-  });
+  }, { class: 'btn-secondary' });
 
   const pickers = el('div', { class: 'pickers' }, [
     el('div', { class: 'field' }, [

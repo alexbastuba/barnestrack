@@ -352,7 +352,7 @@ export function createMetricsCard(
     problem.hidden = true;
     callbacks.onOverride(select.value as SearchStrategy, text);
     callbacks.onAnnounce?.(`Strategy overridden to ${select.value}.`);
-  });
+  }, { class: 'btn-secondary' });
 
   const revert = button('Revert to automatic', () => {
     const id = current.strategyOverrideId;

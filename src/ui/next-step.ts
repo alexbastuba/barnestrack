@@ -97,7 +97,7 @@ export function createNextStepButton(
       control.disabled = !done;
       // The primary action only when it is actually the next thing to do; a
       // disabled button that still looks like the main action is a lie.
-      control.className = done ? 'next-step-button primary' : 'next-step-button';
+      control.className = done ? 'next-step-button primary btn-primary' : 'next-step-button btn-secondary';
       hint.textContent = done ? '' : reason;
       hint.hidden = done;
     },

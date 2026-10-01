@@ -108,12 +108,12 @@ export function createTrackStep(context: AppContext): Step {
     for (const id of ids) runner.enqueue(id);
     context.announce(`Queued ${ids.length} video${ids.length === 1 ? '' : 's'} for tracking.`);
   });
-  trackAllButton.className = 'primary';
+  trackAllButton.className = 'btn-primary';
 
   const cancelAllButton = button('Cancel all', () => {
     runner.cancelAll();
     context.announce('Cancelling the tracking queue.');
-  });
+  }, { class: 'btn-secondary' });
 
   const queueState = el('p', { class: 'queue-state', attrs: { 'aria-live': 'off' } });
 
@@ -706,7 +706,7 @@ function createParameterPanel(
       `Expected body area set to ${learned.area.toFixed(1)} cm², learned from ${learned.filename}.`,
     );
     refresh();
-  });
+  }, { class: 'btn-secondary' });
 
   rows.push(
     el('div', { class: 'field track-param' }, [
@@ -740,7 +740,7 @@ function createParameterPanel(
     onChange();
     refresh();
     context.announce('Tracking parameters reset to their defaults.');
-  });
+  }, { class: 'btn-secondary' });
 
   const panel = disclosure('Tracking parameters', [
     el('p', {

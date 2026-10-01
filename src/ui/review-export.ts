@@ -82,7 +82,7 @@ export function createReviewExport(
   const blocked = el('p', { class: 'export-blocked hint', attrs: { id: 'review-export-reason' } });
   const exportButton = button('Export bundle (.zip)', () => {
     void run();
-  });
+  }, { class: 'btn-primary' });
   // The reason a disabled button is disabled has to reach a screen reader too,
   // not only the sentence under it (D37).
   exportButton.setAttribute('aria-describedby', blocked.id);

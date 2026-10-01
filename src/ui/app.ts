@@ -198,7 +198,7 @@ export function mountApp(
 
   const saveButton = button('Save session file', () => {
     void saveSession();
-  });
+  }, { class: 'btn-secondary' });
 
   async function saveSession(): Promise<void> {
     await store.flush();
@@ -217,7 +217,7 @@ export function mountApp(
 
   const loadButton = button('Load session file', () => {
     void loadSession();
-  });
+  }, { class: 'btn-secondary' });
 
   async function loadSession(): Promise<void> {
     const [file] = await pickFiles('.json,application/json');
@@ -248,7 +248,7 @@ export function mountApp(
   const confirmRow = el('span', { class: 'confirm', attrs: { role: 'group', 'aria-label': 'Confirm reset' } });
   const confirmButton = button('Yes, reset everything', () => {
     void doReset();
-  }, { class: 'danger' });
+  }, { class: 'btn-secondary danger' });
   const cancelButton = button('Cancel', () => closeConfirm(true));
   confirmRow.append(
     el('span', { class: 'confirm-text', text: 'Delete every video, the maze and all corrections?' }),
@@ -257,7 +257,7 @@ export function mountApp(
   );
   confirmRow.hidden = true;
 
-  const resetButton = button('Reset session', () => openConfirm());
+  const resetButton = button('Reset session', () => openConfirm(), { class: 'btn-secondary' });
 
   function openConfirm(): void {
     confirmRow.hidden = false;

@@ -492,7 +492,7 @@ export function createParametersPanel(
               for (const row of rows) row.sync();
               commit(`${BLOCK_LABELS[block] ?? block} reset to defaults.`);
             },
-            { class: 'reset-block' },
+            { class: 'btn-secondary reset-block' },
           ),
         );
       }
