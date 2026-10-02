@@ -82,6 +82,7 @@ export function toDerivedLayer(analysis: DerivedAnalysis): DerivedLayer {
     events: analysis.events,
     metrics: analysis.metrics,
     quality: analysis.quality,
+    reviewFlags: analysis.reviewFlags,
   };
 }
 

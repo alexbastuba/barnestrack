@@ -968,6 +968,7 @@ export function syntheticSession(): SessionFile {
         events,
         metrics: buildMetrics(script, map, track, events, entries.length),
         quality: buildQuality(script, map, track, events),
+        reviewFlags: [],
       },
     };
   });

@@ -176,3 +176,95 @@ describe('group comparison figure', () => {
     expect(ctx.saveDepth).toBe(0);
   });
 });
+
+/*
+ * D66: a cohort figure leaves out a trial whose value for the plotted measure is null — an
+ * unresolved trial, or one with no value for that measure — and says so in its caption, on the
+ * canvas and in the mirror table, so a reader never takes "n" for the cohort size.
+ */
+describe('exclusions and their caption (D66)', () => {
+  /** The fixture plus a fourth, unresolved trial: another lesion animal whose trial never started. */
+  function withUnresolved(): SessionFile {
+    const base = syntheticSession();
+    const template = base.videos[2]!;
+    const analysis = base.analyses[template.id]!;
+    const extra = {
+      ...template,
+      id: 'video-test54',
+      filename: 'test54.mp4',
+      metadata: { animal: 'M09', day: '1', trial: '1', group: 'lesion' },
+    };
+    return {
+      ...base,
+      videos: [...base.videos, extra],
+      analyses: {
+        ...base.analyses,
+        [extra.id]: {
+          ...analysis,
+          derived: {
+            ...analysis.derived!,
+            events: [],
+            metrics: {
+              ...analysis.derived!.metrics,
+              status: 'unresolved',
+              trialStart_s: null,
+              primaryLatency_s: null,
+              totalLatency_s: null,
+              primaryErrors: null,
+              totalErrors: null,
+              pathLength_cm: null,
+              pathLengthSmoothed_cm: null,
+              meanSpeed_cmPerS: null,
+              targetQuadrantTime_s: null,
+              trackedFraction: null,
+              strategy: 'unclassified',
+              escaped: false,
+            },
+          },
+        },
+      },
+    };
+  }
+
+  it('the learning curve excludes the unresolved trial and its caption says n = 3 of 4; 1 unresolved', () => {
+    const four = { session: withUnresolved(), videoId: 'video-test50' };
+    const curve = learningCurveSeries(four.session);
+    expect(curve.caption).toBe('n = 3 of 4; 1 unresolved');
+    expect(curve.series.find((series) => series.animal === 'M09')?.points.every((p) => p.value === null)).toBe(true);
+    expect(learningCurveFigure.describe(four).summary).toContain('n = 3 of 4; 1 unresolved');
+    const ctx = fakeContext();
+    learningCurveFigure.draw(ctx, four, LIGHT);
+    expect(ctx.joinedText).toContain('n = 3 of 4; 1 unresolved');
+    expect(ctx.saveDepth).toBe(0);
+  });
+
+  it('the group comparison counts only non-null values and carries the same caption', () => {
+    const four = { session: withUnresolved(), videoId: 'video-test50' };
+    const comparison = groupComparison(four.session);
+    expect(comparison.caption).toBe('n = 3 of 4; 1 unresolved');
+    const lesion = comparison.groups.find((group) => group.group === 'lesion')!;
+    expect(lesion.values).toHaveLength(1);
+    expect(lesion.missing).toBe(1);
+    expect(groupComparisonFigure.describe(four).summary).toContain('n = 3 of 4; 1 unresolved');
+    const ctx = fakeContext();
+    groupComparisonFigure.draw(ctx, four, LIGHT);
+    expect(ctx.joinedText).toContain('n = 3 of 4; 1 unresolved');
+  });
+
+  it('tells a trial with no value for the measure apart from an unresolved one', () => {
+    // test50 never escaped, so its total latency is null while its trial is resolved
+    const four = { session: withUnresolved(), videoId: 'video-test50', metric: 'totalLatency_s' as const };
+    expect(learningCurveSeries(four.session, 'totalLatency_s').caption).toBe(
+      'n = 2 of 4; 1 unresolved; 1 with no value for this measure',
+    );
+    expect(groupComparison(four.session, 'totalLatency_s').caption).toBe(
+      'n = 2 of 4; 1 unresolved; 1 with no value for this measure',
+    );
+    expect(learningCurveFigure.describe(four).summary).toContain('1 with no value for this measure');
+  });
+
+  it('says n = 3 of 3 when nothing is excluded', () => {
+    expect(learningCurveSeries(session).caption).toBe('n = 3 of 3');
+    expect(groupComparison(session).caption).toBe('n = 3 of 3');
+  });
+});

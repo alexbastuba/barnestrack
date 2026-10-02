@@ -32,6 +32,7 @@ const DOCUMENTED_TRIAL_HEADERS = [
   'escaped',
   'no_escape_confirmed',
   'status',
+  'review_flags',
   'tracked_fraction',
   'correction_count',
   'hole_investigation_radius_factor',

@@ -145,9 +145,12 @@ superseding the session-level "calibration" field named in D9's prose).
   and a confirmation is **excluded from `metrics.correctionCount`** (`src/analysis/derive.ts`), so
   `correction_count` stays a count of hand edits. A later edit that changes something replaces the
   entry and does not carry the flag forward.
-- **`derived`** — `{ cleanedTrack, events, metrics, quality } | null`. Everything recomputed from
-  `auto ⊕ corrections` on load: safe to discard and recompute at any time; never treated as the
-  source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration value (D44).
+- **`derived`** — `{ cleanedTrack, events, metrics, quality, reviewFlags } | null`. Everything
+  recomputed from `auto ⊕ corrections` on load: safe to discard and recompute at any time; never
+  treated as the source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration
+  value (D44). `reviewFlags` is the list `derive()` raised — `{ code, message, frameIndex?,
+  eventId?, correctionId? }` — persisted so the reason a trial reads `review` travels with the
+  row (`review_flags` in `trials.csv`, D66).
   `null` for a video that has been tracked but not yet analysed (D52) — a placeholder or fabricated
   derived layer is forbidden (D16), so the honest value is a null.
 
@@ -348,13 +351,20 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   time between the positioned frames either side; the nose stays invalid and `detectionState` /
   `reason` keep the tracker's values. Gaps that touch an outlier or contain a hand-corrected point are
   never filled. The automatic layer never contains a filled point (D16).
-- **Not-recorded numbers.** `trialStart_s` (no trial start), `meanSpeed_cmPerS` (no tracked
-  time) and `minNoseDistance_cm` (the nose was never usable during the event) are `null` in the
-  contract when they cannot exist (D55). A `number` field the contract still types as plain
-  `number` but that cannot always be computed (`minCentroidDistance_cm` of a loss with no
-  positioned approach frame, the kinematics fractions of an empty trial) is `NaN`, which JSON
-  serialises as `null`; consumers treat non-finite and `null` alike (`isRecorded()`) and a CSV
-  writer emits an empty cell for either.
+- **Not-recorded numbers (D55, D66).** A number that cannot be established is `null` at the
+  contract boundary, never `0` and never `NaN`. In `TrialMetrics` that is `trialStart_s` (no
+  trial start), `primaryLatency_s` (target never reached), `totalLatency_s` (no escape),
+  `meanSpeed_cmPerS` (no tracked time), and — whenever the trial is `unresolved`, i.e. has no
+  window — `primaryErrors`, `totalErrors`, `pathLength_cm`, `pathLengthSmoothed_cm`,
+  `targetQuadrantTime_s` and `trackedFraction` as well. A resolved trial keeps its numbers, zeros
+  included: `totalErrors = 0` is a measurement. `SearchStrategy` has `unclassified` for the same
+  reason: no trial window, or a window with no investigation and no target visit, is nothing to
+  classify over, and the reasoning says which; an override on such a trial is still honoured. On
+  an event, `minNoseDistance_cm` is `null` when the nose was never usable. The remaining field the
+  contract types as plain `number` but cannot always compute — `minCentroidDistance_cm` of a loss
+  with no positioned approach frame, and the kinematics fractions inside `KinematicsSummary` — is
+  `NaN`, which JSON serialises as `null`; consumers treat non-finite and `null` alike
+  (`isRecorded()`) and the CSV writer emits an empty cell for either.
 - **Entry runs (O4, revised 2026-09-06).** A frame is *partial* when its `detectionState` is
   `low_confidence` with a reason in `ANALYSIS_MODEL.entryPartialReasons` (`small_blob`,
   `fragmented`) and its event point lies within `escapeEntry.radiusFactor × holeRadius` of a hole;
@@ -483,15 +493,16 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `trial_start_s` | s (nullable: no trial start) | O5 |
 | `primary_latency_s` | s (nullable) | O3 |
 | `total_latency_s` | s (nullable) | O4 |
-| `primary_errors`, `total_errors` | count | O2 |
-| `path_length_cm`, `path_length_smoothed_cm` | cm | O9 |
-| `mean_speed_cm_per_s` | cm/s (nullable: no tracked time) | O9 |
-| `target_quadrant_time_s` | s | O6 |
-| `strategy`, `strategy_source` | — | O7 |
+| `primary_errors`, `total_errors` | count (nullable: no trial window, D66) | O2 |
+| `path_length_cm`, `path_length_smoothed_cm` | cm (nullable: no trial window, D66) | O9 |
+| `mean_speed_cm_per_s` | cm/s (nullable: no tracked time or no trial window) | O9 |
+| `target_quadrant_time_s` | s (nullable: no trial window, D66) | O6 |
+| `strategy`, `strategy_source` | — | `spatial \| serial \| random \| unclassified` (D58, D66); `auto \| corrected` |
 | `escaped` | bool | O4 |
 | `no_escape_confirmed` | bool | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry, with `status` review beside it (and `escaped` true only when that entry ended the trial) |
 | `status` | — | `ok \| review \| unresolved` (O5, D63) |
-| `tracked_fraction` | 0–1 | — |
+| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial |
+| `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |
 | `escape_entry_radius_factor`, `escape_entry_min_duration_s`, `escape_entry_persist_cutoff_s` | ×hole radius, s, s | O4 |

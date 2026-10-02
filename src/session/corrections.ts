@@ -561,6 +561,7 @@ const STRATEGY_WORDS: Record<SearchStrategy, string> = {
   spatial: 'spatial',
   serial: 'serial',
   random: 'random',
+  unclassified: 'unclassified',
 };
 
 /** One plain sentence per correction, for the corrections list and the live region. */

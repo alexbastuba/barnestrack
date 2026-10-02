@@ -63,11 +63,15 @@ const sample: TrialMetrics = {
 };
 
 describe('definitions', () => {
-  it('exist for every metric row and every TrialMetrics key, each ending in a decision id', () => {
+  it('exist for every metric row and every TrialMetrics key, with the decision beside the sentence rather than inside it', () => {
     const keys = Object.keys(sample) as (keyof TrialMetrics)[];
     expect(new Set(Object.keys(METRIC_DEFINITIONS))).toEqual(new Set(keys));
+    expect(new Set(Object.keys(METRIC_DECISIONS))).toEqual(new Set(keys));
     for (const key of keys) {
-      expect(METRIC_DEFINITIONS[key]).toMatch(/\(.+; [OD]\d+\)\.$/);
+      // a user-facing sentence ends in its unit and cites a paper where there is one, never this
+      // project's decision numbers; those live in METRIC_DECISIONS for the disclosure and the export
+      expect(METRIC_DEFINITIONS[key]).toMatch(/\([^()]+\)\.$/);
+      expect(METRIC_DEFINITIONS[key]).not.toMatch(/\([OD]\d+\)|; [OD]\d+\)/);
       expect(METRIC_DECISIONS[key]).toMatch(/^[OD]\d+$/);
     }
     expect(METRIC_DECISIONS.primaryLatency_s).toBe('O3');
@@ -95,6 +99,36 @@ describe('formatting', () => {
     expect(metricValueText(sample, 'status')).toBe('review');
     expect(metricValueText(sample, 'trackedFraction')).toBe('76.1 %');
     expect(metricValueText(sample, 'pathLengthSmoothed_cm')).toBe('1213.7 cm');
+  });
+
+  it('prints a dash, never 0 or "null", for a measure the trial could not establish (D66)', () => {
+    const unresolved: TrialMetrics = {
+      ...sample,
+      status: 'unresolved',
+      trialStart_s: null,
+      primaryErrors: null,
+      totalErrors: null,
+      pathLength_cm: null,
+      pathLengthSmoothed_cm: null,
+      meanSpeed_cmPerS: null,
+      targetQuadrantTime_s: null,
+      trackedFraction: null,
+      strategy: 'unclassified',
+    };
+    for (const key of [
+      'trialStart_s',
+      'primaryErrors',
+      'totalErrors',
+      'pathLength_cm',
+      'pathLengthSmoothed_cm',
+      'meanSpeed_cmPerS',
+      'targetQuadrantTime_s',
+      'trackedFraction',
+    ] as const) {
+      expect(metricValueText(unresolved, key), key).toBe('—');
+    }
+    expect(metricValueText(unresolved, 'strategy')).toBe('unclassified');
+    expect(metricValueText(unresolved, 'status')).toBe('unresolved');
   });
 });
 

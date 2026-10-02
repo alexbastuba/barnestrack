@@ -22,7 +22,7 @@ keeps the cohort name as it was typed. The six files:
 
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trials.csv`                      | trial                         | 37 columns; the headline numbers                                                                            |
+| `trials.csv`                      | trial                         | 38 columns; the headline numbers                                                                            |
 | `events.csv`                      | investigation or escape entry | 26 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
@@ -42,7 +42,7 @@ Reading conventions that apply to all three CSVs:
 Header, verbatim:
 
 ```
-session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,no_escape_confirmed,status,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
+session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,no_escape_confirmed,status,review_flags,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
 ```
 
 Identifiers and metadata: `session_id` (the cohort name — see the warning under Rules),
@@ -65,14 +65,22 @@ Measures:
   animal never entered; the trial is then `escaped = false`, and `status = review` unless
   `no_escape_confirmed` is true. Blank is not the cutoff, and substituting the cutoff is a decision
   the analyst has to state.
-- `primary_errors`, `total_errors` (count) — investigations of non-target holes, repeat visits
-  included; primary counts those before the first target investigation.
-- `path_length_cm`, `path_length_smoothed_cm` (cm) — raw and median-smoothed centroid path. Report
-  which one you used. Gaps are excluded from both.
-- `mean_speed_cm_per_s` (cm/s) — smoothed path over tracked time within the trial.
-- `target_quadrant_time_s` (s) — time in the 90° sector centred on the target hole.
-- `strategy` — `spatial`, `serial` or `random`.
-- `strategy_source` — `auto` or `corrected`.
+- `primary_errors`, `total_errors` (count, **blank on an `unresolved` row**) — investigations of
+  non-target holes, repeat visits included; primary counts those before the first target
+  investigation. A `0` is a measured zero: a resolved trial in which no non-target hole was
+  investigated. A blank is the absence of a trial window to count over, and must not enter a mean.
+- `path_length_cm`, `path_length_smoothed_cm` (cm, **blank on an `unresolved` row**) — raw and
+  median-smoothed centroid path. Report which one you used. Gaps are excluded from both.
+- `mean_speed_cm_per_s` (cm/s, **may be blank**) — smoothed path over tracked time within the
+  trial; blank with no tracked time or no trial window.
+- `target_quadrant_time_s` (s, **blank on an `unresolved` row**) — time in the 90° sector centred
+  on the target hole.
+- `strategy` — `spatial`, `serial`, `random` or `unclassified`. `unclassified` means no rule was
+  applied: there was no trial window, or the trial had no hole investigation and no target visit,
+  so there was nothing to classify over. It is not a fourth behaviour and does not belong in a
+  strategy cross-tabulation; count it separately and say how many.
+- `strategy_source` — `auto` or `corrected`. An override on an `unclassified` trial is honoured
+  and reads `corrected`.
 - `escaped` — `true` or `false`.
 - `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
   never entered the escape box, which is what lets a trial with no entry read `ok`. It says the
@@ -84,6 +92,13 @@ Measures:
   `escaped = false, no_escape_confirmed = false` rows with confirmed ones as if both were known
   non-escapers — the unconfirmed ones may be missed entries.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
+- `review_flags` — the codes of every review flag the analysis raised on this trial, `;`-joined,
+  unique and alphabetical; blank when none. The vocabulary: `correction_out_of_range`,
+  `no_escape_contradicted`, `orphaned_correction`, `oversized_in_trial`,
+  `physically_unlikely_entry`, `stale_auto_layer`, `tracking_failure_at_hole`. This is *why* a row
+  reads `review`, so quote it when triaging. `stale_auto_layer` matters most for comparisons: the
+  track was produced under other tracking parameters than the ones `parameters_hash` names, so
+  that row's hash does not describe how its track was made.
 - `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
   `tracked` state only, so it reads lower than "frames with a usable position", which is
   `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
@@ -210,22 +225,14 @@ number.
    measures it does not affect (errors, path length, quadrant time, strategy) rather than quietly
    averaging latencies that are blank.
 
-   `unresolved` is different and more dangerous: it means **no trial window was found at all** —
-   no trial start could be detected. Nothing about it involves review, and a correction cannot
-   produce it. On such a row `trial_start_s`, both latencies, `tracked_fraction`,
-   `path_length_cm`, `path_length_smoothed_cm`, `mean_speed_cm_per_s` and `target_quadrant_time_s`
-   are all blank — there is no window to measure them over. Two columns are not blank, and both
-   mislead:
-
-   - `primary_errors` and `total_errors` read a literal **`0`**, because no event can fall inside a
-     window that does not exist. Rule 2 will not save you here: the cell is not blank, so a mean of
-     `total_errors` absorbs the zero in silence.
-   - `strategy` reads **`random`** with `strategy_source = auto`. No rule produced it; it is a
-     placeholder recorded when the classifier could not run. Nothing in the CSV distinguishes it
-     from a real `random` classification, so every `unresolved` row inflates the `random` bucket of
-     any strategy cross-tabulation.
-
-   Exclude `unresolved` rows from every aggregate, and say that you did.
+   `unresolved` is different: it means **no trial window was found at all** — no trial start
+   could be detected. Nothing about it involves review, and a correction cannot produce it. On such
+   a row every measure taken over the trial window is blank — `trial_start_s`, both latencies,
+   `primary_errors`, `total_errors`, `path_length_cm`, `path_length_smoothed_cm`,
+   `mean_speed_cm_per_s`, `target_quadrant_time_s` and `tracked_fraction` — and `strategy` reads
+   `unclassified`. Nothing on it is a number that could be averaged in by mistake, but a reader
+   who drops blanks silently still shrinks n without saying so. Exclude `unresolved` rows from
+   every aggregate, and say that you did.
 
 2. **Blank is not zero.** `total_latency_s`, `primary_latency_s` and `min_nose_distance_cm` are the
    usual blanks. Count them, report them, and never let them enter a mean as zero. If the analyst
@@ -273,7 +280,8 @@ say which), separately for `ok` trials and for all trials, so the reader can see
 
 **Strategy breakdown.** Cross-tabulate `strategy` by `group` (and by `day` for a learning story),
 with counts not just percentages, and a `strategy_source` column so overridden calls are visible.
-With small n, give counts alone and resist the percentage.
+Keep `unclassified` out of the table and report it beside it ("2 of 12 trials unclassified: no
+hole investigated"). With small n, give counts alone and resist the percentage.
 
 **Quality triage.** Sort `quality.csv` by `tier`, then `positioned_fraction` ascending — that is the
 number the tier is cut from, and the one that says whether a position exists at all. For each video
@@ -308,10 +316,10 @@ Barnes cohort A,video-test53,M07,1,1,lesion,7,1,25.04,27.343,4,4,374.24,…
 The tail of the same three rows, from `strategy` onwards:
 
 ```
-strategy,strategy_source,escaped,no_escape_confirmed,status,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
-serial,auto,false,false,review,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-spatial,auto,true,false,ok,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-random,auto,true,false,review,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+strategy,strategy_source,escaped,no_escape_confirmed,status,review_flags,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
+serial,auto,false,false,review,,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+spatial,auto,true,false,ok,,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+random,auto,true,false,review,,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
 ```
 
 `quality.csv`, all three rows:

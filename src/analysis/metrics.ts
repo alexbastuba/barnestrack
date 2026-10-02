@@ -91,12 +91,16 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     if (target === null || ev.startFrame < target.startFrame) primaryErrors++;
   }
 
-  let trackedFraction = Number.NaN;
+  let trackedFraction: number | null = null;
   if (!noTrial) {
     let tracked = 0;
     for (let i = start; i <= end; i++) if (a.state[i] === STATE_CODE.tracked) tracked++;
     trackedFraction = tracked / (end - start + 1);
   }
+  // D66: a measure over a window that does not exist is null, never 0 and never NaN; a resolved
+  // trial keeps its numbers, zeros included
+  const overWindow = (value: number): number | null =>
+    !noTrial && isRecorded(value) ? value : null;
 
   // A trial with no escape entry is `review` by construction: the tool cannot tell a non-escaper
   // from a missed entry. D63 lets a human say which it was, and a confirmed non-escape reads `ok`
@@ -113,18 +117,18 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     trialStart_s: isRecorded(bounds.startTime_s) ? bounds.startTime_s : null,
     primaryLatency_s: primaryLatency,
     totalLatency_s: totalLatency,
-    primaryErrors,
-    totalErrors,
-    pathLength_cm: kinematics.pathLength_cm,
-    pathLengthSmoothed_cm: kinematics.pathLengthSmoothed_cm,
-    meanSpeed_cmPerS: isRecorded(kinematics.meanSpeed_cmPerS) ? kinematics.meanSpeed_cmPerS : null,
-    targetQuadrantTime_s: kinematics.targetQuadrantTime_s,
+    primaryErrors: noTrial ? null : primaryErrors,
+    totalErrors: noTrial ? null : totalErrors,
+    pathLength_cm: overWindow(kinematics.pathLength_cm),
+    pathLengthSmoothed_cm: overWindow(kinematics.pathLengthSmoothed_cm),
+    meanSpeed_cmPerS: overWindow(kinematics.meanSpeed_cmPerS),
+    targetQuadrantTime_s: overWindow(kinematics.targetQuadrantTime_s),
     strategy: strategy.strategy,
     strategySource: strategy.strategySource,
     escaped,
     noEscapeConfirmed,
     status,
-    trackedFraction,
+    trackedFraction: overWindow(trackedFraction ?? Number.NaN),
     correctionCount,
   };
 }

@@ -39,19 +39,22 @@ export interface TrialRow extends ExportProvenance {
   trialStart_s: number | null;
   primaryLatency_s: number | null;
   totalLatency_s: number | null;
-  primaryErrors: number;
-  totalErrors: number;
-  pathLength_cm: number;
-  pathLengthSmoothed_cm: number;
+  /** D66: every measure over the trial window is null (an empty cell) on an `unresolved` row, never 0. */
+  primaryErrors: number | null;
+  totalErrors: number | null;
+  pathLength_cm: number | null;
+  pathLengthSmoothed_cm: number | null;
   meanSpeed_cmPerS: number | null;
-  targetQuadrantTime_s: number;
+  targetQuadrantTime_s: number | null;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
   escaped: boolean;
   /** D63: a person has confirmed the animal never entered the escape box. */
   noEscapeConfirmed: boolean;
   status: TrialStatus;
-  trackedFraction: number;
+  /** D66: the review flag codes `derive()` raised, `;`-joined, unique, alphabetical; empty when none. */
+  reviewFlags: string;
+  trackedFraction: number | null;
   correctionCount: number;
 
   /** O1 */

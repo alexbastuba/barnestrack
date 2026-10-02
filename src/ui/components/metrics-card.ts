@@ -243,7 +243,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
     },
     {
       name: 'Tracked fraction (trial)',
-      value: formatPercent(metrics.trackedFraction),
+      value: formatPercent(metrics.trackedFraction ?? Number.NaN),
       frame: startFrame,
       definition:
         'Fraction of the frames between trial start and trial end whose detection state is tracked. Judged over the trial window, not the whole clip.',

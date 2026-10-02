@@ -161,9 +161,10 @@ describe('classifyStrategy (O7)', () => {
     );
     expect(r.strategy.reasoning[0]).toContain('Gawel et al. 2019, Table 1');
     expect(r.strategy.reasoning.join('\n')).toContain('the target was never reached');
+    // D66: an empty search is nothing to classify over, so no rule fires vacuously any more
     const empty = pipeline([{ kind: 'dwell', seconds: 1 }]);
-    expect(empty.strategy.strategy).toBe('spatial'); // the O7 placeholder fires vacuously — flagged in the reasoning
-    expect(empty.strategy.reasoning.join('\n')).toContain('No investigation and no target visit');
+    expect(empty.strategy.strategy).toBe('unclassified');
+    expect(empty.strategy.reasoning.join('\n')).toContain('nothing to classify over');
   });
 
   it('says a rule was outranked when it fired but lost to an earlier one', () => {
@@ -196,12 +197,46 @@ describe('classifyStrategy (O7)', () => {
     expect(pipeline(script).strategy.strategy).toBe('serial');
   });
 
-  it('is random and unclassified without a trial start', () => {
+  it('is unclassified without a trial start (D66)', () => {
     const r = pipeline([{ kind: 'empty', seconds: 1 }]);
-    expect(r.strategy.strategy).toBe('random');
+    expect(r.strategy.strategy).toBe('unclassified');
+    expect(r.strategy.autoStrategy).toBe('unclassified');
+    expect(r.strategy.runnerUp).toBe('unclassified');
     expect(r.strategy.rules).toEqual([]);
     expect(r.strategy.reasoning[0]).toContain('Not classified');
+    expect(r.strategy.reasoning[0]).toContain('no trial start could be proposed');
     expect(r.strategy.features.sequence).toEqual([]);
+    expect(r.metrics.strategy).toBe('unclassified');
+  });
+
+  it('is unclassified with a trial window but nothing to classify over, and says which (D66)', () => {
+    // tracked at the centre for a second: a window exists, no hole is investigated, no target visit
+    const r = pipeline([{ kind: 'dwell', seconds: 1 }]);
+    expect(r.metrics.status).not.toBe('unresolved');
+    expect(r.strategy.strategy).toBe('unclassified');
+    expect(r.strategy.runnerUp).toBe('unclassified');
+    expect(r.strategy.rules).toEqual([]);
+    expect(r.strategy.reasoning[0]).toContain('Not classified');
+    expect(r.strategy.reasoning[0]).toContain('nothing to classify over');
+    expect(r.strategy.reasoning.join('\n')).not.toContain('Classified as');
+    // an override is still honoured on such a trial
+    const overridden = pipeline([{ kind: 'dwell', seconds: 1 }], {
+      corrections: {
+        entries: [
+          {
+            id: 's1',
+            kind: 'strategy_override',
+            timestamp: '2026-09-06T10:00:01.000Z',
+            source: 'user',
+            strategy: 'random',
+            reason: 'watched it wander',
+          },
+        ],
+      },
+    });
+    expect(overridden.strategy.strategy).toBe('random');
+    expect(overridden.strategy.strategySource).toBe('corrected');
+    expect(overridden.strategy.autoStrategy).toBe('unclassified');
   });
 
   it('honours a user override and keeps the automatic classification alongside', () => {

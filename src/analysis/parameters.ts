@@ -272,44 +272,62 @@ export type MetricKey = keyof TrialMetrics;
 
 export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   trialStart_s:
-    'When the trial started: the first confident, mouse-sized detection inside the platform after the last oversized-foreground frame, or the frame the user chose; every latency is measured from here, never from frame 0 (seconds; O5).',
+    'When the trial started: the first confident, mouse-sized detection inside the platform after the last oversized-foreground frame, or the frame the user chose; every latency is measured from here, never from frame 0; blank when no trial start could be proposed (seconds).',
   primaryLatency_s:
-    'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds; O3).',
+    'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds).',
   totalLatency_s:
-    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on (seconds; O4).',
+    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on (seconds).',
   primaryErrors:
-    'Investigations of non-target holes before the first target event, repeat visits included (count; O2).',
+    'Investigations of non-target holes before the first target event, repeat visits included; blank, not zero, when there is no trial window to count over (count).',
   totalErrors:
-    'Investigations of non-target holes over the whole trial, repeat visits included; an investigation of the target hole is never an error (count; O2).',
+    'Investigations of non-target holes over the whole trial, repeat visits included; an investigation of the target hole is never an error; blank, not zero, when there is no trial window to count over (count).',
   pathLength_cm:
-    'Distance travelled by the body centroid over positioned frames within the trial, gaps excluded (cm; O9).',
+    'Distance travelled by the body centroid over positioned frames within the trial, gaps excluded; blank when there is no trial window (cm).',
   pathLengthSmoothed_cm:
-    'The same path after the median filter of the smoothing window; the mean speed uses this one (cm; O9).',
+    'The same path after the median filter of the smoothing window; the mean speed uses this one; blank when there is no trial window (cm).',
   meanSpeed_cmPerS:
-    'Smoothed path length divided by the tracked time within the trial, excluding time after the escape; blank with no tracked time (cm/s; O9).',
+    'Smoothed path length divided by the tracked time within the trial, excluding time after the escape; blank with no tracked time or no trial window (cm/s).',
   targetQuadrantTime_s:
-    'Time the centroid spent inside the sector centred on the target hole (seconds; O6).',
+    'Time the centroid spent inside the sector centred on the target hole; blank when there is no trial window (seconds).',
   strategy:
-    'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose (spatial, serial or random; O7).',
+    'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose; unclassified when there is no trial window or nothing to classify over, because a class is a measurement and an empty search measures nothing (spatial, serial, random or unclassified; rules from Gawel et al. 2019, Table 1).',
   strategySource:
-    'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—; D23).',
-  escaped: 'Whether a persistent escape-box entry ended the trial (yes/no; O4).',
+    'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—).',
+  escaped: 'Whether a persistent escape-box entry ended the trial (yes/no).',
   noEscapeConfirmed:
-    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry found afterwards contradicts the confirmation and the entry wins (yes/no; D63).',
+    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry found afterwards contradicts the confirmation and the entry wins (yes/no).',
   status:
-    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed (—; O5).',
+    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed, in which case every measure over the trial window is blank (—).',
   trackedFraction:
-    'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier (fraction; D30).',
-  correctionCount: 'Number of corrections in this video’s corrections layer (count; D25).',
+    'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier; blank when there is no trial window (fraction).',
+  correctionCount:
+    'Number of corrections in this video’s corrections layer; a confirmation — an event kept as it stands — is not a correction and is not counted (count).',
 };
 
-/** The decision each metric definition cites, for the definitions disclosure. */
-export const METRIC_DECISIONS: Record<MetricKey, string> = Object.fromEntries(
-  (Object.keys(METRIC_DEFINITIONS) as MetricKey[]).map((key) => {
-    const match = /\b([OD]\d+)\)\.?$/.exec(METRIC_DEFINITIONS[key]);
-    return [key, match?.[1] ?? ''];
-  }),
-) as Record<MetricKey, string>;
+/**
+ * The decision each metric comes from, for the definitions disclosure and the
+ * export. Written out rather than parsed from the definition text, as for the
+ * parameters: a user-facing sentence cites a paper where there is one, not
+ * this project's decision numbers.
+ */
+export const METRIC_DECISIONS: Record<MetricKey, string> = {
+  trialStart_s: 'O5',
+  primaryLatency_s: 'O3',
+  totalLatency_s: 'O4',
+  primaryErrors: 'O2',
+  totalErrors: 'O2',
+  pathLength_cm: 'O9',
+  pathLengthSmoothed_cm: 'O9',
+  meanSpeed_cmPerS: 'O9',
+  targetQuadrantTime_s: 'O6',
+  strategy: 'D58',
+  strategySource: 'D23',
+  escaped: 'O4',
+  noEscapeConfirmed: 'D63',
+  status: 'D66',
+  trackedFraction: 'D30',
+  correctionCount: 'D64',
+};
 
 // ---------------------------------------------------------------------------
 // O8 · maze geometry defaults, used by `src/maze/ring.ts` and the maze step.

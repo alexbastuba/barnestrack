@@ -15,6 +15,7 @@
 import type { EventRow, QualityRow, TrialRow } from '../contracts/exportRows.js';
 import { EXPORT_SCHEMA_VERSION } from '../contracts/exportRows.js';
 import type { Parameters } from '../contracts/parameters.js';
+import { reviewFlagCodes } from '../contracts/reviewFlags.js';
 import type {
   DerivedLayer,
   SessionFile,
@@ -150,6 +151,9 @@ export function trialRows(
       // document.
       noEscapeConfirmed: metrics.noEscapeConfirmed ?? false,
       status: metrics.status,
+      // D66: the reason travels with the row. `?? []` for the same reason as `noEscapeConfirmed`
+      // above: a derived cache written before the flags were persisted has none.
+      reviewFlags: reviewFlagCodes(analysis.derived.reviewFlags ?? []).join(';'),
       trackedFraction: metrics.trackedFraction,
       correctionCount: metrics.correctionCount,
       ...thresholds,

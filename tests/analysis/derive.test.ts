@@ -101,6 +101,7 @@ describe('derive', () => {
       'events',
       'metrics',
       'quality',
+      'reviewFlags',
     ]);
   });
 
@@ -571,7 +572,8 @@ describe('derive', () => {
     expect(never.metrics.status).toBe('unresolved');
     expect(never.trial.endReason).toBe('no_start');
     expect(never.quality.gaps).toHaveLength(1);
-    expect(never.strategy.strategy).toBe('random');
+    expect(never.strategy.strategy).toBe('unclassified');
+    expect(never.metrics.primaryErrors).toBeNull();
   });
 
   it('rejects invalid parameters by name and survives a JSON round trip of the derived layer', () => {

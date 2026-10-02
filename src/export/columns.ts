@@ -53,6 +53,7 @@ const TRIAL_COLUMN_META: Record<keyof TrialRow, ColumnMeta> = {
   escaped: { header: 'escaped', unit: 'bool' },
   noEscapeConfirmed: { header: 'no_escape_confirmed', unit: 'bool' },
   status: { header: 'status', unit: '' },
+  reviewFlags: { header: 'review_flags', unit: '' },
   trackedFraction: { header: 'tracked_fraction', unit: '0–1' },
   correctionCount: { header: 'correction_count', unit: 'count' },
   holeInvestigationRadiusFactor: {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXPORT_SCHEMA_VERSION } from '../../src/contracts/exportRows.js';
+import { TRIAL_COLUMNS } from '../../src/export/columns.js';
+import { toCsv } from '../../src/export/csv.js';
 import { eventRows, qualityRows, trialRows } from '../../src/export/rows.js';
 import {
   FIXTURE_PARAMETERS,
@@ -82,7 +84,7 @@ describe('trialRows', () => {
       // the fixture's trials all have a start and tracked time, so neither nullable cell is null here
       expect(typeof row.trialStart_s).toBe('number');
       expect(row.trialStart_s).toBe(Number(row.trialStart_s!.toFixed(3)));
-      expect(row.pathLength_cm).toBe(Number(row.pathLength_cm.toFixed(2)));
+      expect(row.pathLength_cm).toBe(Number(row.pathLength_cm!.toFixed(2)));
       expect(row.meanSpeed_cmPerS).toBe(Number(row.meanSpeed_cmPerS!.toFixed(2)));
     }
   });
@@ -96,6 +98,71 @@ describe('trialRows', () => {
 
   it('exports nothing from a session whose parameters have never been stamped (D47)', () => {
     expect(trialRows({ ...session, parameters: null })).toEqual([]);
+  });
+});
+
+/*
+ * D66: a number that cannot be established is an empty cell, never 0; a legitimate zero is `0`;
+ * and the review flag codes travel with the row.
+ */
+describe('nulls, zeros and review flags (D66)', () => {
+  function cell(csv: string, rowIndex: number, header: string): string {
+    const lines = csv.split('\r\n');
+    const headers = lines[0]!.split(',');
+    return lines[rowIndex + 1]!.split(',')[headers.indexOf(header)]!;
+  }
+
+  it('writes an empty cell for an unresolved trial’s window measures, and 0 for a resolved zero', () => {
+    const edited = syntheticSession();
+    const [first, second] = edited.videos.map((video) => edited.analyses[video.id]!.derived!);
+    first!.metrics = {
+      ...first!.metrics,
+      status: 'unresolved',
+      trialStart_s: null,
+      primaryLatency_s: null,
+      totalLatency_s: null,
+      primaryErrors: null,
+      totalErrors: null,
+      pathLength_cm: null,
+      pathLengthSmoothed_cm: null,
+      meanSpeed_cmPerS: null,
+      targetQuadrantTime_s: null,
+      trackedFraction: null,
+      strategy: 'unclassified',
+    };
+    second!.metrics = { ...second!.metrics, primaryErrors: 0, totalErrors: 0 };
+    const csv = toCsv(TRIAL_COLUMNS, trialRows(edited));
+    for (const header of [
+      'primary_errors',
+      'total_errors',
+      'path_length_cm',
+      'path_length_smoothed_cm',
+      'mean_speed_cm_per_s',
+      'target_quadrant_time_s',
+      'tracked_fraction',
+    ]) {
+      expect(cell(csv, 0, header), header).toBe('');
+    }
+    expect(cell(csv, 0, 'strategy')).toBe('unclassified');
+    expect(cell(csv, 0, 'status')).toBe('unresolved');
+    expect(cell(csv, 1, 'primary_errors')).toBe('0');
+    expect(cell(csv, 1, 'total_errors')).toBe('0');
+  });
+
+  it('writes the review flag codes derive() raised, unique and in a stable order, blank when none', () => {
+    const edited = syntheticSession();
+    const derived = edited.analyses[edited.videos[0]!.id]!.derived!;
+    derived.reviewFlags = [
+      { code: 'stale_auto_layer', message: 'other tracking parameters' },
+      { code: 'oversized_in_trial', message: 'a hand', frameIndex: 12 },
+      { code: 'stale_auto_layer', message: 'said twice' },
+    ];
+    const csv = toCsv(TRIAL_COLUMNS, trialRows(edited));
+    expect(cell(csv, 0, 'review_flags')).toBe('oversized_in_trial;stale_auto_layer');
+    expect(cell(csv, 1, 'review_flags')).toBe('');
+    // the column sits right after status, so a reader sees the reason beside the verdict
+    const headers = csv.split('\r\n')[0]!.split(',');
+    expect(headers[headers.indexOf('status') + 1]).toBe('review_flags');
   });
 });
 

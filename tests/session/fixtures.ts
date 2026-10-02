@@ -159,6 +159,12 @@ export function videoAnalysis(): VideoAnalysis {
         parametersHash: 'p_9f2a',
         tier: 'REVIEW',
       },
+      reviewFlags: [
+        {
+          code: 'stale_auto_layer',
+          message: 'This track was produced with other tracking parameters; re-track the video.',
+        },
+      ],
     },
   };
 }

@@ -20,6 +20,7 @@ import type { FrameIndex, NamedPointId, Track, TrackFrame } from './track.js';
 import type { EventRecord } from './events.js';
 import type { TrialMetrics } from './metrics.js';
 import type { QualityReport } from './quality.js';
+import type { ReviewFlag } from './reviewFlags.js';
 import type { ToolVersion } from './version.js';
 
 export const SESSION_SCHEMA_VERSION = 1;
@@ -109,7 +110,12 @@ export interface TrialStartCorrection extends CorrectionBase {
   frameIndex: FrameIndex;
 }
 
-export type SearchStrategy = 'spatial' | 'serial' | 'random';
+/**
+ * The rule engine's classes (D23, D58) plus `unclassified`: there was no
+ * trial window, or nothing to classify over — no investigation and no target
+ * visit — so no rule applies and no class is a measurement (D66).
+ */
+export type SearchStrategy = 'spatial' | 'serial' | 'random' | 'unclassified';
 
 export interface StrategyOverrideCorrection extends CorrectionBase {
   kind: 'strategy_override';
@@ -146,6 +152,8 @@ export interface DerivedLayer {
   events: readonly EventRecord[];
   metrics: TrialMetrics;
   quality: QualityReport;
+  /** What a human should look at before trusting the trial; the codes travel in `trials.csv` (D66). */
+  reviewFlags: readonly ReviewFlag[];
 }
 
 export interface VideoAnalysis {

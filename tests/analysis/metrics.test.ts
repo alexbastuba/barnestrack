@@ -133,19 +133,37 @@ describe('computeMetrics (O2, O3, O4, O5)', () => {
     expect(r.metrics.totalErrors).toBe(2);
   });
 
-  it('is unresolved with NaN start and no events when nothing was tracked', () => {
+  it('is unresolved with every window measure null, never 0 or NaN, when nothing was tracked (D66)', () => {
     const r = pipeline([
       { kind: 'empty', seconds: 1 },
       { kind: 'ambiguous', seconds: 1 },
     ]);
     expect(r.metrics.status).toBe('unresolved');
-    expect(isRecorded(r.metrics.trialStart_s)).toBe(false);
+    expect(r.metrics.trialStart_s).toBeNull();
     expect(r.metrics.primaryLatency_s).toBeNull();
     expect(r.metrics.totalLatency_s).toBeNull();
     expect(r.metrics.escaped).toBe(false);
+    expect(r.metrics.primaryErrors).toBeNull();
+    expect(r.metrics.totalErrors).toBeNull();
+    expect(r.metrics.pathLength_cm).toBeNull();
+    expect(r.metrics.pathLengthSmoothed_cm).toBeNull();
+    expect(r.metrics.meanSpeed_cmPerS).toBeNull();
+    expect(r.metrics.targetQuadrantTime_s).toBeNull();
+    expect(r.metrics.trackedFraction).toBeNull();
+    expect(r.metrics.strategy).toBe('unclassified');
+    // nothing non-finite reaches the contract boundary
+    for (const value of Object.values(r.metrics)) {
+      if (typeof value === 'number') expect(isRecorded(value)).toBe(true);
+    }
+  });
+
+  it('keeps a legitimate zero as 0 on a resolved trial with no non-target investigation (D66)', () => {
+    const r = pipeline([...visitHoles([7]), { kind: 'moveToCentre', seconds: 0.5 }]);
+    expect(r.metrics.status).not.toBe('unresolved');
     expect(r.metrics.primaryErrors).toBe(0);
-    expect(isRecorded(r.metrics.trackedFraction)).toBe(false);
-    expect(JSON.parse(JSON.stringify(r.metrics)).trialStart_s).toBeNull();
+    expect(r.metrics.totalErrors).toBe(0);
+    expect(r.metrics.targetQuadrantTime_s).toBeGreaterThan(0);
+    expect(r.metrics.trackedFraction).toBe(1);
   });
 
   it('tracked fraction counts tracked states only, over the trial window', () => {

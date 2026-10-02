@@ -11,6 +11,7 @@
 import type { SessionFile } from '../contracts/session.js';
 import type { TrialPoint } from './cohort.js';
 import {
+  cohortCaption,
   DEFAULT_METRIC,
   METRIC_LABELS,
   NO_METADATA_MESSAGE,
@@ -22,6 +23,7 @@ import type { GlyphKind, LegendEntry } from './figure.js';
 import {
   beginFigure,
   drawAxes,
+  drawCaption,
   drawGlyph,
   drawLegend,
   drawUnavailable,
@@ -56,6 +58,8 @@ export interface LearningCurve {
   /** The distinct x values, in order, as they are labelled on the axis. */
   xLabels: string[];
   series: CurveSeries[];
+  /** How many trials are plotted and why the rest are not (D66). */
+  caption: string;
 }
 
 /**
@@ -104,7 +108,14 @@ export function learningCurveSeries(
         .filter((point): point is CurvePoint => point !== null),
     }));
 
-  return { metric, metricLabel: METRIC_LABELS[metric], xAxis, xLabels, series };
+  return {
+    metric,
+    metricLabel: METRIC_LABELS[metric],
+    xAxis,
+    xLabels,
+    series,
+    caption: cohortCaption(points),
+  };
 }
 
 /** Numeric labels sort numerically; anything else sorts as text. */
@@ -186,6 +197,7 @@ export const learningCurveFigure: FigureSpec = {
     });
 
     drawLegend(frame, legend, plot.y + plot.height + 54);
+    drawCaption(frame, curve.caption);
     endFigure(frame);
   },
 
@@ -196,7 +208,7 @@ export const learningCurveFigure: FigureSpec = {
     }
     return {
       title: `${TITLE} — ${curve.metricLabel}`,
-      summary: `${curve.metricLabel} for each animal against ${curve.xAxis}. A blank cell is a trial with no value for this measure, not a zero.`,
+      summary: `${curve.metricLabel} for each animal against ${curve.xAxis}. A blank cell is a trial with no value for this measure, not a zero. ${curve.caption}.`,
       columns: ['Animal', ...curve.xLabels.map((label) => `${curve.xAxis} ${label}`)],
       rows: curve.series.map((series) => [
         series.animal,
