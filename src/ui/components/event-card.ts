@@ -56,6 +56,8 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   correction_out_of_range: 'correction out of range',
   stale_auto_layer: 'stale automatic track',
   no_escape_contradicted: 'contradicted non-escape',
+  confirmation_contradicted: 'contradicted confirmation',
+  non_persistent_entry_noted: 'short entry noted',
 };
 
 /** The review flags that belong to one event. */

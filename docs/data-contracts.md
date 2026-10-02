@@ -144,7 +144,17 @@ superseding the session-level "calibration" field named in D9's prose).
   ordinary edit. It is what tells a confirmation apart from an event edited and then edited back,
   and a confirmation is **excluded from `metrics.correctionCount`** (`src/analysis/derive.ts`), so
   `correction_count` stays a count of hand edits. A later edit that changes something replaces the
-  entry and does not carry the flag forward.
+  entry and does not carry the flag forward. Since D67 a confirmation is accepted on an
+  `escape_entry` as well as an investigation (never on a `tracking_failure`, which the engine
+  re-measures); if a later analysis no longer finds the confirmed event under its id — removed, or
+  its start frame moved — the review flag `confirmation_contradicted` is raised and the trial is
+  `review`. An `EventCorrection` may also carry **`newKind: 'tracking_failure'`** on an `edit` of
+  an escape entry (D67): the event becomes a `tracking_failure` with `source: 'corrected'` and the
+  entry's hole and frames as its `autoShadow`, the frames stay a gap, and the trial end, latencies
+  and errors are recomputed without the entry. Beside a `no_escape` confirmation (D63), an entry
+  that ended the trial or is persistent raises `no_escape_contradicted` (status `review`); an entry
+  over the minimum duration but under the persist cutoff raises the soft flag
+  `non_persistent_entry_noted`, which never sets `review` on its own.
 - **`derived`** — `{ cleanedTrack, events, metrics, quality, reviewFlags } | null`. Everything
   recomputed from `auto ⊕ corrections` on load: safe to discard and recompute at any time; never
   treated as the source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration
@@ -518,7 +528,7 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | Column | Unit | Source |
 | --- | --- | --- |
 | `session_id`, `video_id`, `trial_label`, `event_id` | — | identifiers |
-| `kind` | — | `investigation \| escape_entry` |
+| `kind` | — | `investigation \| escape_entry \| tracking_failure` (D67: every event is a row; a failure counts toward nothing) |
 | `hole_index` (nullable), `is_target` | —, bool | — |
 | `start_frame`, `end_frame` | — | D7 |
 | `start_time_s`, `end_time_s`, `duration_s` | s | D7 |

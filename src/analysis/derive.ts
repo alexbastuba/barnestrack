@@ -190,8 +190,10 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   });
 
   // A flag raised on an automatic event goes with the event: once the user has deleted it, the
-  // flag has nothing to point at, and a trial must be able to reach "ok" after review (D20).
-  const liveEventIds = new Set(correctedEvents.events.map((ev) => ev.id));
+  // flag has nothing to point at, and a trial must be able to reach "ok" after review (D20). An
+  // entry the user reclassified as a tracking failure (D67) keeps its id but is no longer an
+  // entry, so a flag about the entry goes too.
+  const liveEvents = new Map(correctedEvents.events.map((ev) => [ev.id, ev]));
   const flagFollowsEvent = (f: ReviewFlag): boolean =>
     f.code === 'physically_unlikely_entry' || f.code === 'tracking_failure_at_hole';
   const reviewFlags: ReviewFlag[] = [
@@ -200,7 +202,12 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     ...autoEvents.flags,
     ...correctedEvents.flags,
     ...endFlags,
-  ].filter((f) => !(flagFollowsEvent(f) && f.eventId !== undefined && !liveEventIds.has(f.eventId)));
+  ].filter((f) => {
+    if (!flagFollowsEvent(f) || f.eventId === undefined) return true;
+    const live = liveEvents.get(f.eventId);
+    if (live === undefined) return false;
+    return !(f.code === 'physically_unlikely_entry' && live.kind === 'tracking_failure');
+  });
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
   // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
   // stamped on this analysis would then name a configuration that never ran, so say so.
@@ -259,15 +266,29 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   if (noEscape !== null && escapeEntries.length > 0) {
     const because = noEscape.reason ? ` ("${noEscape.reason}")` : '';
     const first = escapeEntries.reduce((a, b) => (a.startFrame <= b.startFrame ? a : b));
-    reviewFlags.push({
-      code: 'no_escape_contradicted',
-      correctionId: noEscape.id,
-      frameIndex: first.startFrame,
-      message:
-        bounds.endReason === 'escape'
-          ? `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. The entry stands: revert the confirmation, or revert what produced the entry.`
-          : `${escapeEntries.length === 1 ? 'An escape entry was' : `${escapeEntries.length} escape entries were`} detected at ${first.startTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. ${escapeEntries.length === 1 ? 'It is' : 'They are'} too short to end the trial, or outside it, so the trial is not marked escaped — check the entry and then either revert the confirmation or delete the entry.`,
-    });
+    const lastFrameIndex = cleaned.track[cleaned.track.length - 1]!.frameIndex;
+    // D67's amendment of D63: an entry that ended the trial, or is persistent, contradicts the
+    // confirmation outright; an entry over the minimum duration but under the persist cutoff —
+    // the animal put its head in and came back out — stands beside it as a note.
+    const persistent = escapeEntries.some((ev) => isPersistentEscape(ev, lastFrameIndex, parameters));
+    if (bounds.endReason === 'escape' || persistent) {
+      reviewFlags.push({
+        code: 'no_escape_contradicted',
+        correctionId: noEscape.id,
+        frameIndex: first.startFrame,
+        message:
+          bounds.endReason === 'escape'
+            ? `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. The entry stands: revert the confirmation, or revert what produced the entry.`
+            : `A persistent escape entry was detected at ${first.startTime_s.toFixed(2)} s, outside the trial window, contradicting the confirmation that the animal never entered the escape box${because}. It did not end the trial, so the trial is not marked escaped — check the entry and then either revert the confirmation or delete the entry.`,
+      });
+    } else {
+      reviewFlags.push({
+        code: 'non_persistent_entry_noted',
+        correctionId: noEscape.id,
+        frameIndex: first.startFrame,
+        message: `${escapeEntries.length === 1 ? 'An escape entry was' : `${escapeEntries.length} escape entries were`} detected at ${first.startTime_s.toFixed(2)} s, over the minimum entry duration but under the persist cutoff: the animal was seen again, so the trial was not ended and the confirmation that it never entered the escape box${because} stands. Noted here, not contradicted; reclassify the entry as a tracking failure or delete it if it was never an entry.`,
+      });
+    }
   }
 
   const metrics = computeMetrics({

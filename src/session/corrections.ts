@@ -360,6 +360,36 @@ export function confirmEvent(
   );
 }
 
+/**
+ * "That was not an entry — the tracker lost the animal" (D67): an `edit` of an
+ * escape entry whose `newKind` is `tracking_failure`. It replaces any other edit
+ * of the event (a reclassification is not a confirmation and not a retiming),
+ * keeps the event's own id, and is revertable like every correction; the
+ * engine keeps the entry's hole and frames as the failure's shadow.
+ */
+export function reclassifyEvent(
+  layer: CorrectionsLayer,
+  eventId: string,
+  meta: CorrectionMeta,
+): CorrectionsLayer {
+  const existing = editEntryFor(layer, eventId);
+  const entry: EventCorrection = {
+    kind: 'event',
+    id: existing?.id ?? meta.id,
+    timestamp: meta.timestamp,
+    source: 'user',
+    action: 'edit',
+    eventId,
+    newKind: 'tracking_failure',
+  };
+  return layerOf([...drop(layer, (e) => e === existing), entry]);
+}
+
+/** True when this entry reclassifies an escape entry as a tracking failure (D67). */
+export function isReclassification(entry: CorrectionEntry): boolean {
+  return entry.kind === 'event' && entry.action === 'edit' && entry.newKind === 'tracking_failure';
+}
+
 /** The ids of the events a user has confirmed as they stand (`Keep`). */
 export function confirmedEventIds(layer: CorrectionsLayer): ReadonlySet<string> {
   const ids = new Set<string>();
@@ -582,6 +612,9 @@ export function describeCorrection(entry: CorrectionEntry): string {
         return `Investigation added at hole ${entry.holeIndex}, frames ${entry.startFrame}–${entry.endFrame}`;
       }
       if (entry.action === 'delete') return `Event ${entry.eventId} deleted`;
+      if (entry.newKind === 'tracking_failure') {
+        return `Event ${entry.eventId} reclassified by the user: not an escape entry, the tracker lost the animal`;
+      }
       if (entry.confirmed === true) return `Event ${entry.eventId} confirmed by the user, no change`;
       const changes: string[] = [];
       if (entry.holeIndex !== undefined) changes.push(`hole → ${entry.holeIndex}`);

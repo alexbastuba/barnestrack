@@ -12,11 +12,16 @@ import {
   type CorrectionEntry,
   type SessionFile,
 } from '../../src/contracts/session.js';
-import { EVENT_COLUMNS } from '../../src/export/columns.js';
+import { EVENT_COLUMNS, TRIAL_COLUMNS } from '../../src/export/columns.js';
 import { csvHeaderRow, toCsv } from '../../src/export/csv.js';
-import { eventRows } from '../../src/export/rows.js';
+import { eventRows, trialRows } from '../../src/export/rows.js';
 import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
-import { NO_CORRECTIONS, confirmEvent, revertNoEscape } from '../../src/session/corrections.js';
+import {
+  NO_CORRECTIONS,
+  confirmEvent,
+  reclassifyEvent,
+  revertNoEscape,
+} from '../../src/session/corrections.js';
 import { TEST_RESOLUTION, testGeometry, testMazeMap } from './maze-fixture.js';
 import { holePoint, scriptTrack, visitHoles, type Segment } from './synthetic-track.js';
 import { deepFreeze } from './track-builder.js';
@@ -697,14 +702,14 @@ describe('a confirmed non-escape (D63)', () => {
     expect(flag!.message).toContain('the animal sat on the platform');
   });
 
-  it('is contradicted by an escape entry too short to end the trial', () => {
+  it('stands beside an escape entry too short to end the trial, noted rather than contradicted (D67)', () => {
     /*
-     * The reviewer's counterexample, and the reason the flag does not test
-     * `escaped`. A loss at the target over the minimum duration but under the
-     * persist cutoff is a real `escape_entry` row in `events.csv` at the escape
-     * hole, while the trial runs on and `escaped` stays false. Testing only the
-     * trial-ending entry shipped `escaped=false, no_escape_confirmed=true,
-     * status=ok` over an entry the tool had itself found and printed.
+     * A loss at the target over the minimum duration but under the persist cutoff is a real
+     * `escape_entry` row in `events.csv` at the escape hole — the animal put its head in and came
+     * back out — while the trial runs on and `escaped` stays false. Under D63 alone that entry
+     * contradicted the confirmation and sent the trial to review, which asked the user to delete
+     * the tool's evidence in order to agree with it. D67 lets the confirmation stand with a soft
+     * flag that says what was seen; the hard contradiction stays for an entry that ended the trial.
      */
     const shortEntry: Segment[] = [
       { kind: 'empty', seconds: 1 },
@@ -715,13 +720,27 @@ describe('a confirmed non-escape (D63)', () => {
       { kind: 'dwell', hole: 7, seconds: 0.5 },
       ...visitHoles([9]),
     ];
-    const d = derive(inputFor(shortEntry, { corrections: [confirmation] }).input);
+    const { input } = inputFor(shortEntry, { corrections: [confirmation] });
+    const d = derive(input);
     expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(true);
     expect(d.metrics.escaped).toBe(false); // the entry is not persistent: the trial ran on
-    const flag = d.reviewFlags.find((f) => f.code === 'no_escape_contradicted');
-    expect(flag).toBeDefined();
-    expect(flag!.message).toContain('too short to end the trial');
-    expect(d.metrics.status).toBe('review');
+    expect(d.reviewFlags.map((f) => f.code)).toEqual(['non_persistent_entry_noted']);
+    expect(d.reviewFlags[0]!.message).toContain('under the persist cutoff');
+    expect(d.reviewFlags[0]!.correctionId).toBe('n1');
+    expect(d.metrics.noEscapeConfirmed).toBe(true);
+    expect(d.metrics.status).toBe('ok');
+    // the row says the same: ok, confirmed, and the note travels in review_flags
+    const row = trialRowFor(input, d);
+    expect(row).toMatchObject({
+      status: 'ok',
+      escaped: 'false',
+      no_escape_confirmed: 'true',
+      review_flags: 'non_persistent_entry_noted',
+    });
+    // another hard flag still sends it to review: the soft flag never masks one
+    const stale = derive({ ...input, auto: { ...input.auto, parametersHash: 'deadbeef'.repeat(8) } });
+    expect(stale.metrics.status).toBe('review');
+    expect(stale.reviewFlags.map((f) => f.code).sort()).toEqual(['non_persistent_entry_noted', 'stale_auto_layer']);
   });
 
   it('leaves the trial at review once the confirmation is reverted', () => {
@@ -750,9 +769,8 @@ describe('a confirmed non-escape (D63)', () => {
  * its shadow, and a confirmation is the automatic event with a flag on it. Each case is checked on
  * the record and on the `events.csv` row, read back by header name.
  */
-describe('event provenance (D65)', () => {
-  /** RFC 4180 rows by header: enough for the writer's own output (quoted fields with commas). */
-  function csvRows(text: string): Record<string, string>[] {
+/** RFC 4180 rows by header: enough for the writer's own output (quoted fields with commas). */
+function csvRows(text: string): Record<string, string>[] {
     const lines: string[][] = [];
     let row: string[] = [];
     let field = '';
@@ -782,9 +800,10 @@ describe('event provenance (D65)', () => {
     return rest
       .filter((cells) => cells.length > 1)
       .map((cells) => Object.fromEntries(header!.map((h, i) => [h, cells[i] ?? ''])));
-  }
+}
 
-  function sessionAround(input: DeriveInput, analysis: ReturnType<typeof derive>): SessionFile {
+/** A one-video session around an analysis, so the export writers can be run on it. */
+function sessionAround(input: DeriveInput, analysis: ReturnType<typeof derive>): SessionFile {
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
       toolVersion: 'barnestrack v0.2.0 (test)',
@@ -809,15 +828,22 @@ describe('event provenance (D65)', () => {
         },
       },
     };
-  }
+}
 
-  function rowFor(input: DeriveInput, analysis: ReturnType<typeof derive>, eventId: string) {
-    const session = sessionAround(input, analysis);
-    const row = csvRows(toCsv(EVENT_COLUMNS, eventRows(session))).find((r) => r['event_id'] === eventId);
-    expect(row, `no events.csv row for ${eventId}`).toBeDefined();
-    return row!;
-  }
+/** The events.csv row of one event, by header name. */
+function rowFor(input: DeriveInput, analysis: ReturnType<typeof derive>, eventId: string) {
+  const session = sessionAround(input, analysis);
+  const row = csvRows(toCsv(EVENT_COLUMNS, eventRows(session))).find((r) => r['event_id'] === eventId);
+  expect(row, `no events.csv row for ${eventId}`).toBeDefined();
+  return row!;
+}
 
+/** The trials.csv row of a one-video session around an analysis, by header name. */
+function trialRowFor(input: DeriveInput, analysis: ReturnType<typeof derive>): Record<string, string> {
+  return csvRows(toCsv(TRIAL_COLUMNS, trialRows(sessionAround(input, analysis))))[0]!;
+}
+
+describe('event provenance (D65)', () => {
   // an investigation at hole 3, then a long stay at the target that the user marks as "in the box"
   const stayAtTarget: Segment[] = [
     ...visitHoles([3]),
@@ -967,7 +993,183 @@ describe('event provenance (D65)', () => {
     };
     const d = derive(inputFor(script, { corrections: [...kept.entries], p: strict }).input);
     expect(d.events.find((e) => e.id === target.id)).toBeUndefined();
-    expect(d.reviewFlags.some((f) => f.correctionId === 'k1' && f.eventId === target.id)).toBe(true);
+    const flag = d.reviewFlags.find((f) => f.code === 'confirmation_contradicted');
+    expect(flag).toMatchObject({ correctionId: 'k1', eventId: target.id });
     expect(d.metrics.status).toBe('review');
+  });
+});
+
+/*
+ * D67: the detector's escape entry is an inference until a person says what they saw. Three
+ * actions exist on it — confirm, reject (delete, as before), reclassify as a tracking loss — and
+ * each is checked on the record, on the metrics and on the exported row.
+ */
+describe('the escape entry as an inference (D67)', () => {
+  // an investigation at hole 3, then a 1.5 s loss at the target the animal comes back from
+  const shortEntry: Segment[] = [
+    { kind: 'empty', seconds: 1 },
+    ...visitHoles([3]),
+    { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+    { kind: 'dwell', hole: 7, seconds: 0.5, area: [500, 150] },
+    { kind: 'lost', seconds: 1.5 },
+    { kind: 'dwell', hole: 7, seconds: 0.5 },
+    ...visitHoles([9]),
+  ];
+
+  function entryOf(analysis: ReturnType<typeof derive>) {
+    const entry = analysis.events.find((e) => e.kind === 'escape_entry');
+    expect(entry, 'no escape entry was inferred').toBeDefined();
+    return entry!;
+  }
+
+  it('accepts a confirmation on an escape entry: automatic, confirmed, nothing re-measured, nothing counted', () => {
+    const { input: plain } = inputFor(escapeTrial);
+    const before = derive(plain);
+    const entry = entryOf(before);
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      entry.id,
+      { holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame },
+      { id: 'k1', timestamp: at(1) },
+    );
+    const { input } = inputFor(escapeTrial, { corrections: [...kept.entries] });
+    const d = derive(input);
+    const confirmed = entryOf(d);
+    expect(confirmed).toEqual({ ...entry, confirmed: true });
+    expect(d.metrics).toEqual(before.metrics);
+    expect(d.metrics.escaped).toBe(true);
+    expect(d.metrics.status).toBe('ok');
+    expect(d.metrics.correctionCount).toBe(0);
+    expect(d.reviewFlags).toEqual([]);
+    const row = rowFor(input, d, entry.id);
+    expect(row).toMatchObject({ kind: 'escape_entry', source: 'auto', confirmed: 'true', auto_start_frame: '' });
+  });
+
+  it('flags a confirmed entry that a threshold change removed, and sends the trial to review', () => {
+    const { input: plain } = inputFor(shortEntry);
+    const entry = entryOf(derive(plain));
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      entry.id,
+      { holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame },
+      { id: 'k1', timestamp: at(1) },
+    );
+    // a longer minimum entry duration than the 1.5 s loss: the entry no longer exists
+    const strict: Parameters = {
+      ...DEFAULT_PARAMETERS,
+      escapeEntry: { ...DEFAULT_PARAMETERS.escapeEntry, minDuration_s: 2 },
+    };
+    const { input } = inputFor(shortEntry, { corrections: [...kept.entries], p: strict });
+    const d = derive(input);
+    expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    const flag = d.reviewFlags.find((f) => f.code === 'confirmation_contradicted');
+    expect(flag).toMatchObject({ correctionId: 'k1', eventId: entry.id });
+    expect(flag!.message).toContain('no longer exists');
+    expect(d.metrics.status).toBe('review');
+    expect(trialRowFor(input, d).review_flags).toBe('confirmation_contradicted');
+  });
+
+  it('reclassifies an entry as a tracking failure: the frames stay a gap and the trial is recomputed without it', () => {
+    const { input: plain } = inputFor(escapeTrial);
+    const before = derive(plain);
+    const entry = entryOf(before);
+    expect(before.metrics.escaped).toBe(true);
+    expect(before.trial.endReason).toBe('escape');
+
+    const reclassified = reclassifyEvent(NO_CORRECTIONS, entry.id, { id: 'x1', timestamp: at(1) });
+    const { input } = inputFor(escapeTrial, { corrections: [...reclassified.entries] });
+    const d = derive(input);
+    const failure = d.events.find((e) => e.id === entry.id)!;
+    expect(failure.kind).toBe('tracking_failure');
+    expect(failure.source).toBe('corrected');
+    expect(failure.holeIndex).toBe(entry.holeIndex);
+    expect(failure.startFrame).toBe(entry.startFrame);
+    expect(failure.autoShadow).toEqual({ holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame });
+    expect(failure.evidence).toContain('Reclassified by the user');
+    // the lost frames are still a gap in the cleaned track
+    const lost = d.cleanedTrack.filter((f) => f.frameIndex >= entry.startFrame && f.frameIndex <= entry.endFrame && !f.centroid.valid);
+    expect(lost.length).toBeGreaterThan(0);
+    // no entry: the trial runs to the end of the video, the latency is blank, and the visit the
+    // entry had hidden (hole 9, after the loss) is now an error
+    expect(d.trial.endReason).toBe('end_of_video');
+    expect(d.metrics.escaped).toBe(false);
+    expect(d.metrics.totalLatency_s).toBeNull();
+    expect(d.metrics.totalErrors).toBe(before.metrics.totalErrors! + 1);
+    expect(d.events.some((e) => e.kind === 'investigation' && e.holeIndex === 9)).toBe(true);
+    expect(d.metrics.correctionCount).toBe(1);
+    expect(d.correctionsApplied.event).toBe(1);
+
+    const eventRow = rowFor(input, d, entry.id);
+    expect(eventRow).toMatchObject({
+      kind: 'tracking_failure',
+      source: 'corrected',
+      confirmed: 'false',
+      auto_hole_index: String(entry.holeIndex),
+      auto_start_frame: String(entry.startFrame),
+      auto_end_frame: String(entry.endFrame),
+    });
+    const trialRow = trialRowFor(input, d);
+    expect(trialRow).toMatchObject({ escaped: 'false', total_latency_s: '', status: 'review' });
+    expect(Number(trialRow.total_errors)).toBe(before.metrics.totalErrors! + 1);
+  });
+
+  it('drops the physically-unlikely flag of a user-asserted entry once it is reclassified', () => {
+    // the D57 case: an escape-box range marked while the animal sits 6 cm from hole 3
+    const away = holePoint(g, 3, 6);
+    const contradicted: Segment[] = [
+      { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
+      { kind: 'dwell', seconds: 0.5 },
+      { kind: 'dwell', seconds: 3 },
+    ];
+    const { input: plain, segmentStarts } = inputFor(contradicted);
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: segmentStarts[2]!,
+      endFrame: plain.auto.frames.length - 1,
+    };
+    const flagged = derive(inputFor(contradicted, { corrections: [range] }).input);
+    const entry = entryOf(flagged);
+    expect(flagged.reviewFlags.map((f) => f.code)).toEqual(['physically_unlikely_entry']);
+    const reclassified = reclassifyEvent({ entries: [range] }, entry.id, { id: 'x1', timestamp: at(2) });
+    const d = derive(inputFor(contradicted, { corrections: [...reclassified.entries] }).input);
+    expect(d.events.find((e) => e.id === entry.id)?.kind).toBe('tracking_failure');
+    expect(d.reviewFlags.map((f) => f.code)).not.toContain('physically_unlikely_entry');
+    expect(d.metrics.escaped).toBe(false);
+  });
+
+  it('ignores a reclassification of anything but an escape entry, and says so', () => {
+    const { input: plain } = inputFor(escapeTrial);
+    const investigation = derive(plain).events.find((e) => e.kind === 'investigation')!;
+    const wrong = reclassifyEvent(NO_CORRECTIONS, investigation.id, { id: 'x1', timestamp: at(1) });
+    const d = derive(inputFor(escapeTrial, { corrections: [...wrong.entries] }).input);
+    expect(d.events.find((e) => e.id === investigation.id)?.kind).toBe('investigation');
+    const flag = d.reviewFlags.find((f) => f.code === 'orphaned_correction');
+    expect(flag?.message).toContain('only an escape entry can be reclassified');
+  });
+
+  it('refuses a confirmation on a tracking failure, and says so', () => {
+    const away = holePoint(g, 3, 6);
+    const lostInTheOpen: Segment[] = [
+      { kind: 'moveTo', x: away.x, y: away.y, seconds: 0.5 },
+      { kind: 'dwell', seconds: 0.5 },
+      { kind: 'lost', seconds: 5 },
+    ];
+    const { input: plain } = inputFor(lostInTheOpen);
+    const failure = derive(plain).events.find((e) => e.kind === 'tracking_failure')!;
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      failure.id,
+      { holeIndex: failure.holeIndex, startFrame: failure.startFrame, endFrame: failure.endFrame },
+      { id: 'k1', timestamp: at(1) },
+    );
+    const d = derive(inputFor(lostInTheOpen, { corrections: [...kept.entries] }).input);
+    expect(d.events.find((e) => e.id === failure.id)?.confirmed).toBe(false);
+    expect(d.reviewFlags.find((f) => f.code === 'orphaned_correction')?.message).toContain(
+      'cannot be confirmed',
+    );
   });
 });

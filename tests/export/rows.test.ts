@@ -170,11 +170,14 @@ describe('eventRows', () => {
   const rows = eventRows(session);
   const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived!.events);
 
-  it('drops tracking failures: they belong to the quality report, never an event (O4)', () => {
+  it('exports tracking failures as rows of their own kind, with a blank hole away from any hole (D67)', () => {
     const failures = events.filter((event) => event.kind === 'tracking_failure');
     expect(failures.length).toBeGreaterThan(0);
-    expect(rows).toHaveLength(events.length - failures.length);
-    expect(rows.every((row) => row.kind !== 'tracking_failure')).toBe(true);
+    expect(rows).toHaveLength(events.length);
+    const failureRows = rows.filter((row) => row.kind === 'tracking_failure');
+    expect(failureRows).toHaveLength(failures.length);
+    expect(failureRows.every((row) => row.holeIndex === null && row.isTarget === false)).toBe(true);
+    expect(failureRows.every((row) => row.source === 'auto' && row.confirmed === false)).toBe(true);
   });
 
   it('keeps every investigation and escape entry', () => {

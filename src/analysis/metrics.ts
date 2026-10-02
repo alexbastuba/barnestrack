@@ -11,7 +11,7 @@ import type { KinematicsSummary } from './kinematics.js';
 import { isRecorded } from './parameters.js';
 import { STATE_CODE, type TrackArrays } from './track-arrays.js';
 import type { TrialBounds } from './trial.js';
-import type { ReviewFlag } from './types.js';
+import { isSoftReviewFlag, type ReviewFlag } from './types.js';
 
 export interface MetricsInput {
   bounds: TrialBounds;
@@ -106,9 +106,11 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   // from a missed entry. D63 lets a human say which it was, and a confirmed non-escape reads `ok`
   // unless something else was flagged — including the contradiction flag `derive()` raises when an
   // escape entry turns up beside the confirmation, so the entry wins without a special case here.
+  // D67: a soft flag notes something without sending the trial to review
+  const hardFlags = flags.filter((flag) => !isSoftReviewFlag(flag));
   const status: TrialMetrics['status'] = noTrial
     ? 'unresolved'
-    : flags.length > 0 || (!escaped && !noEscapeConfirmed)
+    : hardFlags.length > 0 || (!escaped && !noEscapeConfirmed)
       ? 'review'
       : 'ok';
 

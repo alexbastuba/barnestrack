@@ -103,6 +103,13 @@ export interface EventCorrection extends CorrectionBase {
    * `metrics.correctionCount`.
    */
   confirmed?: true;
+  /**
+   * D67: "that was not an entry, the tracker lost the animal" — an `edit` of an
+   * `escape_entry` that makes it a `tracking_failure`. The frames stay a gap,
+   * the event keeps its hole and span with the entry's values as its shadow,
+   * and the trial end, latency and errors are recomputed without the entry.
+   */
+  newKind?: 'tracking_failure';
 }
 
 export interface TrialStartCorrection extends CorrectionBase {

@@ -163,10 +163,11 @@ export function trialRows(
 }
 
 /**
- * One row per investigation or escape-box entry. A tracking failure is never an
- * event row: O4 makes it a finding of the quality report, and `events.csv`'s
- * documented `kind` domain is `investigation | escape_entry`. The failure keeps
- * its `EventRecord` — it is reported in `quality.csv` and in the timeline.
+ * One row per event of every kind. Since D67 a tracking failure is a row too
+ * (`kind = tracking_failure`, `hole_index` blank away from any hole): a loss
+ * the tracker found, and an entry a human reclassified as a loss, both belong
+ * in the file that says what happened to the animal, and the row count of
+ * `events.csv` is the length of `derived.events`.
  */
 export function eventRows(
   session: SessionFile,
@@ -175,7 +176,6 @@ export function eventRows(
   const rows: EventRow[] = [];
   for (const { descriptor, analysis } of analysedVideos(session)) {
     for (const event of analysis.derived.events) {
-      if (event.kind === 'tracking_failure') continue;
       // D65: the auto-only values travel whenever the record carries them — an event a human
       // edited, or one the automatic detection also found but measured over corrected frames.
       const shadow = event.autoShadow;

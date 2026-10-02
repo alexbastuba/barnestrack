@@ -835,6 +835,38 @@ export function applyEventCorrections(
       continue;
     }
     const target = matchEvent(events, c);
+    if (c.action === 'edit' && c.newKind === 'tracking_failure') {
+      // D67: "that was not an entry, the tracker lost the animal". The frames stay a gap; the
+      // event keeps its span and hole with the entry's values as its shadow; and because it is no
+      // longer a persistent escape, derive re-resolves the trial end without it.
+      if (target === null || target.kind !== 'escape_entry') {
+        flags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          eventId: c.eventId,
+          message:
+            target === null
+              ? `Event correction ${c.id} reclassifies event ${c.eventId ?? '(none)'} as a tracking failure, but that event no longer exists under the current parameters; ignored.`
+              : `Event correction ${c.id} reclassifies ${target.id} as a tracking failure, but only an escape entry can be reclassified; ignored.`,
+        });
+        continue;
+      }
+      const reclassified: EventRecord = {
+        ...target,
+        kind: 'tracking_failure',
+        source: 'corrected',
+        confirmed: false,
+        evidence: `Reclassified by the user (correction ${c.id}) from an escape entry to a tracking failure: the animal was lost here, not in the escape box, so these frames stay a gap and the trial, its latency and its errors are computed without an entry. The entry's reading was: ${target.evidence}`,
+        autoShadow: target.autoShadow ?? {
+          holeIndex: target.holeIndex,
+          startFrame: target.startFrame,
+          endFrame: target.endFrame,
+        },
+      };
+      events = events.map((x) => (x === target ? reclassified : x));
+      applied++;
+      continue;
+    }
     if (c.action === 'edit' && c.confirmed === true) {
       // D64, D67: "I looked at this event and it is right as it stands". Nothing is re-measured —
       // the point, the distances and the evidence stay the engine's — and nothing is pinned: a
@@ -842,7 +874,7 @@ export function applyEventCorrections(
       // carries the start) is contradicted, not resurrected on the user's word.
       if (target === null) {
         flags.push({
-          code: 'orphaned_correction',
+          code: 'confirmation_contradicted',
           correctionId: c.id,
           eventId: c.eventId,
           message: `The confirmation ${c.id} names event ${c.eventId ?? '(none)'}, which no longer exists under the current parameters (it was removed, or its start frame moved); look at what is there now and confirm it again, or revert the confirmation.`,

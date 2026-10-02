@@ -330,6 +330,28 @@ export const METRIC_DECISIONS: Record<MetricKey, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// The states an escape entry can be in (D67): the detector's reading is an
+// inference until a person says what they saw. One sentence per state, shown
+// verbatim in the definitions panel, saying how each enters the latency and
+// the error counts.
+// ---------------------------------------------------------------------------
+
+export type EscapeEntryState = 'inferred' | 'confirmed' | 'asserted' | 'reclassified' | 'rejected';
+
+export const ESCAPE_ENTRY_STATE_DEFINITIONS: Record<EscapeEntryState, string> = {
+  inferred:
+    'Inferred: the tracker lost the animal at the target hole, or saw only a small or fragmented blob there, for at least the minimum entry duration with no full-size detection elsewhere; it is the tool’s reading of a disappearance, not a sighting of the animal in the box (the papers’ criterion is the whole body inside the hole, Gawel et al. 2019). When it persists it ends the trial and sets the total latency at its first lost frame; frames after it count toward nothing.',
+  confirmed:
+    'Confirmed: a person watched the clip and kept the inferred entry as it stands. It enters the total latency and the error counts exactly as the inferred entry did; the record says a person agreed, and if a later re-analysis removes the entry or moves its start the confirmation is flagged as contradicted.',
+  asserted:
+    'Asserted by range: a person marked “in the escape box from here”, so the entry begins at the marked frame whatever the tracker saw. It ends the trial when it persists, the total latency is the marked frame, and the entry is exported as the person’s claim; a range starting where the track puts the animal far from any hole is kept and flagged.',
+  reclassified:
+    'Reclassified as tracking loss: a person said the animal was lost here, not in the escape box. The frames stay a gap, the event is a tracking failure that counts toward no latency and no error, and the trial end, total latency and errors are recomputed as if no entry had been found.',
+  rejected:
+    'Rejected: a person deleted the inferred entry. Nothing is counted for it, the trial end is re-resolved (a later persistent entry, the cutoff, or the end of the video), and the deletion is a correction that can be reverted.',
+};
+
+// ---------------------------------------------------------------------------
 // O8 · maze geometry defaults, used by `src/maze/ring.ts` and the maze step.
 // ---------------------------------------------------------------------------
 

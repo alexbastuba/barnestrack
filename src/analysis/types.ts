@@ -5,4 +5,8 @@
  * analysis layer.
  */
 export type { ReviewFlag, ReviewFlagCode } from '../contracts/reviewFlags.js';
-export { reviewFlagCodes } from '../contracts/reviewFlags.js';
+export {
+  SOFT_REVIEW_FLAG_CODES,
+  isSoftReviewFlag,
+  reviewFlagCodes,
+} from '../contracts/reviewFlags.js';

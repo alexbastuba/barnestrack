@@ -38,6 +38,8 @@ import {
   strategyOverride,
   trialStartCorrection,
   type CorrectionMeta,
+  isReclassification,
+  reclassifyEvent,
 } from '../../src/session/corrections.js';
 import { TEST_RESOLUTION, testGeometry, testMazeMap } from '../analysis/maze-fixture.js';
 import { holePoint, scriptTrack, visitHoles, type Segment } from '../analysis/synthetic-track.js';
@@ -259,6 +261,36 @@ describe('event corrections', () => {
     expect(after.metrics.correctionCount).toBe(0);
 
     expect(run(script, revertEvent(kept, target.id)).events).toEqual(before.events);
+  });
+
+  it('reclassifies an escape entry as a tracking failure with one entry that replaces any edit, and reverts (D67)', () => {
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5, area: [500, 150] },
+      { kind: 'lost', seconds: 4 },
+    ];
+    const before = run(script, NO_CORRECTIONS);
+    const entry = before.events.find((e) => e.kind === 'escape_entry')!;
+    const edited = editEvent(frozen(NO_CORRECTIONS), entry.id, { endFrame: entry.endFrame - 1 }, meta());
+    const reclassified = reclassifyEvent(frozen(edited), entry.id, meta());
+    expect(reclassified.entries).toHaveLength(1);
+    expect(reclassified.entries[0]).toMatchObject({
+      kind: 'event',
+      action: 'edit',
+      eventId: entry.id,
+      source: 'user',
+      newKind: 'tracking_failure',
+    });
+    expect(isReclassification(reclassified.entries[0]!)).toBe(true);
+    expect(describeCorrection(reclassified.entries[0]!)).toBe(
+      `Event ${entry.id} reclassified by the user: not an escape entry, the tracker lost the animal`,
+    );
+    const after = run(script, frozen(reclassified));
+    expect(after.events.find((e) => e.id === entry.id)?.kind).toBe('tracking_failure');
+    expect(after.metrics.escaped).toBe(false);
+    expect(after.metrics.correctionCount).toBe(1);
+    expect(run(script, revertEvent(reclassified, entry.id)).events).toEqual(before.events);
   });
 
   it('a later real edit of a confirmed event is an edit again, not a confirmation', () => {

@@ -23,7 +23,7 @@ keeps the cohort name as it was typed. The six files:
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `trials.csv`                      | trial                         | 38 columns; the headline numbers                                                                            |
-| `events.csv`                      | investigation or escape entry | 26 columns; what the latencies and errors are made of                                                       |
+| `events.csv`                      | event of any kind             | 26 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
@@ -93,12 +93,15 @@ Measures:
   non-escapers — the unconfirmed ones may be missed entries.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `review_flags` — the codes of every review flag the analysis raised on this trial, `;`-joined,
-  unique and alphabetical; blank when none. The vocabulary: `correction_out_of_range`,
-  `no_escape_contradicted`, `orphaned_correction`, `oversized_in_trial`,
-  `physically_unlikely_entry`, `stale_auto_layer`, `tracking_failure_at_hole`. This is *why* a row
-  reads `review`, so quote it when triaging. `stale_auto_layer` matters most for comparisons: the
-  track was produced under other tracking parameters than the ones `parameters_hash` names, so
-  that row's hash does not describe how its track was made.
+  unique and alphabetical; blank when none. The vocabulary: `confirmation_contradicted`,
+  `correction_out_of_range`, `no_escape_contradicted`, `non_persistent_entry_noted`,
+  `orphaned_correction`, `oversized_in_trial`, `physically_unlikely_entry`, `stale_auto_layer`,
+  `tracking_failure_at_hole`. This is *why* a row reads `review`, so quote it when triaging — with
+  one exception: `non_persistent_entry_noted` is a note, not a problem (a reviewer confirmed a
+  non-escape and the tool had seen a short head-in-hole at the target), and a row can read `ok`
+  with it. `stale_auto_layer` matters most for comparisons: the track was produced under other
+  tracking parameters than the ones `parameters_hash` names, so that row's hash does not describe
+  how its track was made.
 - `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
   `tracked` state only, so it reads lower than "frames with a usable position", which is
   `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
@@ -124,9 +127,18 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
 
 - `event_id` — stable within one export; `auto-…` ids are derived from the event's own content, so
   they change if the event moves.
-- `kind` — `investigation` or `escape_entry`. **Nothing else appears here.** A tracking failure is
-  a finding of the quality report, not an event, so the number of rows in `events.csv` is not the
-  number of events in the session file.
+- `kind` — `investigation`, `escape_entry` or `tracking_failure`. A tracking failure is a loss of
+  detection long enough to matter that did not look like an entry — in the open, or at a hole
+  without an entry's signature — **or an inferred escape entry that a reviewer reclassified as a
+  loss** (`source = corrected`, with the entry's frames in the `auto_*` columns). It counts toward
+  no latency and no error. Every event in the session file is a row, so the row count is the
+  number of events.
+- An `escape_entry` is an **inference**: the tracker lost the animal at the target hole, or saw
+  only a small blob there, for long enough with no full-size detection elsewhere. It is not a
+  sighting of the animal in the box. `confirmed = true` means a reviewer watched the clip and
+  agreed; `source = corrected` means a reviewer asserted it with an "in the escape box" range; a
+  plain `auto` row with `confirmed = false` is the tool's reading alone, and on a cohort nobody
+  has reviewed every entry reads that way.
 - `hole_index` (may be blank), `is_target` (`true`/`false`).
 - `start_frame`, `end_frame`, `start_time_s`, `end_time_s`, `duration_s` (s) — first to last frame
   of the event; `duration_s = end_time_s - start_time_s`.
@@ -258,8 +270,11 @@ number.
    the data. What the hash still cannot cover is a change in the code between two `tool_version`
    values, so when hashes match and results disagree, compare tool versions.
 
-5. **`events.csv` is investigations and escape entries only.** Do not infer tracking failures from
-   its absences; they are in `quality.csv` as gaps.
+5. **Filter `events.csv` by `kind` before counting anything.** Tracking failures are rows too
+   since schema 2: an error count is the `investigation` rows with `is_target = false`, not the
+   row count, and `quality.csv` still reports every gap. A `tracking_failure` row with
+   `source = corrected` is an entry a reviewer rejected as a loss — worth saying when a cohort's
+   escape rate is the question.
 6. **Check `quality.csv` before believing `trials.csv`.** A `POOR` tier or a long `longest_gap_s`
    means the trial's path length and speed are built on an incomplete track. Lead with the caveat
    rather than appending it.
