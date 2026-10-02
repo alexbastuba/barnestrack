@@ -513,7 +513,7 @@ export function createReviewStep(context: AppContext): Step {
     ];
     const reason = queueReason(ev);
     if (reason) parts.push(`flagged: ${reason}`);
-    if (ev.source === 'corrected') parts.push(confirmed().has(ev.id) ? 'user · confirmed, no change' : 'corrected by hand');
+    if (ev.source === 'corrected' || confirmed().has(ev.id)) parts.push(confirmed().has(ev.id) ? 'user · confirmed, no change' : 'corrected by hand');
     return parts.join(' · ');
   }
 

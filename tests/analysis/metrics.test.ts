@@ -200,6 +200,9 @@ describe('helpers', () => {
     minCentroidDistance_cm: 1,
     evidence: '',
     source: 'auto',
+    evidenceCorrected: false,
+    correctionIds: [],
+    confirmed: false,
     ...over,
   });
 

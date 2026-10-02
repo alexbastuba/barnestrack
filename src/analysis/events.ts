@@ -16,6 +16,7 @@ import type { Parameters } from '../contracts/parameters.js';
 import type { CorrectionsLayer, EventCorrection } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { IN_ESCAPE_BOX_REASON, correctionsOfKind } from './corrections.js';
+import { correctionIdsInSpan, frameCorrectionSpans } from './match-events.js';
 import {
   distanceFromCentre_cm,
   distanceToHole_px,
@@ -551,6 +552,10 @@ function record(
     minCentroidDistance_cm: distances.minCentroid_cm,
     evidence,
     source: 'auto',
+    // provenance is decided afterwards, by matching this detection against the auto-only one (D65)
+    evidenceCorrected: false,
+    correctionIds: [],
+    confirmed: false,
   };
 }
 
@@ -782,6 +787,8 @@ export function applyEventCorrections(
   const flags: ReviewFlag[] = [];
   let events = [...autoEvents];
   let applied = 0;
+  // the point and range corrections, so an added event can say which frames of it were corrected (D65)
+  const spans = frameCorrectionSpans(corrections.entries);
 
   const spanOf = (startFrame: number, endFrame: number): [number, number] | null => {
     const s = framePosition(frames, startFrame);
@@ -817,11 +824,47 @@ export function applyEventCorrections(
         `Investigation added by the user at ${holeName(g, c.holeIndex!)}, ${frameSpan(a, frames, s, e)}${trialEndFrame !== null && s > trialEndFrame ? ' (after the trial end)' : ''}. ${pointUsedSentence(d)} ${noseSentence(d)}`,
         `user-${c.id}`,
       );
-      events.push({ ...ev, source: 'corrected' });
+      const touched = correctionIdsInSpan(spans, c.startFrame!, c.endFrame!);
+      events.push({
+        ...ev,
+        source: 'corrected',
+        evidenceCorrected: touched.length > 0,
+        correctionIds: touched,
+      });
       applied++;
       continue;
     }
     const target = matchEvent(events, c);
+    if (c.action === 'edit' && c.confirmed === true) {
+      // D64, D67: "I looked at this event and it is right as it stands". Nothing is re-measured —
+      // the point, the distances and the evidence stay the engine's — and nothing is pinned: a
+      // confirmation whose event no longer exists (removed, or its start frame moved, since the id
+      // carries the start) is contradicted, not resurrected on the user's word.
+      if (target === null) {
+        flags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          eventId: c.eventId,
+          message: `The confirmation ${c.id} names event ${c.eventId ?? '(none)'}, which no longer exists under the current parameters (it was removed, or its start frame moved); look at what is there now and confirm it again, or revert the confirmation.`,
+        });
+        continue;
+      }
+      if (target.kind === 'tracking_failure') {
+        // D64 as amended by D67: an entry can be confirmed, a tracking failure is re-measured by the
+        // engine and cannot be
+        flags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          eventId: c.eventId,
+          message: `The confirmation ${c.id} names ${target.id}, a tracking failure; a loss of tracking is re-measured by the engine and cannot be confirmed, so the confirmation is ignored. Delete or edit the event instead.`,
+        });
+        continue;
+      }
+      const confirmedEvent: EventRecord = { ...target, confirmed: true };
+      events = events.map((x) => (x === target ? confirmedEvent : x));
+      applied++;
+      continue;
+    }
     if (c.action === 'delete') {
       if (target === null) {
         flags.push({
@@ -881,6 +924,11 @@ export function applyEventCorrections(
         target?.id ?? c.eventId ?? `user-${c.id}`,
       ),
       source: 'corrected',
+      // the frame corrections that touched the event travel with it; the edit itself is an event
+      // correction and is named by `source` (D65)
+      evidenceCorrected: target?.evidenceCorrected ?? false,
+      correctionIds: target?.correctionIds ?? correctionIdsInSpan(spans, startFrame!, endFrame!),
+      confirmed: false,
     };
     if (target === null) {
       // A3: the pinned correction keeps its own id and its own values. If its span happens to sit

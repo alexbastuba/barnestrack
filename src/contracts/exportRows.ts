@@ -92,7 +92,13 @@ export interface EventRow extends ExportProvenance {
   minCentroidDistance_cm: number;
   evidenceSummary: string;
   source: 'auto' | 'corrected';
-  /** Populated only when source is 'corrected' (D11 shadow columns). */
+  /** D65: the automatic detection found this event too, but over corrected frames. */
+  evidenceCorrected: boolean;
+  /** D65: `;`-joined ids of the point and range corrections inside the event's span; empty when none. */
+  correctionIds: string;
+  /** D64, D67: a person kept the event as it stands. */
+  confirmed: boolean;
+  /** Populated when the record carries its auto-only values: a corrected or evidence-corrected event (D11, D65 shadow columns). */
   autoHoleIndex: number | null;
   autoStartFrame: number | null;
   autoEndFrame: number | null;

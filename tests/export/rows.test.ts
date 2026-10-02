@@ -116,19 +116,21 @@ describe('eventRows', () => {
     );
   });
 
-  it('fills the auto_* shadow columns only on a corrected row (D11, D26)', () => {
+  it('fills the auto_* shadow columns on a corrected or evidence-corrected row, never on an untouched one (D11, D26, D65)', () => {
     const corrected = rows.filter((row) => row.source === 'corrected');
-    const automatic = rows.filter((row) => row.source === 'auto');
+    const untouched = rows.filter((row) => row.source === 'auto' && !row.evidenceCorrected);
     expect(corrected.length).toBeGreaterThan(0);
     for (const row of corrected) {
       expect(row.autoStartFrame).not.toBeNull();
       expect(row.autoEndFrame).not.toBeNull();
       expect(row.autoEndFrame).not.toBe(row.endFrame);
     }
-    for (const row of automatic) {
+    for (const row of untouched) {
       expect(row.autoHoleIndex).toBeNull();
       expect(row.autoStartFrame).toBeNull();
       expect(row.autoEndFrame).toBeNull();
+      expect(row.correctionIds).toBe('');
+      expect(row.confirmed).toBe(false);
     }
   });
 

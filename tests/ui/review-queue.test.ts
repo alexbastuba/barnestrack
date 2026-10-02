@@ -29,6 +29,9 @@ function event(id: string, startFrame: number, endFrame: number, source: 'auto' 
     minCentroidDistance_cm: 4,
     evidence: '',
     source,
+    evidenceCorrected: false,
+    correctionIds: [],
+    confirmed: false,
   };
 }
 

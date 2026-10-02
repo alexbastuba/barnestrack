@@ -24,7 +24,27 @@ export interface EventRecord {
   minCentroidDistance_cm: number;
   /** Plain-language evidence: last-seen location, loss duration, reappearance, blob-area trend. D19. */
   evidence: string;
+  /**
+   * `corrected` when the event is a human claim: it exists only in the
+   * detection over `auto ⊕ corrections` (a user's escape-box range, a nudged
+   * point that produced it), or an event correction edited or added it.
+   * `auto` otherwise, including a confirmed event (D65).
+   */
   source: 'auto' | 'corrected';
-  /** The automatic values, kept alongside a correction so nothing is overwritten silently. D11. */
+  /**
+   * True when the automatic detection also found this event but a point or
+   * range correction inside its span changed what it measured; the auto-only
+   * values are then kept in `autoShadow` (D65).
+   */
+  evidenceCorrected: boolean;
+  /**
+   * The ids of the point and range corrections inside the event's span (the
+   * span and, for an evidence-corrected event, its shadow span). Empty for an
+   * untouched automatic event (D65).
+   */
+  correctionIds: string[];
+  /** A human looked at this event and kept it as it stands (D64, D67). The values are the automatic ones. */
+  confirmed: boolean;
+  /** The automatic values, kept alongside a correction so nothing is overwritten silently. D11, D65. */
   autoShadow?: Pick<EventRecord, 'holeIndex' | 'startFrame' | 'endFrame'>;
 }

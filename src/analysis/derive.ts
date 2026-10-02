@@ -4,11 +4,13 @@
  * deterministic; never mutates its inputs; no DOM, no video, no clock.
  *
  * Order: validate → geometry → point/range corrections → cleaning → trial
- * start → losses and the automatic trial end → investigations → event
- * corrections → (further detection passes while a correction moves the first
- * persistent escape entry, so the trial end follows the corrected events) →
- * kinematics → strategy → metrics → quality.
+ * start → losses and the automatic trial end → investigations → provenance
+ * (the same detection over the automatic frames alone, matched against the
+ * corrected one, D65) → event corrections → (further detection passes while a
+ * correction moves the first persistent escape entry, so the trial end follows
+ * the corrected events) → kinematics → strategy → metrics → quality.
  */
+import type { EventRecord } from '../contracts/events.js';
 import type { MazeMapFile, SimilarityTransform } from '../contracts/mazeMap.js';
 import type { Parameters } from '../contracts/parameters.js';
 import type { AutoLayer, CorrectionsLayer, DerivedLayer } from '../contracts/session.js';
@@ -24,6 +26,7 @@ import {
 } from './events.js';
 import { mazeGeometry, type MazeGeometry } from './geometry.js';
 import { computeKinematics, type KinematicsSummary } from './kinematics.js';
+import { frameCorrectionSpans, matchEvents } from './match-events.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
   ANALYSIS_MODEL,
@@ -104,10 +107,40 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   const pts = eventPoints(a, g, parameters, cleaned.track);
   const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts };
 
+  /*
+   * D65: provenance is the difference between two detections. When any point or range correction
+   * is in force, detection also runs over the automatic frames alone — same parameters, same trial
+   * start, same trial window — and the corrected detection's events are labelled by matching the
+   * two lists. With no frame correction the two detections are identical, so the single pass is
+   * its own auto-only pass and every event is automatic and untouched.
+   */
+  const spans = frameCorrectionSpans(corrections.entries);
+  let ctxAuto: EventContext | null = null;
+  if (spans.length > 0) {
+    const autoArrays = buildTrackArrays(auto.frames, g);
+    const cleanedAuto = cleanTrack(auto.frames, autoArrays, g, parameters);
+    const aAuto = buildTrackArrays(cleanedAuto.track, g);
+    ctxAuto = {
+      frames: cleanedAuto.track,
+      a: aAuto,
+      g,
+      p: parameters,
+      pts: eventPoints(aAuto, g, parameters, cleanedAuto.track),
+    };
+  }
+  const withProvenance = (detected: AutoEvents): EventRecord[] => {
+    if (ctxAuto === null || detected.endFrame === null) return detected.events;
+    const autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
+      endFrame: detected.endFrame,
+      endReason: detected.endReason,
+    });
+    return matchEvents(autoOnly.events, detected.events, spans);
+  };
+
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);
   let correctedEvents = applyEventCorrections(
     ctx,
-    autoEvents.events,
+    withProvenance(autoEvents),
     corrections,
     autoEvents.endFrame,
   );
@@ -144,7 +177,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       });
       correctedEvents = applyEventCorrections(
         ctx,
-        autoEvents.events,
+        withProvenance(autoEvents),
         corrections,
         autoEvents.endFrame,
       );

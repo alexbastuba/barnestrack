@@ -240,8 +240,29 @@ so hole numbering stays consistent across a cohort.
 | `minNoseDistance_cm`   | number \| null                         | cm      | Recorded whichever point was used (O1); `null` when the nose was never usable during the event (D55). |
 | `minCentroidDistance_cm`| number                                 | cm      | Always recorded (O1).                                        |
 | `evidence`             | string                                  | —       | Plain-language: last seen, loss duration, reappearance, blob-area trend. |
-| `source`               | `'auto' \| 'corrected'`                | —       | —                                                            |
-| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when a correction changes them. |
+| `source`               | `'auto' \| 'corrected'`                | —       | D65: `corrected` when the event is a human claim — only the detection over `auto ⊕ corrections` found it, or an event correction edited or added it; `auto` otherwise, a confirmed event included. |
+| `evidenceCorrected`    | boolean                                 | —       | D65: both detections found the event but a point or range correction inside its span changed what it measured; the auto-only values are in `autoShadow`. |
+| `correctionIds`        | string[]                                | —       | D65: ids of the point and range corrections inside the event's span (the union of its span and its shadow's span). Event corrections are not listed; `source` records them. |
+| `confirmed`            | boolean                                 | —       | D64, D67: a person kept the event as it stands; the values are the automatic ones and the event is excluded from `correctionCount`. |
+| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when an event correction changes them or when `evidenceCorrected` (the auto-only values). A plain confirmation carries none; a confirmation on an evidence-corrected event keeps the one it had. |
+
+**Provenance by two detections (D65).** `derive()` runs event detection twice under the same
+parameters and over the same trial window (the corrected analysis's start and end): once over the
+automatic frames alone, once over `auto ⊕ corrections` (point and range corrections applied to the
+frames). The two lists are matched by kind and hole on overlapping spans, largest overlap first,
+each event matched at most once (ids are not stable across corrections, since they carry the start
+frame). An event only the corrected detection found is a human claim (`source: corrected`,
+`correctionIds` = the corrections inside its span, no shadow); one both found with identical values
+is untouched (`auto`, `evidenceCorrected: false`, `correctionIds: []`); one both found with any
+measured value different keeps `source: auto` with `evidenceCorrected: true`, the corrections inside
+the union of its span and the auto-only span as `correctionIds`, and the auto-only hole and frames as
+`autoShadow`. Event corrections (`kind: event`) apply after the match: an edit sets
+`source: corrected` as before; a `confirmed: true` edit sets `confirmed: true` on the automatic
+event without re-measuring anything. Two consequences worth knowing: a `not_visible` range that
+splits one automatic visit leaves the second fragment `source: corrected` (the first fragment takes
+the match), and a correction that changes an event's *kind* between the two detections (a loss that
+becomes an investigation) exports as `source: corrected`, because kinds are never matched. With no
+point or range correction in force the two detections are identical and the second pass is skipped.
 
 ## 6. Parameters
 
@@ -493,8 +514,11 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `point_used` | — | `nose \| centroid` (O16) |
 | `min_nose_distance_cm` (nullable: nose never usable), `min_centroid_distance_cm` | cm | O1 |
 | `evidence_summary` | — | D19 |
-| `source` | — | `auto \| corrected` |
-| `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | — | shadow columns, populated only when `source = corrected` |
+| `source` | — | `auto \| corrected` (D65: `corrected` is a human claim — a range-asserted entry, an edited or added event) |
+| `evidence_corrected` | bool | D65: both detections found the event, a point or range correction inside its span changed what was measured |
+| `correction_ids` | `;`-joined ids (blank: none) | D65: the point and range corrections inside the event's span and its shadow's span |
+| `confirmed` | bool | D64, D67: a person kept the event as it stands; `source` stays `auto` and the event is not in `correction_count` |
+| `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | — | shadow columns, populated when `source = corrected` or `evidence_corrected = true`; blank on a plain confirmed row |
 | `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
 
 ### `quality.csv` — one row per video

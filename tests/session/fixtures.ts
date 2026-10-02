@@ -116,6 +116,9 @@ export function videoAnalysis(): VideoAnalysis {
           minCentroidDistance_cm: 3.4,
           evidence: 'nose within 1.5 hole radii for 0.21 s',
           source: 'auto',
+          evidenceCorrected: false,
+          correctionIds: [],
+          confirmed: false,
         },
       ],
       metrics: {

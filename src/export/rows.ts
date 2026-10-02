@@ -172,7 +172,9 @@ export function eventRows(
   for (const { descriptor, analysis } of analysedVideos(session)) {
     for (const event of analysis.derived.events) {
       if (event.kind === 'tracking_failure') continue;
-      const corrected = event.source === 'corrected';
+      // D65: the auto-only values travel whenever the record carries them — an event a human
+      // edited, or one the automatic detection also found but measured over corrected frames.
+      const shadow = event.autoShadow;
       rows.push({
         sessionId: sessionId(session),
         videoId: descriptor.id,
@@ -194,9 +196,12 @@ export function eventRows(
         minCentroidDistance_cm: centimetres(event.minCentroidDistance_cm),
         evidenceSummary: event.evidence,
         source: event.source,
-        autoHoleIndex: corrected ? (event.autoShadow?.holeIndex ?? null) : null,
-        autoStartFrame: corrected ? (event.autoShadow?.startFrame ?? null) : null,
-        autoEndFrame: corrected ? (event.autoShadow?.endFrame ?? null) : null,
+        evidenceCorrected: event.evidenceCorrected,
+        correctionIds: event.correctionIds.join(';'),
+        confirmed: event.confirmed,
+        autoHoleIndex: shadow ? shadow.holeIndex : null,
+        autoStartFrame: shadow ? shadow.startFrame : null,
+        autoEndFrame: shadow ? shadow.endFrame : null,
         ...provenance(session, analysis, toolVersion),
       });
     }

@@ -248,21 +248,12 @@ describe('event corrections', () => {
 
     const after = run(script, frozen(kept));
     const confirmed = after.events.find((e) => e.id === target.id)!;
-    expect(confirmed.source).toBe('corrected');
-    expect(confirmed.holeIndex).toBe(target.holeIndex);
-    expect(confirmed.startFrame).toBe(target.startFrame);
-    expect(confirmed.endFrame).toBe(target.endFrame);
-    // The automatic values are kept beside it and are equal to it; the stored
-    // `confirmed` flag is what says the user meant it, rather than having
-    // edited the event and edited it back.
-    expect(confirmed.autoShadow).toEqual({
-      holeIndex: target.holeIndex,
-      startFrame: target.startFrame,
-      endFrame: target.endFrame,
-    });
-    // An investigation is re-measured over the same span, so its numbers stand.
-    expect(confirmed.pointUsed).toBe(target.pointUsed);
-    expect(confirmed.minNoseDistance_cm).toEqual(target.minNoseDistance_cm);
+    // D65: a confirmation is the automatic event with a flag on it — automatic source, no
+    // shadow (the values are its own) — and nothing is re-measured, so every number stands.
+    expect(confirmed.source).toBe('auto');
+    expect(confirmed.confirmed).toBe(true);
+    expect(confirmed.autoShadow).toBeUndefined();
+    expect(confirmed).toEqual({ ...target, confirmed: true });
 
     // A confirmation is not a hand edit, so it is not counted as one (D11, D26).
     expect(after.metrics.correctionCount).toBe(0);

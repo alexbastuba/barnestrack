@@ -7,9 +7,16 @@ import {
   isRecorded,
 } from '../../src/analysis/parameters.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
-import type { CorrectionEntry } from '../../src/contracts/session.js';
+import {
+  SESSION_SCHEMA_VERSION,
+  type CorrectionEntry,
+  type SessionFile,
+} from '../../src/contracts/session.js';
+import { EVENT_COLUMNS } from '../../src/export/columns.js';
+import { csvHeaderRow, toCsv } from '../../src/export/csv.js';
+import { eventRows } from '../../src/export/rows.js';
 import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
-import { revertNoEscape } from '../../src/session/corrections.js';
+import { NO_CORRECTIONS, confirmEvent, revertNoEscape } from '../../src/session/corrections.js';
 import { TEST_RESOLUTION, testGeometry, testMazeMap } from './maze-fixture.js';
 import { holePoint, scriptTrack, visitHoles, type Segment } from './synthetic-track.js';
 import { deepFreeze } from './track-builder.js';
@@ -730,6 +737,235 @@ describe('a confirmed non-escape (D63)', () => {
     const d = derive({ ...input, auto: { ...input.auto, parametersHash: 'deadbeef'.repeat(8) } });
     expect(d.reviewFlags.map((f) => f.code)).toContain('stale_auto_layer');
     expect(d.metrics.noEscapeConfirmed).toBe(true);
+    expect(d.metrics.status).toBe('review');
+  });
+});
+
+/*
+ * D65: provenance is the difference between two detections. Detection runs over the automatic
+ * frames alone and over `auto ⊕ corrections`; an event only the second finds is a human claim, an
+ * event both find but measure differently keeps its automatic source with the auto-only values as
+ * its shadow, and a confirmation is the automatic event with a flag on it. Each case is checked on
+ * the record and on the `events.csv` row, read back by header name.
+ */
+describe('event provenance (D65)', () => {
+  /** RFC 4180 rows by header: enough for the writer's own output (quoted fields with commas). */
+  function csvRows(text: string): Record<string, string>[] {
+    const lines: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]!;
+      if (quoted) {
+        if (ch === '"' && text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else if (ch === '"') quoted = false;
+        else field += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ',') {
+        row.push(field);
+        field = '';
+      } else if (ch === '\r') {
+        // part of the CRLF line ending
+      } else if (ch === '\n') {
+        row.push(field);
+        lines.push(row);
+        row = [];
+        field = '';
+      } else field += ch;
+    }
+    const [header, ...rest] = lines;
+    return rest
+      .filter((cells) => cells.length > 1)
+      .map((cells) => Object.fromEntries(header!.map((h, i) => [h, cells[i] ?? ''])));
+  }
+
+  function sessionAround(input: DeriveInput, analysis: ReturnType<typeof derive>): SessionFile {
+    return {
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      toolVersion: 'barnestrack v0.2.0 (test)',
+      name: 'provenance',
+      videos: [
+        {
+          id: input.videoId,
+          filename: 'vid.mp4',
+          fingerprint: { byteLength: 1, durationSeconds: 1, frameCount: input.auto.frames.length, sha256: 'a'.repeat(64) },
+          referenceResolution: { ...TEST_RESOLUTION },
+          mazeTransform: { ...IDENTITY_TRANSFORM },
+          metadata: {},
+        },
+      ],
+      mazeMap: input.mazeMap,
+      parameters: input.parameters,
+      analyses: {
+        [input.videoId]: {
+          auto: input.auto,
+          corrections: input.corrections,
+          derived: toDerivedLayer(analysis),
+        },
+      },
+    };
+  }
+
+  function rowFor(input: DeriveInput, analysis: ReturnType<typeof derive>, eventId: string) {
+    const session = sessionAround(input, analysis);
+    const row = csvRows(toCsv(EVENT_COLUMNS, eventRows(session))).find((r) => r['event_id'] === eventId);
+    expect(row, `no events.csv row for ${eventId}`).toBeDefined();
+    return row!;
+  }
+
+  // an investigation at hole 3, then a long stay at the target that the user marks as "in the box"
+  const stayAtTarget: Segment[] = [
+    ...visitHoles([3]),
+    { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+    { kind: 'dwell', hole: 7, seconds: 3.5 },
+  ];
+
+  it('(a) exports a user-asserted escape-box range as a human claim naming the range, and leaves an untouched investigation automatic', () => {
+    const { input: plain, segmentStarts } = inputFor(stayAtTarget);
+    const rangeFrom = segmentStarts[3]! + 15;
+    const frame2 = plain.auto.frames[2]!;
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'p1',
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: 2,
+        point: 'centroid',
+        value: { x: frame2.centroid.x + 0.5, y: frame2.centroid.y, confidence: 1, valid: true },
+      },
+      {
+        id: 'r1',
+        kind: 'range',
+        timestamp: at(2),
+        source: 'user',
+        rangeType: 'in_escape_box',
+        startFrame: rangeFrom,
+        endFrame: plain.auto.frames.length - 1,
+      },
+    ];
+    const { input } = inputFor(stayAtTarget, { corrections });
+    const d = derive(input);
+
+    const entry = d.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry).toBeDefined();
+    expect(entry.startFrame).toBe(rangeFrom);
+    expect(entry.source).toBe('corrected');
+    expect(entry.correctionIds).toEqual(['r1']);
+    expect(entry.evidenceCorrected).toBe(false);
+    expect(entry.confirmed).toBe(false);
+    expect(entry.autoShadow).toBeUndefined();
+
+    const elsewhere = d.events.find((e) => e.kind === 'investigation' && e.holeIndex === 3)!;
+    expect(elsewhere).toBeDefined();
+    expect(elsewhere.source).toBe('auto');
+    expect(elsewhere.evidenceCorrected).toBe(false);
+    expect(elsewhere.correctionIds).toEqual([]);
+    expect(elsewhere.autoShadow).toBeUndefined();
+
+    // (d) the rows say the same, by header name
+    const entryRow = rowFor(input, d, entry.id);
+    expect(entryRow).toMatchObject({ source: 'corrected', evidence_corrected: 'false', correction_ids: 'r1', confirmed: 'false', auto_start_frame: '' });
+    const elsewhereRow = rowFor(input, d, elsewhere.id);
+    expect(elsewhereRow).toMatchObject({ source: 'auto', evidence_corrected: 'false', correction_ids: '', confirmed: 'false', auto_start_frame: '' });
+  });
+
+  it('(b) keeps an investigation a nose correction moved by two frames automatic, evidence-corrected, with the old start as its shadow', () => {
+    const script: Segment[] = [...visitHoles([3]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: plain } = inputFor(script);
+    const before = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 3)!;
+    const s = before.startFrame;
+    // the nose placed at the hole two frames before the automatic start: the bout there merges with
+    // the automatic one (one frame apart, under the merge gap), so the investigation starts earlier
+    const correction: CorrectionEntry = {
+      id: 'p',
+      kind: 'point',
+      timestamp: at(1),
+      source: 'user',
+      frameIndex: s - 2,
+      point: 'nose',
+      value: { x: g.holeX[3]!, y: g.holeY[3]!, confidence: 1, valid: true },
+    };
+    const { input } = inputFor(script, { corrections: [correction] });
+    const d = derive(input);
+    const moved = d.events.find((e) => e.kind === 'investigation' && e.holeIndex === 3)!;
+    expect(moved.startFrame).toBe(s - 2);
+    expect(moved.endFrame).toBe(before.endFrame);
+    expect(moved.source).toBe('auto');
+    expect(moved.evidenceCorrected).toBe(true);
+    expect(moved.correctionIds).toEqual(['p']);
+    expect(moved.confirmed).toBe(false);
+    expect(moved.autoShadow).toEqual({ holeIndex: 3, startFrame: s, endFrame: before.endFrame });
+    expect(d.metrics.correctionCount).toBe(1);
+
+    const row = rowFor(input, d, moved.id);
+    expect(row).toMatchObject({
+      source: 'auto',
+      evidence_corrected: 'true',
+      correction_ids: 'p',
+      confirmed: 'false',
+      auto_hole_index: '3',
+      auto_start_frame: String(s),
+      auto_end_frame: String(before.endFrame),
+    });
+  });
+
+  it('(c) exports a kept event as automatic and confirmed, with no shadow and no correction counted', () => {
+    const script: Segment[] = [...visitHoles([3, 7]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: plain } = inputFor(script);
+    const target = derive(plain).events.find((e) => e.holeIndex === 3)!;
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      target.id,
+      { holeIndex: target.holeIndex, startFrame: target.startFrame, endFrame: target.endFrame },
+      { id: 'k1', timestamp: at(1) },
+    );
+    const { input } = inputFor(script, { corrections: [...kept.entries] });
+    const d = derive(input);
+    const confirmed = d.events.find((e) => e.id === target.id)!;
+    expect(confirmed).toEqual({ ...target, confirmed: true });
+    expect(confirmed.source).toBe('auto');
+    expect(confirmed.autoShadow).toBeUndefined();
+    expect(d.metrics.correctionCount).toBe(0);
+    expect(d.correctionsApplied.event).toBe(1);
+
+    const row = rowFor(input, d, target.id);
+    expect(row).toMatchObject({
+      source: 'auto',
+      evidence_corrected: 'false',
+      correction_ids: '',
+      confirmed: 'true',
+      auto_hole_index: '',
+      auto_start_frame: '',
+      auto_end_frame: '',
+    });
+    // and the header has the three columns right after `source`
+    const header = csvHeaderRow(EVENT_COLUMNS).split(',');
+    const at_ = header.indexOf('source');
+    expect(header.slice(at_, at_ + 4)).toEqual(['source', 'evidence_corrected', 'correction_ids', 'confirmed']);
+  });
+
+  it('flags a confirmation whose event no longer exists instead of resurrecting it', () => {
+    const script: Segment[] = [...visitHoles([3, 7]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: plain } = inputFor(script);
+    const target = derive(plain).events.find((e) => e.holeIndex === 3)!;
+    const kept = confirmEvent(
+      NO_CORRECTIONS,
+      target.id,
+      { holeIndex: target.holeIndex, startFrame: target.startFrame, endFrame: target.endFrame },
+      { id: 'k1', timestamp: at(1) },
+    );
+    // a longer minimum duration removes the investigation the confirmation names
+    const strict: Parameters = {
+      ...DEFAULT_PARAMETERS,
+      holeInvestigation: { ...DEFAULT_PARAMETERS.holeInvestigation, minDuration_s: 5 },
+    };
+    const d = derive(inputFor(script, { corrections: [...kept.entries], p: strict }).input);
+    expect(d.events.find((e) => e.id === target.id)).toBeUndefined();
+    expect(d.reviewFlags.some((f) => f.correctionId === 'k1' && f.eventId === target.id)).toBe(true);
     expect(d.metrics.status).toBe('review');
   });
 });

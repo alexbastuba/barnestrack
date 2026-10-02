@@ -662,6 +662,9 @@ function buildEvents(script: VideoScript, map: MazeMapFile, track: BuiltTrack): 
       minCentroidDistance_cm: approach.centroid_cm,
       evidence: `${usesNose ? 'Nose' : 'Centroid'} within ${(usesNose ? approach.nose_cm : approach.centroid_cm).toFixed(1)} cm of hole ${segment.holeIndex} for ${round(values[endFrame]! - values[startFrame]!, 2).toFixed(2)} s.`,
       source: 'auto',
+      evidenceCorrected: false,
+      correctionIds: [],
+      confirmed: false,
     });
   }
 
@@ -692,6 +695,9 @@ function buildEvents(script: VideoScript, map: MazeMapFile, track: BuiltTrack): 
       minCentroidDistance_cm: approach.centroid_cm,
       evidence: `Detection lost with the last tracked point ${approach.centroid_cm.toFixed(1)} cm from hole ${TARGET_HOLE}; no reappearance for the rest of the clip.`,
       source: 'auto',
+      evidenceCorrected: false,
+      correctionIds: [],
+      confirmed: false,
     });
   }
 
@@ -716,11 +722,15 @@ function buildEvents(script: VideoScript, map: MazeMapFile, track: BuiltTrack): 
       evidence:
         'Detection lost on open platform, away from any hole; blob area fell below the area prior and the animal reappeared 14 cm from the loss point.',
       source: 'auto',
+      evidenceCorrected: false,
+      correctionIds: [],
+      confirmed: false,
     });
   }
 
   // One human-corrected event per video, keeping the automatic values alongside
-  // it rather than overwriting them (D11, D26).
+  // it rather than overwriting them (D11, D26). Its correction is an event edit,
+  // so `correctionIds` — point and range corrections only (D65) — stays empty.
   const correctable = events.findIndex(
     (event) => event.kind === 'investigation' && !event.isTarget,
   );

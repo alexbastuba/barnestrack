@@ -23,7 +23,7 @@ keeps the cohort name as it was typed. The six files:
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `trials.csv`                      | trial                         | 37 columns; the headline numbers                                                                            |
-| `events.csv`                      | investigation or escape entry | 23 columns; what the latencies and errors are made of                                                       |
+| `events.csv`                      | investigation or escape entry | 26 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
@@ -104,7 +104,7 @@ Provenance: `tool_version`, `schema_version`, `parameters_hash`.
 Header, verbatim:
 
 ```
-session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,end_frame,start_time_s,end_time_s,duration_s,point_used,min_nose_distance_cm,min_centroid_distance_cm,evidence_summary,source,auto_hole_index,auto_start_frame,auto_end_frame,tool_version,schema_version,parameters_hash
+session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,end_frame,start_time_s,end_time_s,duration_s,point_used,min_nose_distance_cm,min_centroid_distance_cm,evidence_summary,source,evidence_corrected,correction_ids,confirmed,auto_hole_index,auto_start_frame,auto_end_frame,tool_version,schema_version,parameters_hash
 ```
 
 - `event_id` — stable within one export; `auto-…` ids are derived from the event's own content, so
@@ -123,11 +123,28 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
   event. `min_nose_distance_cm` is **often blank**, because the nose is frequently unavailable.
 - `evidence_summary` — the sentence the application shows for why this is an event. Quote it when
   explaining a specific event; do not parse it for numbers.
-- `source` — `auto` or `corrected`.
-- `auto_hole_index`, `auto_start_frame`, `auto_end_frame` — what the automatic pass had said before
-  a human changed it. Populated **only** when `source = corrected`; blank otherwise. A row where
-  these differ from the live columns is a visible disagreement between the tool and a reviewer, and
-  is worth surfacing.
+- `source` — `auto` or `corrected`. Provenance is the difference between two detections: the
+  tool detects events once over the automatic track alone and once over the track with the
+  reviewer's point and range corrections applied. `corrected` means the event is a human claim —
+  it exists only in the second detection (a reviewer's "in the escape box from here" range, a
+  nudged point that produced it), or a reviewer edited or added it. `auto` means the automatic
+  detection found it too; a kept ("confirmed") event is `auto`.
+- `evidence_corrected` — `true` when both detections found the event but a point or range
+  correction inside its span changed what was measured (its frames, its distances, which point it
+  was judged on). The row is still the tool's event, measured over frames a human touched; the
+  automatic measurement is in the `auto_*` columns. An analysis of how much rests on human
+  corrections should count these rows as well as the `corrected` ones.
+- `correction_ids` — the ids of the point and range corrections inside the event's span (and its
+  automatic shadow's span), `;`-joined; blank when none. They match the correction entries in the
+  session file. Event edits are not listed here: `source = corrected` is what records them.
+- `confirmed` — `true` when a reviewer looked at the event and kept it as it stands. The values
+  are the automatic ones, `source` is `auto`, and such an event is **not** counted in
+  `correction_count`, because nothing was corrected.
+- `auto_hole_index`, `auto_start_frame`, `auto_end_frame` — what the automatic pass had said.
+  Populated when `source = corrected` (a reviewer changed the event) or `evidence_corrected =
+  true` (a correction changed what was measured); blank otherwise, including on a plain confirmed
+  row. A row where these differ from the live columns is a visible disagreement between the tool
+  and a reviewer, and is worth surfacing.
 
 ## `quality.csv`
 
@@ -214,10 +231,11 @@ number.
    usual blanks. Count them, report them, and never let them enter a mean as zero. If the analyst
    wants censored latencies substituted with `trial_cutoff_s`, do it only when asked and say in the
    answer that you did.
-3. **Say how much of an answer rests on human corrections.** `strategy_source`, the events' `source`
-   column and `correction_count` all carry this. A group difference driven by corrected trials is a
-   different claim from one driven by automatic output; both are legitimate, and the reader has to
-   be told which.
+3. **Say how much of an answer rests on human corrections.** `strategy_source`, the events'
+   `source` and `evidence_corrected` columns and `correction_count` all carry this. A group
+   difference driven by corrected trials is a different claim from one driven by automatic output;
+   both are legitimate, and the reader has to be told which. A `confirmed` event is a reviewer
+   agreeing with the tool, not a correction: report it as reviewed, not as corrected.
 4. **Two cohorts are comparable only if their `parameters_hash` values match — and matching is
    necessary, not sufficient.** State in _every_ comparison whether the hashes match. If they
    differ: diff the eleven threshold columns in `trials.csv` first, then `parameters.json` for the

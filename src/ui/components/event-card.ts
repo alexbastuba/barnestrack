@@ -151,7 +151,7 @@ export function createEventCard(
       ' ',
       // A kept event is the user's, but it says the same thing the tool did.
       // The word is there for the same reason "user" is: never colour alone.
-      ...(corrected && current.confirmed === true
+      ...(current.confirmed === true
         ? [el('span', { class: 'badge badge-ok', text: 'confirmed' }), ' ']
         : []),
     ]);
