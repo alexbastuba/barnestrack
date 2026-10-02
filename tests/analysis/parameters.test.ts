@@ -5,6 +5,7 @@ import {
   ANALYSIS_MODEL,
   ANALYSIS_MODEL_DEFINITIONS,
   DEFAULT_PARAMETERS,
+  ESCAPE_ENTRY_STATE_DEFINITIONS,
   MAZE_DEFAULTS,
   MAZE_DEFAULT_DEFINITIONS,
   PARAMETER_DECISIONS,
@@ -133,6 +134,21 @@ describe('definitions', () => {
     expect(new Set(Object.keys(MAZE_DEFAULT_DEFINITIONS))).toEqual(
       new Set(Object.keys(MAZE_DEFAULTS)),
     );
+  });
+
+  it('describe each state of an escape entry as an inference, citing the paper and no decision number', () => {
+    const states = Object.keys(ESCAPE_ENTRY_STATE_DEFINITIONS).sort();
+    expect(states).toEqual(['asserted', 'confirmed', 'inferred', 'reclassified', 'rejected']);
+    for (const state of states) {
+      const text = ESCAPE_ENTRY_STATE_DEFINITIONS[state as keyof typeof ESCAPE_ENTRY_STATE_DEFINITIONS];
+      // one or more full sentences that say how the state enters the latency and the errors
+      expect(text, state).toMatch(/\.$/);
+      expect(text, state).toMatch(/latency|count|error/);
+      expect(text, state).not.toMatch(/\([OD]\d/);
+      expect(text, state).not.toMatch(/\b[OD]\d{1,2}\b/);
+    }
+    expect(ESCAPE_ENTRY_STATE_DEFINITIONS.inferred).toContain('Gawel et al. 2019');
+    expect(ESCAPE_ENTRY_STATE_DEFINITIONS.inferred).toMatch(/not a sighting/);
   });
 });
 

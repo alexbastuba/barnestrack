@@ -838,7 +838,10 @@ export function applyEventCorrections(
       events.push({
         ...ev,
         source: 'corrected',
-        evidenceCorrected: touched.length > 0,
+        // An added event is in neither detection, so it is never "evidence-corrected": that label
+        // is for an event both detections found and measured differently (D65). The frame
+        // corrections inside its span still travel with it.
+        evidenceCorrected: false,
         correctionIds: touched,
       });
       applied++;

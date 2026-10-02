@@ -980,6 +980,42 @@ describe('event provenance (D65)', () => {
     expect(header.slice(at_, at_ + 4)).toEqual(['source', 'evidence_corrected', 'correction_ids', 'confirmed']);
   });
 
+  it('exports an added event as a human claim that is never evidence-corrected, naming the frame corrections inside its span', () => {
+    const { input: plain } = inputFor(stayAtTarget);
+    const frame2 = plain.auto.frames[2]!;
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'p1',
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: 2,
+        point: 'centroid',
+        value: { x: frame2.centroid.x + 0.5, y: frame2.centroid.y, confidence: 1, valid: true },
+      },
+      {
+        id: 'a1',
+        kind: 'event',
+        timestamp: at(2),
+        source: 'user',
+        action: 'add',
+        holeIndex: 5,
+        startFrame: 0,
+        endFrame: 6,
+      },
+    ];
+    const { input } = inputFor(stayAtTarget, { corrections });
+    const d = derive(input);
+    const added = d.events.find((e) => e.id === 'user-a1')!;
+    expect(added).toBeDefined();
+    // in neither detection: a claim, with the nudge inside its span named, and no shadow
+    expect(added.source).toBe('corrected');
+    expect(added.evidenceCorrected).toBe(false);
+    expect(added.correctionIds).toEqual(['p1']);
+    expect(added.autoShadow).toBeUndefined();
+    expect(rowFor(input, d, added.id)).toMatchObject({ source: 'corrected', evidence_corrected: 'false', correction_ids: 'p1', auto_start_frame: '' });
+  });
+
   it('flags a confirmation whose event no longer exists instead of resurrecting it', () => {
     const script: Segment[] = [...visitHoles([3, 7]), { kind: 'moveToCentre', seconds: 0.5 }];
     const { input: plain } = inputFor(script);

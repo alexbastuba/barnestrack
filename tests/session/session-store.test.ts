@@ -136,6 +136,23 @@ describe('SessionStore', () => {
     expect(saved!.file.sessionId).toBe(id);
   });
 
+  it('leaves an autosave record it cannot read where it is, instead of loading it as current', async () => {
+    const { store, storage } = newStore();
+    const newer = { ...fullSession(), schemaVersion: 3 } as unknown as SessionFile;
+    await storage.save({
+      file: newer,
+      draftMazeMap: null,
+      mazeClicks: {},
+      parameters: null,
+      savedAt: '2026-09-30T10:00:00.000Z',
+    });
+    expect(await store.restore()).toBe(false);
+    expect(store.current.videos).toEqual([]);
+    expect(store.current.schemaVersion).toBe(2);
+    // the record is untouched for the build that wrote it
+    expect((await storage.load())!.file.schemaVersion).toBe(3);
+  });
+
   it('names the session after the first video, and never overwrites a user name', () => {
     const { store } = newStore();
     store.addVideo(test50);

@@ -56,11 +56,14 @@ export interface StoredSession {
  * and kept by the next autosave — so a reload never loses work to a schema
  * change. A current record is returned as it is.
  */
-export function migrateStoredSession(record: StoredSession): StoredSession {
+export function migrateStoredSession(record: StoredSession): StoredSession | null {
   const file = record.file as SessionFile | SessionDocumentV1;
   if (file.schemaVersion === SESSION_SCHEMA_VERSION) return record;
   if (isLegacySessionDocument(file)) {
     return { ...record, file: migrateSessionDocument(file, newSessionId()) };
   }
-  return record;
+  // A record this build cannot read — written by a newer build, or not a session at all — is
+  // left where it is rather than loaded as if it were current; `parseSessionDocument` refuses
+  // the same document on the Videos step.
+  return null;
 }

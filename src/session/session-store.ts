@@ -133,7 +133,9 @@ export class SessionStore {
     if (this.session.videos.length > 0) return false;
     // A record from an earlier build may carry a version-1 file (D68); it is
     // migrated exactly as a loaded file is, and the next autosave writes it back.
+    // A record this build cannot read (a newer schema) is left untouched.
     const record = migrateStoredSession(stored);
+    if (record === null) return false;
     this.closeAttachments();
     this.session = record.file;
     this.draftMazeMap = record.draftMazeMap;

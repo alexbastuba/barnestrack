@@ -131,6 +131,13 @@ export function parseSessionDocument(text: string): ParsedSession {
   return { ok: true, session: value as unknown as SessionFile };
 }
 
+/** The map's hole count when the document carries a map with one; null when there is nothing to check against. */
+function holeCountOf(mazeMap: unknown): number | null {
+  if (!isRecord(mazeMap) || !isRecord(mazeMap['holes'])) return null;
+  const n = mazeMap['holes']['n'];
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
+}
+
 /** Names the first field that is missing or the wrong shape, in the user's words. */
 function requiredFieldProblem(value: Record<string, unknown>, version: number): string | null {
   const complaint = (what: string) =>
@@ -139,13 +146,17 @@ function requiredFieldProblem(value: Record<string, unknown>, version: number): 
   if (typeof value['toolVersion'] !== 'string') return complaint('it records no tool version');
   if (typeof value['name'] !== 'string') return complaint('it has no session name');
   if (version >= 2) {
-    if (!isSessionId(value['sessionId'])) return complaint('it has no session id');
+    const sessionId = value['sessionId'];
+    if (typeof sessionId !== 'string') return complaint('it has no session id');
+    if (!isSessionId(sessionId)) return complaint(`its session id "${sessionId}" is not a UUID`);
     const reviewer = value['reviewer'];
     if (reviewer !== null && typeof reviewer !== 'string') {
       return complaint('its reviewer is neither a name nor empty');
     }
   }
   if (!Array.isArray(value['videos'])) return complaint('its video list is missing');
+  // a per-video target must be one of the map's holes, when there is a map to check against
+  const holeCount = holeCountOf(value['mazeMap']);
   for (const [i, video] of (value['videos'] as unknown[]).entries()) {
     if (!isRecord(video) || typeof video['id'] !== 'string' || typeof video['filename'] !== 'string') {
       return complaint(`video ${i + 1} in its list has no id or filename`);
@@ -156,11 +167,20 @@ function requiredFieldProblem(value: Record<string, unknown>, version: number): 
     if (version >= 2) {
       const trialType = video['trialType'];
       if (trialType !== 'acquisition' && trialType !== 'probe') {
-        return complaint(`video ${i + 1} in its list has no trial type (acquisition or probe)`);
+        return complaint(
+          typeof trialType === 'string'
+            ? `video ${i + 1} in its list has trial type "${trialType}", not acquisition or probe`
+            : `video ${i + 1} in its list has no trial type (acquisition or probe)`,
+        );
       }
       const targetHole = video['targetHole'];
       if (targetHole !== null && !(Number.isInteger(targetHole) && (targetHole as number) >= 0)) {
         return complaint(`video ${i + 1} in its list names a target hole that is not a hole number`);
+      }
+      if (typeof targetHole === 'number' && holeCount !== null && targetHole >= holeCount) {
+        return complaint(
+          `video ${i + 1} in its list names target hole ${targetHole}, but its maze map has ${holeCount} holes (0 to ${holeCount - 1})`,
+        );
       }
     }
   }

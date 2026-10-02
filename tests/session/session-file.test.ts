@@ -174,7 +174,12 @@ describe('schema version 2 (D68)', () => {
     const noId = { ...fullSession(), sessionId: 'not-a-uuid' };
     const a = parseSessionDocument(JSON.stringify(noId));
     expect(a.ok).toBe(false);
-    if (!a.ok) expect(a.message).toContain('session id');
+    if (!a.ok) expect(a.message).toContain('session id "not-a-uuid" is not a UUID');
+    const { sessionId: _dropped, ...withoutId } = fullSession();
+    void _dropped;
+    const a2 = parseSessionDocument(JSON.stringify(withoutId));
+    expect(a2.ok).toBe(false);
+    if (!a2.ok) expect(a2.message).toContain('has no session id');
 
     const session = fullSession();
     const noType = {
@@ -196,7 +201,7 @@ describe('schema version 2 (D68)', () => {
     };
     const c = parseSessionDocument(JSON.stringify(badType));
     expect(c.ok).toBe(false);
-    if (!c.ok) expect(c.message).toContain('trial type');
+    if (!c.ok) expect(c.message).toContain('video 1 in its list has trial type "foo", not acquisition or probe');
 
     const badHole = {
       ...session,
@@ -205,6 +210,18 @@ describe('schema version 2 (D68)', () => {
     const d = parseSessionDocument(JSON.stringify(badHole));
     expect(d.ok).toBe(false);
     if (!d.ok) expect(d.message).toContain('target hole');
+
+    // a target the map does not have is refused at load, not at the first analysis
+    const offRing = {
+      ...session,
+      videos: session.videos.map((video, i) => (i === 1 ? { ...video, targetHole: 99 } : video)),
+    };
+    const e = parseSessionDocument(JSON.stringify(offRing));
+    expect(e.ok).toBe(false);
+    if (!e.ok) expect(e.message).toContain('video 2 in its list names target hole 99, but its maze map has 20 holes (0 to 19)');
+    // without a map there is nothing to check against, so the same document parses
+    const unmapped = { ...offRing, mazeMap: null };
+    expect(parseSessionDocument(JSON.stringify(unmapped)).ok).toBe(true);
   });
 });
 
