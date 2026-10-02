@@ -223,8 +223,10 @@ session it is found (D39).
 - **Cleaning counts and the strategy reasoning are not persisted.** `n_filled_frames`, the outlier
   indices, the unfilled-gap reasons, the trial bounds and the strategy features and reasoning live
   on the result of `derive()` and not in the session's `DerivedLayer`; they are recomputed on load,
-  never stored. The review flags were moved onto the derived layer by D66 and are no longer in this
-  list.
+  never stored. The review flags left this list in chunk 12: `trials.csv` is written from the
+  derived layer, so D66's `review_flags` column put them there as a fifth field, which amends
+  D55's "four fields" wording. The amendment was in the plan Alex approved for the chunk and is
+  recorded in `docs/data-contracts.md` §3; its entry in `docs/decisions.md` is still to be written.
 - **`src/viz/figure-export.ts` has no automated test.** Node has neither `OffscreenCanvas` nor
   `document`, so the one module that turns a figure into a PNG cannot be exercised by Vitest; its
   test only asserts that it says so plainly rather than failing obscurely. Everything it draws is
@@ -487,8 +489,13 @@ session it is found (D39).
   and the change badge prints `null` for a null error count
   (`src/ui/components/describe-diff.ts:196`). No control reclassifies an escape entry as a
   tracking failure, and `physically_unlikely_entry` is still the only way such an entry reaches a
-  person. The smallest edits this chunk made inside the interface to keep it working are listed in
-  the chunk report, with line numbers, for chunk 15 to own.
+  person. D67 asks for the entry to read as an inference "everywhere it appears", and two places
+  still state it as a fact: the detector's evidence sentence ("Escape-box entry at the target hole
+  7: …", `src/analysis/events.ts`), left alone because the migration test holds the 0.1.0 evidence
+  text verbatim, and the event card, which shows that sentence; the five-state wording in
+  `ESCAPE_ENTRY_STATE_DEFINITIONS` (`src/analysis/parameters.ts`) is tested but shown nowhere yet.
+  The smallest edits this chunk made inside the interface to keep it working are listed in the
+  chunk report, with line numbers, for chunk 15 to own.
 - **A kind change between the two detections exports as `source = corrected`.** D65 matches an
   automatic event to a corrected one by kind and hole. A point correction that turns an automatic
   investigation at the target into an escape entry — or an entry into an investigation — finds no
@@ -505,6 +512,21 @@ session it is found (D39).
   fragment's provenance is a human assertion it is not. `tests/analysis/match-events.test.ts` pins
   the at-most-once rule, which is the chunk's instruction; relaxing it to one-to-many on the
   automatic side would need a shadow per fragment and a decision.
+- **An automatic event the corrected detection no longer finds has no row anywhere.** D65 names
+  three outcomes — only in the corrected detection, in both and equal, in both and different — and
+  not the fourth: only in the automatic one. A "not visible here" range laid over an automatic
+  investigation removes it from the corrected detection, and a point nudge that merges two
+  automatic visits into one leaves the smaller unmatched; in both cases the automatic event is in
+  no row of `events.csv`, carried by no shadow column, and named by no flag. Measured with
+  `matchEvents([auto 10–14, auto 16–25], [corrected 10–25], [p@15])`: one row, shadow `{16, 25}`,
+  and the visit at 10–14 gone. The XLSX readme now says so. Smallest fix: a flag naming the
+  vanished id, or a row with `source = auto` and a "removed" marker — either is a decision.
+- **A range trimmed by a second reviewer keeps its first reviewer's timestamp under the second's
+  name.** `eraseFrames` re-makes a trimmed range as a new object with the old `timestamp`, and the
+  store stamps every re-made entry with the session's current reviewer, so the entry's `reviewer`
+  and `timestamp` can disagree. The trim *was* the second reviewer's act, so the name is right and
+  the timestamp is stale; smallest fix is for `eraseFrames` to restamp the timestamp of a range it
+  changes.
 
 ## Excluded scope
 

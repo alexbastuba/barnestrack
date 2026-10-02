@@ -42,7 +42,7 @@ import {
 import type { Point } from '../../src/maze/types.js';
 
 /** A build-time version string of the shape D12 specifies. */
-export const FIXTURE_TOOL_VERSION = 'barnestrack v0.1.0 (5e11c0a)';
+export const FIXTURE_TOOL_VERSION = 'barnestrack v0.2.0 (5e11c0a)';
 
 /** A fixed, UUID-shaped session id (D68), so the fixture stays byte-identical between calls. */
 export const FIXTURE_SESSION_ID = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e';
@@ -857,7 +857,10 @@ function buildMetrics(
     strategySource: 'auto',
     escaped: escape !== undefined,
     noEscapeConfirmed: false,
-    status: escape && !events.some((event) => event.kind === 'tracking_failure') ? 'ok' : 'review',
+    // the engine's rule (D66): an escaped trial with no review flag is `ok`; a trial that never
+    // escaped and was not confirmed as a non-escape is `review`. A tracking failure away from any
+    // hole raises no flag — it is a finding of the quality report, not of the trial.
+    status: escape ? 'ok' : 'review',
     trackedFraction: round(trackedFraction, 4),
     correctionCount,
   };

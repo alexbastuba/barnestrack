@@ -119,8 +119,8 @@ video is loaded, so autosave and reload work from the first dropped file (D27). 
 until the maze step is finished; `parameters` is `null` until the first analysis run stamps the
 defaults in force at that time (D51); `analyses` has no entry for a video that has not been tracked,
 and a tracked video's `derived` is `null` until it is analysed (D52) — never a placeholder
-`auto`/`derived` layer. `SESSION_SCHEMA_VERSION` stays 1: no schema-1 file had
-been written when this was decided.
+`auto`/`derived` layer. `SESSION_SCHEMA_VERSION` stayed 1 through D52, when no schema-1 file had
+yet been written; D68 moved it to 2 (see "Migration" below).
 
 **No session-level calibration field.** `platformDiameter_cm` lives once in the shared `mazeMap`
 (§4); the session file does not repeat it. A video's pixels-per-centimetre is derived from the
@@ -190,7 +190,10 @@ superseding the session-level "calibration" field named in D9's prose).
   treated as the source of truth (D9, D20). `quality.pxPerCm` is this video's derived calibration
   value (D44). `reviewFlags` is the list `derive()` raised — `{ code, message, frameIndex?,
   eventId?, correctionId? }` — persisted so the reason a trial reads `review` travels with the
-  row (`review_flags` in `trials.csv`, D66).
+  row (`review_flags` in `trials.csv`, D66). It is the fifth field of a layer D55 described as
+  four, and it is still only a cache: recomputed on load with the rest, never read as the truth.
+  That amendment to D55 was part of the plan Alex approved for chunk 12 and awaits its own entry
+  in `docs/decisions.md`.
   `null` for a video that has been tracked but not yet analysed (D52) — a placeholder or fabricated
   derived layer is forbidden (D16), so the honest value is a null.
 
@@ -557,7 +560,7 @@ the top of this document says exactly what changed.
 | `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
 | `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
 | `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |
-| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial |
+| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code |
 | `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |

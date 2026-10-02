@@ -36,7 +36,9 @@ Reading conventions that apply to all three CSVs:
   not include it in a mean as a zero. Say how many rows were blank instead.
 - Seconds are rounded to 3 decimal places and centimetres to 2; fractions are unrounded.
 - `tool_version`, `schema_version` and `parameters_hash` are on every row of every file. This
-  skill describes **export schema 2** (tool 0.2.0 and later). A schema-1 file has fewer columns
+  skill describes **export schema 2**, which tool 0.2.0 introduced. `tool_version` names the
+  build that created the session, which can be older than the build that exported it, so read
+  `schema_version`, never `tool_version`, for a file's shape. A schema-1 file has fewer columns
   and different semantics for some of them: no `session_name`, `trial_type`, `review_flags`,
   `no_escape_confirmed_by`, `evidence_corrected`, `correction_ids`, `confirmed` or `reviewer`;
   `session_id` is the cohort's editable name rather than a stable id; `events.csv` holds no
@@ -117,9 +119,12 @@ Measures:
   `correction_out_of_range`, `no_escape_contradicted`, `non_persistent_entry_noted`,
   `orphaned_correction`, `oversized_in_trial`, `physically_unlikely_entry`, `stale_auto_layer`,
   `tracking_failure_at_hole`. This is *why* a row reads `review`, so quote it when triaging — with
-  one exception: `non_persistent_entry_noted` is a note, not a problem (a reviewer confirmed a
-  non-escape and the tool had seen a short head-in-hole at the target), and a row can read `ok`
-  with it. `stale_auto_layer` matters most for comparisons: the track was produced under other
+  two exceptions. A `review` row with **blank** `review_flags` is the commonest case and has no
+  code: an acquisition trial that never escaped and was not confirmed as a non-escape
+  (`escaped = false`, `no_escape_confirmed = false`), which the two columns beside it already say.
+  And `non_persistent_entry_noted` is a note, not a problem (a reviewer confirmed a non-escape and
+  the tool had seen a short head-in-hole at the target), so a row can read `ok` with it.
+  `stale_auto_layer` matters most for comparisons: the track was produced under other
   tracking parameters than the ones `parameters_hash` names, so that row's hash does not describe
   how its track was made.
 - `tracked_fraction` (0–1, **may be blank**) — frames in the trial with a fully resolved position. This counts the
@@ -359,9 +364,9 @@ The tail of the same three rows, from `strategy` onwards:
 
 ```
 strategy,strategy_source,escaped,no_escape_confirmed,no_escape_confirmed_by,status,review_flags,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
-serial,auto,false,false,,review,,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
-spatial,auto,true,false,,ok,,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
-random,auto,true,false,,review,,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
+serial,auto,false,false,,review,,0.9762,1,…,barnestrack v0.2.0 (5e11c0a),2,9c3cf1d9fcc3…
+spatial,auto,true,false,,ok,,0.9069,1,…,barnestrack v0.2.0 (5e11c0a),2,9c3cf1d9fcc3…
+random,auto,true,false,,ok,,0.8652,1,…,barnestrack v0.2.0 (5e11c0a),2,9c3cf1d9fcc3…
 ```
 
 `quality.csv`, all three rows:
@@ -377,21 +382,22 @@ Asked _"summarise this cohort"_, a correct answer looks like this:
 
 > Three acquisition trials, one session (`session_id b2c3d4e5…`, named "Barnes cohort A"),
 > one parameter set — all three rows share `parameters_hash 9c3cf1d9fcc3…`, schema 2 and
-> `barnestrack v0.1.0 (5e11c0a)`, so they are directly comparable.
+> `barnestrack v0.2.0 (5e11c0a)`, so they are directly comparable.
 >
-> One trial is `ok` (test51: escaped at 45.1 s, 1 primary error, spatial). Two are `review`:
-> test50 never escaped, so its `total_latency_s` is blank — it reached the target at 95.9 s after 7
-> primary errors and 12 in total, classified serial; test53 escaped at 27.3 s with 4 errors,
-> classified random, and is flagged because its video is `REVIEW` tier at 0.865 tracked with
-> 11.3 % of trial frames carrying no detection.
+> Two trials are `ok` (test51: escaped at 45.1 s, 1 primary error, spatial; test53: escaped at
+> 27.3 s, 4 errors, random). One is `review`: test50 never escaped, so its `total_latency_s` is
+> blank and its `review_flags` is empty — an unconfirmed non-escape, nobody has yet said the
+> animal truly never went in — it reached the target at 95.9 s after 7 primary errors and 12 in
+> total, classified serial.
 >
 > I have not averaged the latencies: one of three is blank, and with n = 3 across two groups
 > (control: test50, test51 — both animal M12; lesion: test53) there is nothing to compare
 > statistically. Each trial carries 1 correction, but every `strategy_source` is `auto`, so the
 > strategy calls are the rule engine's own.
 >
-> Before building on this: test53's tier is `REVIEW`, so its path length of 374 cm rests on the
-> least complete track of the three.
+> Before building on this: test53 reads `ok` but its video is `REVIEW` tier at 0.865 tracked, with
+> 11.3 % of trial frames carrying no detection, so its path length of 374 cm rests on the least
+> complete track of the three.
 
 Note what that answer does: it checks the hash first, reports the status mix rather than hiding it,
 refuses the mean it was implicitly asked for and says why, distinguishes corrected from automatic,
