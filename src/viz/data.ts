@@ -4,11 +4,12 @@
  * map put through the video's own transform (D10, D49) — never recomputed.
  */
 import type { MazeMapFile } from '../contracts/mazeMap.js';
-import type {
-  DerivedLayer,
-  SessionFile,
-  VideoAnalysis,
-  VideoDescriptor,
+import {
+  effectiveTargetHole,
+  type DerivedLayer,
+  type SessionFile,
+  type VideoAnalysis,
+  type VideoDescriptor,
 } from '../contracts/session.js';
 import type { TrackFrame } from '../contracts/track.js';
 import type { HolePosition } from '../maze/ring.js';
@@ -56,7 +57,8 @@ export function trialSource(data: FigureData): TrialSource | null {
     analysis,
     map,
     holes: holeCentres(map),
-    targetIndex: map.target.holeIndex,
+    // D68: this video's own target when it has one, else the map's
+    targetIndex: effectiveTargetHole(descriptor, map),
     pixelsPerCm:
       pxPerCm(map.platform, map.calibration.platformDiameter_cm) ??
       analysis.derived.quality.pxPerCm,

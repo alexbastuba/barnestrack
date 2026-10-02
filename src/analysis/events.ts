@@ -304,6 +304,7 @@ function classifyRun(
   g: MazeGeometry,
   p: Parameters,
   pts: EventPoints,
+  escapeBox: boolean,
 ): ClassifiedRun {
   const lastSeenHole = run.lastSeen >= 0 ? pts.nearest[run.lastSeen]! : -1;
   const lastSeenDistance_px =
@@ -322,7 +323,9 @@ function classifyRun(
     distanceToHole_px(g, pts.ex[run.reappear]!, pts.ey[run.reappear]!, hole) <=
       g.investigationRadius_px;
   const base = { run, hole, lastSeenHole, lastSeenDistance_px, reappearNearSameHole };
-  if (run.inEscapeBoxFrom >= 0) {
+  // D68: a probe trial has no escape box, so the target hole is a hole like any other here and a
+  // marked range is a loss like any other (derive flags the range as not applying)
+  if (escapeBox && run.inEscapeBoxFrom >= 0) {
     // the user says where the animal went in; whether it stayed follows the same O4 rule as any entry
     const markedDuration = a.t[run.end]! - a.t[run.inEscapeBoxFrom]!;
     // D57: the assertion is always honoured, and checked against the evidence. The marked frames
@@ -356,7 +359,7 @@ function classifyRun(
   // says nothing. Unscoped, one dropped trailing frame — routine in re-encoded video — was enough to
   // emit a 0.000 s tracking failure on the open platform, or to raise `physically_unlikely_entry` at
   // a non-target hole and send the trial to review.
-  const atTarget = hole === g.targetIndex;
+  const atTarget = escapeBox && hole === g.targetIndex;
   const longEnough = (run.toEnd && atTarget) || run.durationSeconds >= p.escapeEntry.minDuration_s;
   const entryShaped = hole >= 0 && longEnough && (run.reappear < 0 || reappearNearSameHole);
   if (entryShaped) {
@@ -522,6 +525,12 @@ export interface EventContext {
   g: MazeGeometry;
   p: Parameters;
   pts: EventPoints;
+  /**
+   * D68: false for a probe trial, which has no escape box — a run at the
+   * target is then read like a run at any other hole, and a user's "in the
+   * escape box" range produces no entry. True (an acquisition trial) when absent.
+   */
+  escapeBox?: boolean;
 }
 
 function record(
@@ -607,8 +616,9 @@ export function detectAutoEvents(
     };
   }
   const cutoff = cutoffFrame(a, startFrame, p.trialCutoff_s);
+  const escapeBox = ctx.escapeBox ?? true;
   const classified = findEntryRuns(a, frames, pts, startFrame).map((run) =>
-    classifyRun(run, a, g, p, pts),
+    classifyRun(run, a, g, p, pts, escapeBox),
   );
   let persistentEscapeStartFrame: number | null = null;
   for (const c of classified) {

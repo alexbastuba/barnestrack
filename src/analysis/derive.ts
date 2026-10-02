@@ -13,7 +13,12 @@
 import type { EventRecord } from '../contracts/events.js';
 import type { MazeMapFile, SimilarityTransform } from '../contracts/mazeMap.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { AutoLayer, CorrectionsLayer, DerivedLayer } from '../contracts/session.js';
+import type {
+  AutoLayer,
+  CorrectionsLayer,
+  DerivedLayer,
+  TrialType,
+} from '../contracts/session.js';
 import type { Mp4Index } from '../video/mp4-index.js';
 import { cleanTrack, type CleaningReport } from './clean.js';
 import { applyTrackCorrections, latestCorrection } from './corrections.js';
@@ -57,6 +62,10 @@ export interface DeriveInput {
   index: Pick<Mp4Index, 'width' | 'height'> & Partial<Pick<Mp4Index, 'timebaseAnomalies'>>;
   /** Every threshold, including the strategy, censoring and tier blocks (D55). */
   parameters: Parameters;
+  /** D68: `VideoDescriptor.trialType`; acquisition when absent. A probe trial has no escape box. */
+  trialType?: TrialType;
+  /** D68: `VideoDescriptor.targetHole`; the map's target when absent or null. */
+  targetHole?: number | null;
 }
 
 /**
@@ -91,12 +100,15 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   assertValidParameters(parameters);
   const parametersHash = hashParameters(parameters);
   const trackingParametersHash = hashTrackingParameters(parameters.tracking);
+  // D68: a probe trial has no escape box; the target hole may be this video's own
+  const escapeBox = (input.trialType ?? 'acquisition') !== 'probe';
 
   const g = mazeGeometry({
     map: mazeMap,
     transform: mazeTransform,
     referenceResolution: { width: index.width, height: index.height },
     parameters,
+    targetHole: input.targetHole ?? null,
   });
 
   const corrected = applyTrackCorrections(auto.frames, corrections);
@@ -106,7 +118,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
 
   const proposal = proposeTrialStart(cleaned.track, a, corrections);
   const pts = eventPoints(a, g, parameters, cleaned.track);
-  const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts };
+  const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts, escapeBox };
 
   /*
    * D65: provenance is the difference between two detections. When any point or range correction
@@ -127,6 +139,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       g,
       p: parameters,
       pts: eventPoints(aAuto, g, parameters, cleanedAuto.track),
+      escapeBox,
     };
   }
   const withProvenance = (detected: AutoEvents): EventRecord[] => {
@@ -261,7 +274,27 @@ export function derive(input: DeriveInput): DerivedAnalysis {
    * would let `escaped = false, no_escape_confirmed = true, status = ok` ship over an entry the
    * tool itself found and printed. The two cases read differently and say so.
    */
-  const noEscape = latestCorrection(corrections.entries, 'no_escape');
+  const noEscape = escapeBox ? latestCorrection(corrections.entries, 'no_escape') : null;
+  if (!escapeBox) {
+    // D68: a probe trial has no escape box, so a correction about one does not apply. Said out
+    // loud rather than ignored (D57: corrections are honoured, contradictions are visible).
+    for (const c of corrections.entries) {
+      if (c.kind === 'range' && c.rangeType === 'in_escape_box') {
+        reviewFlags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          frameIndex: c.startFrame,
+          message: `This video is a probe trial, which has no escape box, so the escape-box range ${c.id} (frames ${c.startFrame}–${c.endFrame}) produces no entry; its frames are kept as a gap. Mark them not visible instead, or change the trial type.`,
+        });
+      } else if (c.kind === 'no_escape') {
+        reviewFlags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          message: `This video is a probe trial, which has no escape box to confirm anything about, so the confirmed non-escape ${c.id} does not apply; revert it, or change the trial type.`,
+        });
+      }
+    }
+  }
   const escapeEntries = correctedEvents.events.filter((ev) => ev.kind === 'escape_entry');
   if (noEscape !== null && escapeEntries.length > 0) {
     const because = noEscape.reason ? ` ("${noEscape.reason}")` : '';
@@ -298,7 +331,8 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     kinematics,
     a,
     strategy,
-    noEscapeConfirmed: noEscape !== null,
+    noEscapeConfirmed: escapeBox ? noEscape !== null : null,
+    trialType: input.trialType ?? 'acquisition',
     // A confirmation ("Keep": an event correction marked `confirmed`) says the
     // tool was right, so counting it as a correction would report a hand edit
     // that never happened — a queue of thirty good events walked with K would

@@ -10,11 +10,19 @@
  */
 import type { EventKind } from './events.js';
 import type { TrialStatus } from './metrics.js';
-import type { SearchStrategy } from './session.js';
+import type { SearchStrategy, TrialType } from './session.js';
 import type { NamedPointId } from './track.js';
 import type { ToolVersion } from './version.js';
 
-export const EXPORT_SCHEMA_VERSION = 1;
+/**
+ * Version 2 (D65, D66, D68): `session_id` is the session's UUID and
+ * `session_name` the editable name; trials gain `trial_type`, `review_flags`
+ * and `no_escape_confirmed_by`, their window measures are blank when no trial
+ * window exists, and `strategy` admits `unclassified`; events gain
+ * `evidence_corrected`, `correction_ids`, `confirmed` and `reviewer`, and
+ * `kind` admits `tracking_failure`.
+ */
+export const EXPORT_SCHEMA_VERSION = 2;
 
 interface ExportProvenance {
   toolVersion: ToolVersion;
@@ -23,14 +31,20 @@ interface ExportProvenance {
 }
 
 export interface TrialRow extends ExportProvenance {
+  /** D68: the session's UUID. */
   sessionId: string;
+  /** D68: the editable cohort name, beside the id that never changes. */
+  sessionName: string;
   videoId: string;
   animal: string | null;
   day: string | null;
   trialLabel: string | null;
   group: string | null;
+  /** D68: acquisition or probe. */
+  trialType: TrialType;
   /**
-   * D62: the target hole under the maze map's numbering (D49), null when the
+   * D62, D68: the effective target hole under the maze map's numbering (D49) —
+   * this video's override when it has one, else the map's — null when the
    * session has no map. Gawel's protocol rotates the platform between trials,
    * so a row without its target is not interpretable on its own.
    */
@@ -48,9 +62,12 @@ export interface TrialRow extends ExportProvenance {
   targetQuadrantTime_s: number | null;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
-  escaped: boolean;
-  /** D63: a person has confirmed the animal never entered the escape box. */
-  noEscapeConfirmed: boolean;
+  /** Blank (null) on a probe trial, which has no escape box (D66, D68). */
+  escaped: boolean | null;
+  /** D63: a person has confirmed the animal never entered the escape box; blank on a probe trial. */
+  noEscapeConfirmed: boolean | null;
+  /** D68: who recorded that confirmation, when the session named a reviewer. */
+  noEscapeConfirmedBy: string | null;
   status: TrialStatus;
   /** D66: the review flag codes `derive()` raised, `;`-joined, unique, alphabetical; empty when none. */
   reviewFlags: string;
@@ -79,6 +96,7 @@ export interface TrialRow extends ExportProvenance {
 
 export interface EventRow extends ExportProvenance {
   sessionId: string;
+  sessionName: string;
   videoId: string;
   trialLabel: string | null;
   eventId: string;
@@ -101,6 +119,8 @@ export interface EventRow extends ExportProvenance {
   correctionIds: string;
   /** D64, D67: a person kept the event as it stands. */
   confirmed: boolean;
+  /** D68: the reviewers behind the corrections that touched this event, `;`-joined; blank when none or unnamed. */
+  reviewer: string | null;
   /** Populated when the record carries its auto-only values: a corrected or evidence-corrected event (D11, D65 shadow columns). */
   autoHoleIndex: number | null;
   autoStartFrame: number | null;
@@ -109,6 +129,7 @@ export interface EventRow extends ExportProvenance {
 
 export interface QualityRow extends ExportProvenance {
   sessionId: string;
+  sessionName: string;
   videoId: string;
   trackedFraction: number;
   notDetectedFraction: number;

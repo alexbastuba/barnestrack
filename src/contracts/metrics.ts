@@ -29,16 +29,17 @@ export interface TrialMetrics {
   targetQuadrantTime_s: number | null;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
-  escaped: boolean;
+  /** null for a probe trial, which has no escape box (D68); never false there (D66). */
+  escaped: boolean | null;
   /**
    * A human has recorded "the animal never entered the escape box" (D63). It
    * reports the correction being in force, not that it holds: a confirmation
    * contradicted by a later escape entry is still true here, with `status`
    * review beside it — and `escaped` true only when that entry ended the trial,
    * since an entry too short to be persistent contradicts the confirmation
-   * without making the trial an escape.
+   * without making the trial an escape. null for a probe trial (D68).
    */
-  noEscapeConfirmed: boolean;
+  noEscapeConfirmed: boolean | null;
   status: TrialStatus;
   /** Fraction of the trial with detectionState 'tracked'; null with no trial window (D66). */
   trackedFraction: number | null;

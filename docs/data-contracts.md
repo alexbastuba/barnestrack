@@ -10,8 +10,31 @@ adding, removing, renaming or retyping a field, or changing what a field means �
 contract's schema version and adds a new entry to `docs/decisions.md`. A schema version is never
 reused for an incompatible shape.
 
-Current versions: `SESSION_SCHEMA_VERSION = 1`, `MAZE_MAP_SCHEMA_VERSION = 1`,
-`EXPORT_SCHEMA_VERSION = 1`.
+Current versions: `SESSION_SCHEMA_VERSION = 2`, `MAZE_MAP_SCHEMA_VERSION = 1`,
+`EXPORT_SCHEMA_VERSION = 2` (tool 0.2.0, D65–D68). A version-1 session file is read and migrated
+in memory (§3, "Migration"); version-1 exports are described in the 0.1.0 tag of this document
+and in `examples/outputs/`.
+
+**Changed in session schema 2 and export schema 2 (D65, D66, D67, D68).**
+
+- Session file: `sessionId` (a UUID, generated once), `reviewer: string | null`; every correction
+  entry gains `reviewer: string | null`, stamped by the session store from the session's reviewer
+  at write time; every `VideoDescriptor` gains `trialType: 'acquisition' | 'probe'` and
+  `targetHole: number | null`; an `EventCorrection` may carry `newKind: 'tracking_failure'`;
+  `DerivedLayer` gains `reviewFlags`.
+- Events: `EventRecord` gains `evidenceCorrected`, `correctionIds` and `confirmed`; `source` is
+  decided by two detections (§5); a `confirmed` event is `source: 'auto'`.
+- Metrics: `primaryErrors`, `totalErrors`, `pathLength_cm`, `pathLengthSmoothed_cm`,
+  `targetQuadrantTime_s` and `trackedFraction` are `number | null`; `escaped` and
+  `noEscapeConfirmed` are `boolean | null`; `SearchStrategy` admits `unclassified`.
+- `trials.csv`: `session_id` is the UUID, new `session_name`, `trial_type`, `review_flags` and
+  `no_escape_confirmed_by`; `target_hole` is the effective target; the window measures are blank
+  on an `unresolved` row; a probe trial's escape measures are blank.
+- `events.csv`: new `session_name`, `evidence_corrected`, `correction_ids`, `confirmed` and
+  `reviewer`; `kind` admits `tracking_failure`; the shadow columns are filled whenever the record
+  carries auto-only values.
+- `quality.csv`: new `session_name`.
+- Review flags: `confirmation_contradicted` (hard) and `non_persistent_entry_noted` (soft).
 
 ## Conventions used throughout
 
@@ -108,9 +131,11 @@ superseding the session-level "calibration" field named in D9's prose).
 
 | Field           | Type                                    | Notes                                                    |
 | --------------- | ---------------------------------------- | --------------------------------------------------------- |
-| `schemaVersion` | `1`                                       | `SESSION_SCHEMA_VERSION`.                                  |
+| `schemaVersion` | `2`                                       | `SESSION_SCHEMA_VERSION`; a version-1 document is read and migrated in memory (see "Migration" below). |
 | `toolVersion`   | string                                    | `barnestrack v<major>.<minor>.<patch> (<git-sha7>)`.       |
-| `name`          | string                                    | User-editable cohort name; defaults to the first video's filename (D47). |
+| `sessionId`     | string (UUID)                             | D68: generated once when the session is created, never edited; `session_id` in every export. |
+| `name`          | string                                    | User-editable cohort name; defaults to the first video's filename (D47); `session_name` in every export. |
+| `reviewer`      | `string \| null`                          | D68: the person reviewing this cohort, set once per session; copied onto every correction as it is written. |
 | `videos`        | VideoDescriptor[]                        | See below.                                                 |
 | `mazeMap`       | `MazeMapFile \| null`                    | Shared across the cohort; `null` until the maze step is finished (D47). See §4. |
 | `parameters`    | `Parameters \| null`                     | Every event/cleaning threshold; `null` until the first analysis run (D47, D51). See §6. |
@@ -126,6 +151,8 @@ superseding the session-level "calibration" field named in D9's prose).
 | `referenceResolution`| `{ width, height }` | px                                                          |
 | `mazeTransform`      | SimilarityTransform | `{ translateX, translateY, rotationDeg, scale }` fit of `mazeMap` onto this video (D10). |
 | `metadata`           | VideoMetadata   | `{ animal?, day?, trial?, group? }`, user-editable, no filename parsing (O12). |
+| `trialType`          | `'acquisition' \| 'probe'` | D68: a probe trial has no escape box — escape detection is off, the trial runs to the cutoff, its escape measures are null, and not escaping never makes it `review`. |
+| `targetHole`         | `number \| null` | D68: this video's target under the map's numbering (D49) when it differs from the map's, else null. The effective target is `targetHole ?? mazeMap.target.holeIndex` (`effectiveTargetHole` in `src/contracts/session.ts`), used by the geometry, the exports and the figures. |
 
 **VideoAnalysis** — the three layers for one video:
 
@@ -135,7 +162,10 @@ superseding the session-level "calibration" field named in D9's prose).
 - **`corrections`** — `{ entries: CorrectionEntry[] }`. Sparse human edits — point corrections,
   range tools, event corrections, trial-start adjustment, strategy override, a confirmed
   non-escape (`no_escape`, D63: one per video, with a reason) — each carrying
-  `source: 'user'` and an ISO 8601 `timestamp` (D25). Never mutates `auto`.
+  `source: 'user'`, an ISO 8601 `timestamp` (D25) and, since schema 2, `reviewer: string | null`
+  (D68): the session's reviewer at the moment the entry was written, stamped by the session
+  store on every entry a write adds or re-makes, so an entry written under one reviewer keeps
+  that name when another reviewer writes something else. Never mutates `auto`.
   An `EventCorrection` may also carry **`confirmed: true`** — the Review step's `Keep`: the user
   read the event and it is right as it stands. It is only ever set on an `action: 'edit'` whose
   `holeIndex`, `startFrame` and `endFrame` are the automatic ones, so a reader that does not know
@@ -166,9 +196,11 @@ superseding the session-level "calibration" field named in D9's prose).
 
 ```json
 {
-  "schemaVersion": 1,
-  "toolVersion": "barnestrack v0.1.0 (a1b2c3d)",
+  "schemaVersion": 2,
+  "toolVersion": "barnestrack v0.2.0 (a1b2c3d)",
+  "sessionId": "7a1f4c2e-3b5d-4e8f-9a0b-1c2d3e4f5a6b",
   "name": "cohort3_day1",
+  "reviewer": "A. Reviewer",
   "videos": [
     {
       "id": "vid_01",
@@ -176,7 +208,9 @@ superseding the session-level "calibration" field named in D9's prose).
       "fingerprint": { "byteLength": 88234112, "durationSeconds": 182.4, "frameCount": 5472, "sha256": "…" },
       "referenceResolution": { "width": 1280, "height": 720 },
       "mazeTransform": { "translateX": 0, "translateY": 0, "rotationDeg": 0, "scale": 1 },
-      "metadata": { "animal": "07", "day": "1", "group": "control" }
+      "metadata": { "animal": "07", "day": "1", "group": "control" },
+      "trialType": "acquisition",
+      "targetHole": null
     },
     {
       "id": "vid_02",
@@ -184,7 +218,9 @@ superseding the session-level "calibration" field named in D9's prose).
       "fingerprint": { "byteLength": 84110336, "durationSeconds": 179.1, "frameCount": 5372, "sha256": "…" },
       "referenceResolution": { "width": 1280, "height": 720 },
       "mazeTransform": { "translateX": 0, "translateY": 0, "rotationDeg": 0, "scale": 1 },
-      "metadata": { "animal": "08", "day": "1", "group": "control" }
+      "metadata": { "animal": "08", "day": "1", "group": "control" },
+      "trialType": "probe",
+      "targetHole": 12
     }
   ],
   "mazeMap": { "…": "see §4" },
@@ -206,6 +242,19 @@ superseding the session-level "calibration" field named in D9's prose).
 
 `vid_02` above has been tracked but not yet analysed: its `derived` is `null` (D52), and
 `parameters` at the top level is only non-null once some video *has* been analysed (D51).
+
+**Migration (D68).** `parseSessionDocument` accepts schema version 1 and migrates it in memory
+(`src/session/migrate.ts`); the next save writes version 2. A version-1 document gets a
+`sessionId` generated once at that load and kept from then on, `reviewer: null`, `trialType:
+'acquisition'` and `targetHole: null` on every video, `reviewer: null` on every correction entry,
+and `derived: null` on every analysis — a version-1 cache has the version-1 shape and is
+recomputed from `auto ⊕ corrections` on load like any derived layer. Nothing automatic and
+nothing human-made is changed. The IndexedDB autosave record (`src/session/stored.ts`) is migrated
+the same way on restore. A version-2 document that lacks a version-2 field is refused with the
+field named; a version above 2, or below 1, is refused as before. The example bundle as 0.1.0
+shipped it is kept under `tests/fixtures/example-cohort-v1.barnestrack.json.gz` as the migration
+test's input; `tests/session/migration.test.ts` loads it, migrates it, re-serialises it, and
+derives it to the numbers 0.1.0 shipped on every field that existed before D65.
 
 ## 4. Maze map file (D10, D13, O8)
 
@@ -476,30 +525,26 @@ clusters on them (D8, D30).
 
 Three tidy CSVs, `snake_case` names with unit suffixes, no comment rows, plus `parameters.json`, the
 session file, and one XLSX with the same sheets plus `parameters` and `readme`. Every row carries
-`tool_version`, `schema_version` and `parameters_hash` (`EXPORT_SCHEMA_VERSION = 1`).
+`tool_version`, `schema_version` and `parameters_hash` (`EXPORT_SCHEMA_VERSION = 2`).
 
-**`EXPORT_SCHEMA_VERSION` stays 1 across D62's `target_hole`, deliberately and provisionally.** The
-chunk that added the column was instructed to hold the version at 1, so it did, and this paragraph
-is the record the versioning rule above asks for rather than a silent omission. The argument for
-retaining 1: the change is purely additive, the column carries a documented header, and every
-consumer in this repository — the XLSX writer, the cohort skill, the readme sheet — addresses
-columns by header name, not by position. The argument against, which is not disposed of: unlike the
-session file, an export *is* reachable in the deployed build, so a 35-column and a 36-column
-`trials.csv` can both exist stamped `schema_version 1`, and a reader who split on commas by index
-would silently misread the older one. **The conclusion is that 1 stands**: `target_hole` is purely
-additive, every consumer keys on header names, and every row already carries `tool_version` and
-`parameters_hash`, which distinguish the two files for anyone reconciling them. A version bump
-signals a breaking change, and there is none here. **The same holds for D63's `no_escape_confirmed`**,
-added on the same terms: purely additive, keyed by header name, and the argument against — that two
-`trials.csv` files stamped `schema_version 1` can now differ in width by two columns rather than one
-— is the same argument, disposed of the same way.
+**Why 2.** Export schema 1 absorbed two additive columns (`target_hole`, D62; `no_escape_confirmed`,
+D63) without a bump, on the argument that every consumer keys on header names and `tool_version`
+distinguishes the files. D65–D68 are not additive: `session_id` changes meaning (the editable name
+became a UUID), `kind` admits `tracking_failure`, `strategy` admits `unclassified`, six numeric
+columns become nullable, `escaped` and `no_escape_confirmed` become nullable, and a kept event moves
+from `source = corrected` to `source = auto` with `confirmed = true`. A reader of a schema-1 file
+who applied schema-2 rules — or the reverse — would misread it, so the version moves. The list at
+the top of this document says exactly what changed.
 
 ### `trials.csv` — one row per trial
 
 | Column | Unit | Source |
 | --- | --- | --- |
-| `session_id`, `video_id`, `animal`, `day`, `trial_label`, `group` | — | identifiers / O12 metadata |
-| `target_hole` | hole index (nullable: no maze map) | D62 — the map's target under D49's numbering |
+| `session_id` | UUID | D68 — the session's id, generated once; join on this |
+| `session_name` | — | D68 — the editable cohort name; read, never join |
+| `video_id`, `animal`, `day`, `trial_label`, `group` | — | identifiers / O12 metadata |
+| `trial_type` | `acquisition \| probe` | D68 |
+| `target_hole` | hole index (nullable: no maze map) | D62, D68 — the effective target under D49's numbering: the video's own when it names one, else the map's |
 | `trial_start_s` | s (nullable: no trial start) | O5 |
 | `primary_latency_s` | s (nullable) | O3 |
 | `total_latency_s` | s (nullable) | O4 |
@@ -508,9 +553,10 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `mean_speed_cm_per_s` | cm/s (nullable: no tracked time or no trial window) | O9 |
 | `target_quadrant_time_s` | s (nullable: no trial window, D66) | O6 |
 | `strategy`, `strategy_source` | — | `spatial \| serial \| random \| unclassified` (D58, D66); `auto \| corrected` |
-| `escaped` | bool | O4 |
-| `no_escape_confirmed` | bool | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry, with `status` review beside it (and `escaped` true only when that entry ended the trial) |
-| `status` | — | `ok \| review \| unresolved` (O5, D63) |
+| `escaped` | bool (blank on a probe trial, D68) | O4 |
+| `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
+| `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
+| `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |
 | `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial |
 | `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
@@ -523,11 +569,11 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `outlier_velocity_threshold_cm_per_s` | cm/s | O17 |
 | `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
 
-### `events.csv` — one row per investigation or entry
+### `events.csv` — one row per event of any kind
 
 | Column | Unit | Source |
 | --- | --- | --- |
-| `session_id`, `video_id`, `trial_label`, `event_id` | — | identifiers |
+| `session_id`, `session_name`, `video_id`, `trial_label`, `event_id` | — | identifiers (D68: the UUID and the editable name) |
 | `kind` | — | `investigation \| escape_entry \| tracking_failure` (D67: every event is a row; a failure counts toward nothing) |
 | `hole_index` (nullable), `is_target` | —, bool | — |
 | `start_frame`, `end_frame` | — | D7 |
@@ -539,6 +585,7 @@ added on the same terms: purely additive, keyed by header name, and the argument
 | `evidence_corrected` | bool | D65: both detections found the event, a point or range correction inside its span changed what was measured |
 | `correction_ids` | `;`-joined ids (blank: none) | D65: the point and range corrections inside the event's span and its shadow's span |
 | `confirmed` | bool | D64, D67: a person kept the event as it stands; `source` stays `auto` and the event is not in `correction_count` |
+| `reviewer` | `;`-joined names (blank: none) | D68: the reviewers behind the corrections that touched the event — those in `correction_ids` and the event corrections addressing it |
 | `auto_hole_index`, `auto_start_frame`, `auto_end_frame` (nullable) | — | shadow columns, populated when `source = corrected` or `evidence_corrected = true`; blank on a plain confirmed row |
 | `tool_version`, `schema_version`, `parameters_hash` | — | D12 |
 
@@ -546,7 +593,7 @@ added on the same terms: purely additive, keyed by header name, and the argument
 
 | Column | Unit | Source |
 | --- | --- | --- |
-| `session_id`, `video_id` | — | identifiers |
+| `session_id`, `session_name`, `video_id` | — | identifiers (D68) |
 | `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction` | 0–1 | D30, D54 (trial window) |
 | `positioned_fraction` | 0–1 | D54: the headline the tier is judged on — frames positioned (tracked or low confidence) over the trial window |
 | `whole_clip_positioned_fraction` | 0–1 | D54: the same over the whole clip, as a secondary number |

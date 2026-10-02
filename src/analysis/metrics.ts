@@ -6,7 +6,7 @@
 import type { EventRecord } from '../contracts/events.js';
 import type { TrialMetrics } from '../contracts/metrics.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { SearchStrategy } from '../contracts/session.js';
+import type { SearchStrategy, TrialType } from '../contracts/session.js';
 import type { KinematicsSummary } from './kinematics.js';
 import { isRecorded } from './parameters.js';
 import { STATE_CODE, type TrackArrays } from './track-arrays.js';
@@ -21,10 +21,12 @@ export interface MetricsInput {
   /** The cleaned track as arrays. */
   a: TrackArrays;
   strategy: { strategy: SearchStrategy; strategySource: 'auto' | 'corrected' };
-  /** A `no_escape` correction is in force: the human says this animal never entered (D63). */
-  noEscapeConfirmed: boolean;
+  /** A `no_escape` correction is in force: the human says this animal never entered (D63). null on a probe trial (D68). */
+  noEscapeConfirmed: boolean | null;
   correctionCount: number;
   parameters: Parameters;
+  /** D68: a probe trial has no escape box — its escape measures are blank and not escaping is never review. Acquisition when absent. */
+  trialType?: TrialType;
 }
 
 /** A persistent entry lasts to the end of the video or at least the persist cutoff (O4). */
@@ -64,10 +66,13 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   const start = bounds.startFrame;
   const end = bounds.endFrame;
   const noTrial = start === null || end === null;
+  // D68: a probe trial has no escape box, so nothing about escaping is a measurement of it
+  const probe = (input.trialType ?? 'acquisition') === 'probe';
 
-  const escaped = bounds.endReason === 'escape';
-  const totalLatency =
-    escaped && !noTrial
+  const escaped: boolean | null = probe ? null : bounds.endReason === 'escape';
+  const totalLatency = probe
+    ? null
+    : escaped && !noTrial
       ? bounds.endTime_s - bounds.startTime_s
       : parameters.trialCensoring.censorToCutoff && !noTrial
         ? parameters.trialCutoff_s
@@ -110,7 +115,7 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   const hardFlags = flags.filter((flag) => !isSoftReviewFlag(flag));
   const status: TrialMetrics['status'] = noTrial
     ? 'unresolved'
-    : hardFlags.length > 0 || (!escaped && !noEscapeConfirmed)
+    : hardFlags.length > 0 || (!probe && !escaped && !noEscapeConfirmed)
       ? 'review'
       : 'ok';
 
@@ -128,7 +133,7 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     strategy: strategy.strategy,
     strategySource: strategy.strategySource,
     escaped,
-    noEscapeConfirmed,
+    noEscapeConfirmed: probe ? null : noEscapeConfirmed,
     status,
     trackedFraction: overWindow(trackedFraction ?? Number.NaN),
     correctionCount,

@@ -3,11 +3,12 @@ import { SESSION_SCHEMA_VERSION, type EventCorrection } from '../../src/contract
 import { confirmedEventIds } from '../../src/session/corrections.js';
 import {
   createSessionFile,
+  isSessionId,
   parseSessionDocument,
   serializeSessionFile,
   sessionFileName,
 } from '../../src/session/session-file.js';
-import { fullSession, TOOL_VERSION } from './fixtures.js';
+import { fullSession, legacySessionDocument, SESSION_ID, TOOL_VERSION } from './fixtures.js';
 
 describe('serialize → parse round trip', () => {
   it('preserves every part of the contract', () => {
@@ -114,6 +115,96 @@ describe('serialize → parse round trip', () => {
     expect(parsed.session.analyses['vid_03']?.derived).toBeNull();
     expect(parsed.session.analyses['vid_03']?.auto.frames).toHaveLength(2);
     expect(parsed.session.analyses['vid_01']?.derived).not.toBeNull();
+  });
+});
+
+describe('schema version 2 (D68)', () => {
+  it('writes and reads the session id, the reviewer, each video’s trial type and target hole', () => {
+    const session = fullSession();
+    expect(session.sessionId).toBe(SESSION_ID);
+    const result = parseSessionDocument(serializeSessionFile(session));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.session.sessionId).toBe(SESSION_ID);
+    expect(result.session.reviewer).toBe('A. Reviewer');
+    expect(result.session.videos[0]!.trialType).toBe('acquisition');
+    expect(result.session.videos[0]!.targetHole).toBeNull();
+    const probe = {
+      ...session,
+      videos: session.videos.map((video, i) =>
+        i === 1 ? { ...video, trialType: 'probe' as const, targetHole: 12 } : video,
+      ),
+    };
+    const again = parseSessionDocument(serializeSessionFile(probe));
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.session.videos[1]).toMatchObject({ trialType: 'probe', targetHole: 12 });
+  });
+
+  it('gives a new session a fresh id and no reviewer', () => {
+    const a = createSessionFile('one', TOOL_VERSION);
+    const b = createSessionFile('two', TOOL_VERSION);
+    expect(isSessionId(a.sessionId)).toBe(true);
+    expect(a.sessionId).not.toBe(b.sessionId);
+    expect(a.reviewer).toBeNull();
+    expect(a.schemaVersion).toBe(SESSION_SCHEMA_VERSION);
+  });
+
+  it('migrates a version-1 document in memory and writes it back as version 2', () => {
+    const result = parseSessionDocument(JSON.stringify(legacySessionDocument()));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const session = result.session;
+    expect(session.schemaVersion).toBe(2);
+    expect(isSessionId(session.sessionId)).toBe(true);
+    expect(session.reviewer).toBeNull();
+    expect(session.videos.map((v) => [v.trialType, v.targetHole])).toEqual([
+      ['acquisition', null],
+      ['acquisition', null],
+      ['acquisition', null],
+    ]);
+    // the automatic layer and the corrections survive; the version-1 derived cache does not
+    expect(session.analyses['vid_01']!.auto).toEqual(fullSession().analyses['vid_01']!.auto);
+    expect(session.analyses['vid_01']!.corrections.entries[0]).toMatchObject({ id: 'corr_01', reviewer: null });
+    expect(session.analyses['vid_01']!.derived).toBeNull();
+    expect(serializeSessionFile(session)).toContain('"schemaVersion": 2');
+  });
+
+  it('rejects a version-2 document that lacks a version-2 field, naming it', () => {
+    const noId = { ...fullSession(), sessionId: 'not-a-uuid' };
+    const a = parseSessionDocument(JSON.stringify(noId));
+    expect(a.ok).toBe(false);
+    if (!a.ok) expect(a.message).toContain('session id');
+
+    const session = fullSession();
+    const noType = {
+      ...session,
+      videos: session.videos.map((video, i) => {
+        if (i !== 1) return video;
+        const { trialType: _dropped, ...rest } = video;
+        void _dropped;
+        return rest;
+      }),
+    };
+    const b = parseSessionDocument(JSON.stringify(noType));
+    expect(b.ok).toBe(false);
+    if (!b.ok) expect(b.message).toContain('video 2');
+
+    const badType = {
+      ...session,
+      videos: session.videos.map((video, i) => (i === 0 ? { ...video, trialType: 'foo' } : video)),
+    };
+    const c = parseSessionDocument(JSON.stringify(badType));
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.message).toContain('trial type');
+
+    const badHole = {
+      ...session,
+      videos: session.videos.map((video, i) => (i === 0 ? { ...video, targetHole: 2.5 } : video)),
+    };
+    const d = parseSessionDocument(JSON.stringify(badHole));
+    expect(d.ok).toBe(false);
+    if (!d.ok) expect(d.message).toContain('target hole');
   });
 });
 

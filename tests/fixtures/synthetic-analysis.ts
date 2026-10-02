@@ -44,6 +44,9 @@ import type { Point } from '../../src/maze/types.js';
 /** A build-time version string of the shape D12 specifies. */
 export const FIXTURE_TOOL_VERSION = 'barnestrack v0.1.0 (5e11c0a)';
 
+/** A fixed, UUID-shaped session id (D68), so the fixture stays byte-identical between calls. */
+export const FIXTURE_SESSION_ID = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e';
+
 /** The engine's own defaults (D20, D51): the fixture is analysed "as shipped". */
 export const FIXTURE_PARAMETERS: Parameters = DEFAULT_PARAMETERS;
 
@@ -241,6 +244,8 @@ export function videoDescriptors(): VideoDescriptor[] {
         ? IDENTITY_TRANSFORM
         : (transformFromCircles(FIXTURE_MAZE_MAP.platform, script.platform) ?? IDENTITY_TRANSFORM),
     metadata: script.metadata,
+    trialType: 'acquisition',
+    targetHole: null,
   }));
 }
 
@@ -976,7 +981,9 @@ export function syntheticSession(): SessionFile {
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     toolVersion: FIXTURE_TOOL_VERSION,
+    sessionId: FIXTURE_SESSION_ID,
     name: 'Barnes cohort A',
+    reviewer: null,
     videos,
     mazeMap: FIXTURE_MAZE_MAP,
     parameters: FIXTURE_PARAMETERS,

@@ -96,7 +96,7 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'escapeEntry.persistCutoff_s':
     'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds).',
   trialCutoff_s:
-    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review (seconds).',
+    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review unless a person confirmed the non-escape. A probe trial has no escape box, so it always runs to this cutoff and not escaping never makes it review (seconds).',
   'targetQuadrant.holeSpan':
     'The target quadrant is the sector of the platform reaching this many hole spacings either side of the target hole; 2.5 holes on a 20-hole ring is a 90° sector (holes).',
   kinematicsSmoothingWindowFrames:
@@ -276,7 +276,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   primaryLatency_s:
     'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds).',
   totalLatency_s:
-    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on (seconds).',
+    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on, and always blank for a probe trial, which has no escape box (seconds).',
   primaryErrors:
     'Investigations of non-target holes before the first target event, repeat visits included; blank, not zero, when there is no trial window to count over (count).',
   totalErrors:
@@ -293,11 +293,12 @@ export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
     'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose; unclassified when there is no trial window or nothing to classify over, because a class is a measurement and an empty search measures nothing (spatial, serial, random or unclassified; rules from Gawel et al. 2019, Table 1).',
   strategySource:
     'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—).',
-  escaped: 'Whether a persistent escape-box entry ended the trial (yes/no).',
+  escaped:
+    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box (yes/no).',
   noEscapeConfirmed:
-    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry found afterwards contradicts the confirmation and the entry wins (yes/no).',
+    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry that ended the trial found afterwards contradicts the confirmation and the entry wins, while a shorter one is noted beside it; blank for a probe trial (yes/no).',
   status:
-    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed, in which case every measure over the trial window is blank (—).',
+    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed, in which case every measure over the trial window is blank. A probe trial has no escape box, so not escaping never makes it review (—).',
   trackedFraction:
     'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier; blank when there is no trial window (fraction).',
   correctionCount:

@@ -71,6 +71,8 @@ describe('the committed example cohort is reproducible from its own automatic la
           corrections: analysis.corrections,
           mazeMap,
           mazeTransform: video.mazeTransform,
+          trialType: video.trialType,
+          targetHole: video.targetHole,
           index: {
             width: video.referenceResolution.width,
             height: video.referenceResolution.height,

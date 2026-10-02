@@ -807,7 +807,9 @@ function sessionAround(input: DeriveInput, analysis: ReturnType<typeof derive>):
     return {
       schemaVersion: SESSION_SCHEMA_VERSION,
       toolVersion: 'barnestrack v0.2.0 (test)',
+      sessionId: 'd4e5f6a7-b8c9-4d0e-9f1a-2b3c4d5e6f7a',
       name: 'provenance',
+      reviewer: null,
       videos: [
         {
           id: input.videoId,
@@ -816,6 +818,8 @@ function sessionAround(input: DeriveInput, analysis: ReturnType<typeof derive>):
           referenceResolution: { ...TEST_RESOLUTION },
           mazeTransform: { ...IDENTITY_TRANSFORM },
           metadata: {},
+          trialType: input.trialType ?? 'acquisition',
+          targetHole: input.targetHole ?? null,
         },
       ],
       mazeMap: input.mazeMap,
@@ -1151,6 +1155,14 @@ describe('the escape entry as an inference (D67)', () => {
     expect(flag?.message).toContain('only an escape entry can be reclassified');
   });
 
+  it('is unchanged by a probe trial type on a trial with no loss at the target, except that nothing about escaping is a number', () => {
+    // covered in detail under D68 below; here only that the D67 paths do not leak into a probe
+    const { input } = inputFor([...visitHoles([3, 7, 9]), { kind: 'moveToCentre', seconds: 0.5 }]);
+    const probe = derive({ ...input, trialType: 'probe' });
+    expect(probe.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    expect(probe.metrics.escaped).toBeNull();
+  });
+
   it('refuses a confirmation on a tracking failure, and says so', () => {
     const away = holePoint(g, 3, 6);
     const lostInTheOpen: Segment[] = [
@@ -1171,5 +1183,117 @@ describe('the escape entry as an inference (D67)', () => {
     expect(d.reviewFlags.find((f) => f.code === 'orphaned_correction')?.message).toContain(
       'cannot be confirmed',
     );
+  });
+});
+
+/*
+ * D68: a probe trial has no escape box, and a video may name its own target hole under the
+ * map's numbering. Both are properties of the video, passed to derive beside the map.
+ */
+describe('probe trials and per-video target holes (D68)', () => {
+  const search: Segment[] = [...visitHoles([3, 7, 9]), { kind: 'moveToCentre', seconds: 0.5 }];
+
+  it('leaves a probe trial’s escape measures blank, never review for not escaping, and measures the rest to the cutoff', () => {
+    const { input } = inputFor(search);
+    const acquisition = derive(input);
+    expect(acquisition.metrics.escaped).toBe(false);
+    expect(acquisition.metrics.status).toBe('review'); // never escaped, nobody confirmed
+
+    const probeInput: DeriveInput = { ...input, trialType: 'probe' };
+    const probe = derive(probeInput);
+    expect(probe.metrics.escaped).toBeNull();
+    expect(probe.metrics.totalLatency_s).toBeNull();
+    expect(probe.metrics.noEscapeConfirmed).toBeNull();
+    expect(probe.metrics.status).toBe('ok');
+    expect(probe.reviewFlags).toEqual([]);
+    expect(probe.trial.endReason).toBe('end_of_video');
+    // primary latency, errors and strategy are the same measurements over the same window
+    expect(probe.metrics.primaryLatency_s).toBe(acquisition.metrics.primaryLatency_s);
+    expect(probe.metrics.primaryErrors).toBe(1);
+    expect(probe.metrics.totalErrors).toBe(2);
+    expect(probe.metrics.strategy).toBe(acquisition.metrics.strategy);
+    expect(probe.quality).toEqual(acquisition.quality);
+
+    const row = trialRowFor(probeInput, probe);
+    expect(row).toMatchObject({
+      trial_type: 'probe',
+      escaped: '',
+      total_latency_s: '',
+      no_escape_confirmed: '',
+      no_escape_confirmed_by: '',
+      status: 'ok',
+      review_flags: '',
+    });
+    expect(Number(row.primary_errors)).toBe(1);
+  });
+
+  it('never infers an entry on a probe trial: a loss at the target is read like a loss at any hole', () => {
+    const { input } = inputFor(escapeTrial);
+    expect(derive(input).events.some((e) => e.kind === 'escape_entry')).toBe(true);
+    const probe = derive({ ...input, trialType: 'probe' });
+    expect(probe.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    expect(probe.metrics.escaped).toBeNull();
+    expect(probe.trial.endReason).not.toBe('escape');
+    // the loss is still accounted for, as the same hole-shaped loss would be anywhere else
+    expect(probe.reviewFlags.some((f) => f.code === 'physically_unlikely_entry')).toBe(true);
+  });
+
+  it('says that an escape-box range or a confirmed non-escape does not apply to a probe trial', () => {
+    const { input, segmentStarts } = inputFor(search);
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: segmentStarts[3]!,
+      endFrame: segmentStarts[3]! + 40,
+    };
+    const confirmation: CorrectionEntry = {
+      id: 'n1',
+      kind: 'no_escape',
+      timestamp: at(2),
+      source: 'user',
+      reason: 'sat there',
+    };
+    const d = derive({
+      ...inputFor(search, { corrections: [range, confirmation] }).input,
+      trialType: 'probe',
+    });
+    expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    const flags = d.reviewFlags.filter((f) => f.code === 'orphaned_correction');
+    expect(flags.map((f) => f.correctionId).sort()).toEqual(['n1', 'r1']);
+    expect(flags.every((f) => f.message.includes('probe trial'))).toBe(true);
+    expect(d.metrics.noEscapeConfirmed).toBeNull();
+    expect(d.metrics.status).toBe('review');
+    void input;
+  });
+
+  it('measures a video against its own target hole when it names one, and flips is_target with it', () => {
+    const { input: plain } = inputFor(search);
+    const byMap = derive(plain);
+    expect(byMap.geometry.targetIndex).toBe(7);
+    expect(byMap.events.find((e) => e.holeIndex === 7)!.isTarget).toBe(true);
+    expect(byMap.events.find((e) => e.holeIndex === 3)!.isTarget).toBe(false);
+    expect(byMap.metrics.primaryErrors).toBe(1);
+
+    const input: DeriveInput = { ...plain, targetHole: 3 };
+    const byVideo = derive(input);
+    expect(byVideo.geometry.targetIndex).toBe(3);
+    expect(byVideo.events.find((e) => e.holeIndex === 3)!.isTarget).toBe(true);
+    expect(byVideo.events.find((e) => e.holeIndex === 7)!.isTarget).toBe(false);
+    expect(byVideo.metrics.primaryErrors).toBe(0);
+    expect(byVideo.metrics.totalErrors).toBe(2);
+    expect(trialRowFor(input, byVideo).target_hole).toBe('3');
+    expect(trialRowFor(plain, byMap).target_hole).toBe('7');
+    // the map itself is untouched: the override is the video's, not the cohort's
+    expect(input.mazeMap.target.holeIndex).toBe(7);
+  });
+
+  it('refuses a target hole the map does not have', () => {
+    const { input } = inputFor(search);
+    expect(() => derive({ ...input, targetHole: 20 })).toThrow(/target hole/);
+    expect(() => derive({ ...input, targetHole: -1 })).toThrow(/target hole/);
+    expect(() => derive({ ...input, targetHole: 1.5 })).toThrow(/target hole/);
   });
 });

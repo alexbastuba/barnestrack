@@ -32,9 +32,14 @@ export function videoDescriptor(overrides: Partial<VideoDescriptor> = {}): Video
     referenceResolution: { width: 640, height: 480 },
     mazeTransform: { translateX: 0, translateY: 0, rotationDeg: 0, scale: 1 },
     metadata: { animal: '07', day: '1', trial: '3', group: 'control' },
+    trialType: 'acquisition',
+    targetHole: null,
     ...overrides,
   };
 }
+
+/** A fixed, UUID-shaped session id, so the round-trip fixture is deterministic. */
+export const SESSION_ID = 'c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f';
 
 export function mazeMap(overrides: Partial<MazeMapFile> = {}): MazeMapFile {
   return {
@@ -92,6 +97,7 @@ export function videoAnalysis(): VideoAnalysis {
           id: 'corr_01',
           timestamp: '2026-09-05T12:00:00.000Z',
           source: 'user',
+          reviewer: 'A. Reviewer',
           frameIndex: 1,
           point: 'nose',
           value: { x: 110, y: 118, confidence: 1, valid: true },
@@ -169,12 +175,50 @@ export function videoAnalysis(): VideoAnalysis {
   };
 }
 
+/**
+ * `fullSession()` as a version-1 document: the shape 0.1.0 wrote, with none of
+ * the version-2 fields (D68). What the migration tests feed the parser and the
+ * autosave restore.
+ */
+export function legacySessionDocument(): Record<string, unknown> {
+  const session = fullSession();
+  const analyses: Record<string, unknown> = {};
+  for (const [videoId, analysis] of Object.entries(session.analyses)) {
+    analyses[videoId] = {
+      ...analysis,
+      corrections: {
+        entries: analysis.corrections.entries.map((entry) => {
+          const { reviewer: _dropped, ...rest } = entry;
+          void _dropped;
+          return rest;
+        }),
+      },
+    };
+  }
+  return {
+    schemaVersion: 1,
+    toolVersion: session.toolVersion,
+    name: session.name,
+    videos: session.videos.map((video) => {
+      const { trialType: _t, targetHole: _h, ...rest } = video;
+      void _t;
+      void _h;
+      return rest;
+    }),
+    mazeMap: session.mazeMap,
+    parameters: session.parameters,
+    analyses,
+  };
+}
+
 /** A session with every optional part populated. */
 export function fullSession(): SessionFile {
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
     toolVersion: TOOL_VERSION,
+    sessionId: SESSION_ID,
     name: 'cohort3 day1',
+    reviewer: 'A. Reviewer',
     videos: [
       videoDescriptor(),
       videoDescriptor({

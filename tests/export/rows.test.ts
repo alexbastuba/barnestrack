@@ -6,6 +6,7 @@ import { eventRows, qualityRows, trialRows } from '../../src/export/rows.js';
 import {
   FIXTURE_PARAMETERS,
   FIXTURE_PARAMETERS_HASH,
+  FIXTURE_SESSION_ID,
   FIXTURE_TOOL_VERSION,
   syntheticSession,
 } from '../fixtures/synthetic-analysis.js';
@@ -38,15 +39,73 @@ describe('trialRows', () => {
     }
   });
 
-  it('names the map’s target hole on every row, and leaves it blank without a map (D62)', () => {
+  it('names the effective target hole on every row, and leaves it blank without a map (D62, D68)', () => {
     const rows = trialRows(session);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.targetHole).toBe(session.mazeMap!.target.holeIndex);
     // Gawel's protocol rotates the platform between trials, so the column has to move with the map
     const rotated = { ...session, mazeMap: { ...session.mazeMap!, target: { holeIndex: 13 } } };
     expect(trialRows(rotated).map((r) => r.targetHole)).toEqual(rows.map(() => 13));
+    // and with the video, when one trial's target differs from the map's (D68)
+    const overridden = {
+      ...session,
+      videos: session.videos.map((video, i) => (i === 1 ? { ...video, targetHole: 4 } : video)),
+    };
+    expect(trialRows(overridden).map((r) => r.targetHole)).toEqual([7, 4, 7]);
     // a session with no map has no analyses either (D47), but the column is nullable regardless
     expect(trialRows({ ...session, mazeMap: null }).every((r) => r.targetHole === null)).toBe(true);
+  });
+
+  it('identifies the session by its id and carries the editable name beside it, on every file (D68)', () => {
+    for (const row of [...trialRows(session), ...eventRows(session), ...qualityRows(session)]) {
+      expect(row.sessionId).toBe(FIXTURE_SESSION_ID);
+      expect(row.sessionName).toBe('Barnes cohort A');
+    }
+    const renamed = { ...session, name: 'Barnes cohort A (renamed)' };
+    expect(trialRows(renamed)[0]!.sessionId).toBe(FIXTURE_SESSION_ID);
+    expect(trialRows(renamed)[0]!.sessionName).toBe('Barnes cohort A (renamed)');
+  });
+
+  it('carries the trial type, and leaves a probe trial’s escape measures blank (D68)', () => {
+    const edited = syntheticSession();
+    edited.videos[1] = { ...edited.videos[1]!, trialType: 'probe' };
+    const derived = edited.analyses[edited.videos[1]!.id]!.derived!;
+    derived.metrics = { ...derived.metrics, escaped: null, totalLatency_s: null, noEscapeConfirmed: null };
+    const rows = trialRows(edited);
+    expect(rows.map((r) => r.trialType)).toEqual(['acquisition', 'probe', 'acquisition']);
+    expect(rows[1]).toMatchObject({ escaped: null, totalLatency_s: null, noEscapeConfirmed: null, noEscapeConfirmedBy: null });
+    const csv = toCsv(TRIAL_COLUMNS, rows);
+    const headers = csv.split('\r\n')[0]!.split(',');
+    const cells = csv.split('\r\n')[2]!.split(',');
+    for (const header of ['escaped', 'total_latency_s', 'no_escape_confirmed', 'no_escape_confirmed_by']) {
+      expect(cells[headers.indexOf(header)], header).toBe('');
+    }
+    expect(cells[headers.indexOf('trial_type')]).toBe('probe');
+  });
+
+  it('names the reviewer behind a correction on the event row and behind a confirmed non-escape on the trial row (D68)', () => {
+    const edited = syntheticSession();
+    const videoId = edited.videos[0]!.id;
+    const analysis = edited.analyses[videoId]!;
+    const [edit] = analysis.corrections.entries;
+    analysis.corrections = {
+      entries: [
+        { ...edit!, reviewer: 'B. Reviewer' },
+        { id: 'n1', kind: 'no_escape', timestamp: '2026-10-01T10:00:00.000Z', source: 'user', reviewer: 'C. Reviewer', reason: 'watched it' },
+      ],
+    };
+    analysis.derived!.metrics = { ...analysis.derived!.metrics, noEscapeConfirmed: true };
+    const corrected = eventRows(edited).find((row) => row.videoId === videoId && row.source === 'corrected')!;
+    expect(corrected.reviewer).toBe('B. Reviewer');
+    const untouched = eventRows(edited).find((row) => row.videoId === videoId && row.source === 'auto')!;
+    expect(untouched.reviewer).toBeNull();
+    const trial = trialRows(edited).find((row) => row.videoId === videoId)!;
+    expect(trial.noEscapeConfirmed).toBe(true);
+    expect(trial.noEscapeConfirmedBy).toBe('C. Reviewer');
+    // an unnamed reviewer is blank, never the string "null"
+    const unnamed = syntheticSession();
+    unnamed.analyses[videoId]!.corrections = { entries: [{ ...edit!, reviewer: null }] };
+    expect(eventRows(unnamed).find((row) => row.videoId === videoId && row.source === 'corrected')!.reviewer).toBeNull();
   });
 
   it('carries every event-defining threshold as its own column (D11)', () => {

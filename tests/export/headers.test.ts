@@ -12,11 +12,13 @@ import { syntheticSession } from '../fixtures/synthetic-analysis.js';
 
 const DOCUMENTED_TRIAL_HEADERS = [
   'session_id',
+  'session_name',
   'video_id',
   'animal',
   'day',
   'trial_label',
   'group',
+  'trial_type',
   'target_hole',
   'trial_start_s',
   'primary_latency_s',
@@ -31,6 +33,7 @@ const DOCUMENTED_TRIAL_HEADERS = [
   'strategy_source',
   'escaped',
   'no_escape_confirmed',
+  'no_escape_confirmed_by',
   'status',
   'review_flags',
   'tracked_fraction',
@@ -53,6 +56,7 @@ const DOCUMENTED_TRIAL_HEADERS = [
 
 const DOCUMENTED_EVENT_HEADERS = [
   'session_id',
+  'session_name',
   'video_id',
   'trial_label',
   'event_id',
@@ -72,6 +76,7 @@ const DOCUMENTED_EVENT_HEADERS = [
   'evidence_corrected',
   'correction_ids',
   'confirmed',
+  'reviewer',
   'auto_hole_index',
   'auto_start_frame',
   'auto_end_frame',
@@ -82,6 +87,7 @@ const DOCUMENTED_EVENT_HEADERS = [
 
 const DOCUMENTED_QUALITY_HEADERS = [
   'session_id',
+  'session_name',
   'video_id',
   'tracked_fraction',
   'not_detected_fraction',

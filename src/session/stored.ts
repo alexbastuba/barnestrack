@@ -10,7 +10,13 @@
  */
 import type { MazeMapFile } from '../contracts/mazeMap.js';
 import type { Parameters, TrackingParameters } from '../contracts/parameters.js';
-import type { SessionFile } from '../contracts/session.js';
+import { SESSION_SCHEMA_VERSION, type SessionFile } from '../contracts/session.js';
+import {
+  isLegacySessionDocument,
+  migrateSessionDocument,
+  type SessionDocumentV1,
+} from './migrate.js';
+import { newSessionId } from './session-file.js';
 
 /** `VideoDescriptor.id`, and the key of `SessionFile.analyses`. */
 export type VideoId = string;
@@ -42,4 +48,19 @@ export interface StoredSession {
   trackingParameters?: TrackingParameters | null;
   /** ISO 8601, when this record was written. */
   savedAt: string;
+}
+
+/**
+ * A record written by an earlier build may carry a version-1 session file
+ * (D68). It is migrated the same way a loaded file is — the id drawn once here
+ * and kept by the next autosave — so a reload never loses work to a schema
+ * change. A current record is returned as it is.
+ */
+export function migrateStoredSession(record: StoredSession): StoredSession {
+  const file = record.file as SessionFile | SessionDocumentV1;
+  if (file.schemaVersion === SESSION_SCHEMA_VERSION) return record;
+  if (isLegacySessionDocument(file)) {
+    return { ...record, file: migrateSessionDocument(file, newSessionId()) };
+  }
+  return record;
 }

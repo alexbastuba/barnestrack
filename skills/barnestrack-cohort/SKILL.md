@@ -22,9 +22,9 @@ keeps the cohort name as it was typed. The six files:
 
 | File                              | One row per                   | Notes                                                                                                       |
 | --------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trials.csv`                      | trial                         | 38 columns; the headline numbers                                                                            |
-| `events.csv`                      | event of any kind             | 26 columns; what the latencies and errors are made of                                                       |
-| `quality.csv`                     | video                         | 20 columns; whether to trust the video at all                                                               |
+| `trials.csv`                      | trial                         | 41 columns; the headline numbers                                                                            |
+| `events.csv`                      | event of any kind             | 28 columns; what the latencies and errors are made of                                                       |
+| `quality.csv`                     | video                         | 21 columns; whether to trust the video at all                                                               |
 | `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
 | `barnestrack_export.xlsx`         | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
@@ -35,25 +35,40 @@ Reading conventions that apply to all three CSVs:
 - **An empty field means "not recorded", never zero.** Do not let a parser coerce it to `0`, and do
   not include it in a mean as a zero. Say how many rows were blank instead.
 - Seconds are rounded to 3 decimal places and centimetres to 2; fractions are unrounded.
-- `tool_version`, `schema_version` and `parameters_hash` are on every row of every file.
+- `tool_version`, `schema_version` and `parameters_hash` are on every row of every file. This
+  skill describes **export schema 2** (tool 0.2.0 and later). A schema-1 file has fewer columns
+  and different semantics for some of them: no `session_name`, `trial_type`, `review_flags`,
+  `no_escape_confirmed_by`, `evidence_corrected`, `correction_ids`, `confirmed` or `reviewer`;
+  `session_id` is the cohort's editable name rather than a stable id; `events.csv` holds no
+  tracking failures; a kept event reads `source = corrected`; an `unresolved` row reads `0`
+  errors and `random` strategy where schema 2 reads blank and `unclassified`. Read
+  `schema_version` first and say which schema a file is before pooling it with another.
 
 ## `trials.csv`
 
 Header, verbatim:
 
 ```
-session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,no_escape_confirmed,status,review_flags,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
+session_id,session_name,video_id,animal,day,trial_label,group,trial_type,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,path_length_smoothed_cm,mean_speed_cm_per_s,target_quadrant_time_s,strategy,strategy_source,escaped,no_escape_confirmed,no_escape_confirmed_by,status,review_flags,tracked_fraction,correction_count,hole_investigation_radius_factor,hole_investigation_min_duration_s,hole_investigation_merge_gap_s,escape_entry_radius_factor,escape_entry_min_duration_s,escape_entry_persist_cutoff_s,trial_cutoff_s,target_quadrant_hole_span,gap_fill_max_duration_s,nose_confidence_cutoff,outlier_velocity_threshold_cm_per_s,tool_version,schema_version,parameters_hash
 ```
 
-Identifiers and metadata: `session_id` (the cohort name — see the warning under Rules),
-`video_id`, and the four fields a user types per video: `animal`, `day`, `trial_label`, `group`.
-Any of the four may be blank; BarnesTrack does not parse filenames.
+Identifiers and metadata: `session_id` (a UUID generated once when the session was created and
+never edited — the key to join or merge exports on), `session_name` (the editable cohort name,
+for reading, never for joining), `video_id`, and the four fields a user types per video:
+`animal`, `day`, `trial_label`, `group`. Any of the four may be blank; BarnesTrack does not parse
+filenames.
+
+`trial_type` is `acquisition` or `probe`. A probe trial has no escape box: `escaped`,
+`total_latency_s`, `no_escape_confirmed` and `no_escape_confirmed_by` are blank on it by
+definition (never `false`), `status` is never `review` for not escaping, and primary latency,
+errors, path and strategy are measured over the trial window to the cutoff. Never pool a probe
+trial's blank escape with an acquisition trial's `false`: one is a non-measurement, the other a
+measured non-escape.
 
 `target_hole` is the hole every latency and error in the row is measured against, under the maze
-map's numbering. **It is the whole session's map target, so it is the same on every row of a
-file.** A cohort whose platform was rotated between trials — which is the usual protocol — cannot
-yet express a per-trial target, so if two rows should have different targets they were exported
-from one session that could not say so. Check with the person who ran the cohort before pooling.
+map's numbering. It is the session's map target unless the video names its own, which a cohort
+whose platform was rotated between trials — the usual protocol — does per video, so the column
+can differ from row to row and is the number to read, not the map's.
 
 Measures:
 
@@ -83,14 +98,19 @@ Measures:
   and reads `corrected`.
 - `escaped` — `true` or `false`.
 - `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
-  never entered the escape box, which is what lets a trial with no entry read `ok`. It says the
-  confirmation is on file, not that it still holds: if the tool later finds an escape entry the
-  confirmation is contradicted and the row reads `status = review` — with `escaped = true` when
-  that entry ended the trial, and `escaped = false` when it was too short to (see
-  `escape_entry_persist_cutoff_s`) or fell outside the trial window, in which case the entry is
-  visible only in `events.csv`. Treat any `status = review` row as a row to look at. Never pool
-  `escaped = false, no_escape_confirmed = false` rows with confirmed ones as if both were known
-  non-escapers — the unconfirmed ones may be missed entries.
+  never entered the escape box, which is what lets a trial with no entry read `ok`; blank on a
+  probe trial. It says the confirmation is on file, not that it still holds: if the tool later
+  finds an escape entry that ended the trial, or a persistent one, the confirmation is
+  contradicted and the row reads `status = review` with `no_escape_contradicted` in
+  `review_flags` — `escaped = true` when the entry ended the trial. A shorter entry (over the
+  minimum entry duration, under `escape_entry_persist_cutoff_s`: a head in and out again) does
+  **not** contradict it: the row stays `ok` with `non_persistent_entry_noted` in `review_flags`
+  and the entry visible in `events.csv`. Treat any `status = review` row as a row to look at.
+  Never pool `escaped = false, no_escape_confirmed = false` rows with confirmed ones as if both
+  were known non-escapers — the unconfirmed ones may be missed entries.
+- `no_escape_confirmed_by` — the reviewer the session named when that confirmation was recorded;
+  blank when none was named, or when the row is not confirmed. With two reviewers on one cohort
+  this is what attributes an `ok` that rests on a person's word.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `review_flags` — the codes of every review flag the analysis raised on this trial, `;`-joined,
   unique and alphabetical; blank when none. The vocabulary: `confirmation_contradicted`,
@@ -122,7 +142,7 @@ Provenance: `tool_version`, `schema_version`, `parameters_hash`.
 Header, verbatim:
 
 ```
-session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,end_frame,start_time_s,end_time_s,duration_s,point_used,min_nose_distance_cm,min_centroid_distance_cm,evidence_summary,source,evidence_corrected,correction_ids,confirmed,auto_hole_index,auto_start_frame,auto_end_frame,tool_version,schema_version,parameters_hash
+session_id,session_name,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,end_frame,start_time_s,end_time_s,duration_s,point_used,min_nose_distance_cm,min_centroid_distance_cm,evidence_summary,source,evidence_corrected,correction_ids,confirmed,reviewer,auto_hole_index,auto_start_frame,auto_end_frame,tool_version,schema_version,parameters_hash
 ```
 
 - `event_id` — stable within one export; `auto-…` ids are derived from the event's own content, so
@@ -167,6 +187,11 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
 - `confirmed` — `true` when a reviewer looked at the event and kept it as it stands. The values
   are the automatic ones, `source` is `auto`, and such an event is **not** counted in
   `correction_count`, because nothing was corrected.
+- `reviewer` — the reviewers the session named when the corrections behind this row were
+  written (those in `correction_ids`, and the edit, addition, confirmation or reclassification
+  that addressed the event), `;`-joined; blank on an untouched automatic row and when no reviewer
+  was named. `is_target` is judged against the row's effective target hole (`target_hole` in
+  `trials.csv`), which can differ between videos.
 - `auto_hole_index`, `auto_start_frame`, `auto_end_frame` — what the automatic pass had said.
   Populated when `source = corrected` (a reviewer changed the event) or `evidence_corrected =
   true` (a correction changed what was measured); blank otherwise, including on a plain confirmed
@@ -178,7 +203,7 @@ session_id,video_id,trial_label,event_id,kind,hole_index,is_target,start_frame,e
 Header, verbatim:
 
 ```
-session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,duplicate_timestamp_count,dropped_frame_gap_count,drift_s,platform_diameter_cm,px_per_cm,tier,tool_version,schema_version,parameters_hash
+session_id,session_name,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,duplicate_timestamp_count,dropped_frame_gap_count,drift_s,platform_diameter_cm,px_per_cm,tier,tool_version,schema_version,parameters_hash
 ```
 
 - `tracked_fraction`, `not_detected_fraction`, `ambiguous_fraction`, `low_confidence_fraction`
@@ -278,9 +303,11 @@ number.
 6. **Check `quality.csv` before believing `trials.csv`.** A `POOR` tier or a long `longest_gap_s`
    means the trial's path length and speed are built on an incomplete track. Lead with the caveat
    rather than appending it.
-7. **`session_id` is the cohort's editable name, not a stable identifier.** Renaming a cohort
-   changes it in every later export, and two unrelated cohorts can share one. Never merge two
-   exports on `session_id` alone; use the file provenance the analyst gave you.
+7. **Join on `session_id`, read `session_name`.** `session_id` is a UUID fixed when the session
+   was created, so two exports with the same `session_id` are the same session (possibly at
+   different times or parameter sets — check `parameters_hash`), and two cohorts that happen to
+   share a `session_name` do not collide. Renaming a cohort changes only `session_name`. A
+   schema-1 export carries the name in `session_id` instead; never join a schema-1 file on it.
 
 ## Recipes
 
@@ -322,35 +349,35 @@ synthetic, and two of these trials "escape" where no real clip does.
 `trials.csv`, header and all three rows, with long columns elided as `…`:
 
 ```
-session_id,video_id,animal,day,trial_label,group,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,…
-Barnes cohort A,video-test50,M12,1,1,control,7,2.4,95.923,,7,12,596.65,…
-Barnes cohort A,video-test51,M12,4,1,control,7,1.2,19.24,45.1,1,2,110.99,…
-Barnes cohort A,video-test53,M07,1,1,lesion,7,1,25.04,27.343,4,4,374.24,…
+session_id,session_name,video_id,animal,day,trial_label,group,trial_type,target_hole,trial_start_s,primary_latency_s,total_latency_s,primary_errors,total_errors,path_length_cm,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test50,M12,1,1,control,acquisition,7,2.4,95.923,,7,12,596.65,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test51,M12,4,1,control,acquisition,7,1.2,19.24,45.1,1,2,110.99,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test53,M07,1,1,lesion,acquisition,7,1,25.04,27.343,4,4,374.24,…
 ```
 
 The tail of the same three rows, from `strategy` onwards:
 
 ```
-strategy,strategy_source,escaped,no_escape_confirmed,status,review_flags,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
-serial,auto,false,false,review,,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-spatial,auto,true,false,ok,,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
-random,auto,true,false,review,,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),1,9c3cf1d9fcc3…
+strategy,strategy_source,escaped,no_escape_confirmed,no_escape_confirmed_by,status,review_flags,tracked_fraction,correction_count,…,tool_version,schema_version,parameters_hash
+serial,auto,false,false,,review,,0.9762,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
+spatial,auto,true,false,,ok,,0.9069,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
+random,auto,true,false,,review,,0.8652,1,…,barnestrack v0.1.0 (5e11c0a),2,9c3cf1d9fcc3…
 ```
 
 `quality.csv`, all three rows:
 
 ```
-session_id,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,…,tier,…
-Barnes cohort A,video-test50,0.9762,0.0065,0.0036,0.0137,0.9899,0.9899,1,1,1.137,…,GOOD,…
-Barnes cohort A,video-test51,0.9069,0.0729,0.0094,0.0108,0.9177,0.9177,0.8,2,3.403,…,GOOD,…
-Barnes cohort A,video-test53,0.8652,0.1127,0.011,0.011,0.8762,0.8762,0.8333,2,1.767,…,REVIEW,…
+session_id,session_name,video_id,tracked_fraction,not_detected_fraction,ambiguous_fraction,low_confidence_fraction,positioned_fraction,whole_clip_positioned_fraction,nose_judged_event_fraction,gap_count,longest_gap_s,…,tier,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test50,0.9762,0.0065,0.0036,0.0137,0.9899,0.9899,1,1,1.137,…,GOOD,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test51,0.9069,0.0729,0.0094,0.0108,0.9177,0.9177,0.8,2,3.403,…,GOOD,…
+b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e,Barnes cohort A,video-test53,0.8652,0.1127,0.011,0.011,0.8762,0.8762,0.8333,2,1.767,…,REVIEW,…
 ```
 
 Asked _"summarise this cohort"_, a correct answer looks like this:
 
-> Three trials, one cohort, one parameter set — all three rows share
-> `parameters_hash 9c3cf1d9fcc3…` and `barnestrack v0.1.0 (5e11c0a)`, so they are directly
-> comparable.
+> Three acquisition trials, one session (`session_id b2c3d4e5…`, named "Barnes cohort A"),
+> one parameter set — all three rows share `parameters_hash 9c3cf1d9fcc3…`, schema 2 and
+> `barnestrack v0.1.0 (5e11c0a)`, so they are directly comparable.
 >
 > One trial is `ok` (test51: escaped at 45.1 s, 1 primary error, spatial). Two are `review`:
 > test50 never escaped, so its `total_latency_s` is blank — it reached the target at 95.9 s after 7

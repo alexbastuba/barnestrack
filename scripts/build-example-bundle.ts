@@ -24,10 +24,14 @@
  * computed from the sample videos when `BARNESTRACK_SAMPLE_DIR` points at them,
  * and otherwise taken from the values recorded below.
  *
+ * The source is a schema-1 file (it was saved by 0.1.0); it goes through the
+ * same migration a loaded file does and the bundle is written as schema 2
+ * with a fixed session id (D68, `EXAMPLE_SESSION_ID`).
+ *
  * Output is gzipped: serialized the way the app writes a session file the take's
- * cohort is 11,260,060 bytes (10.7 MiB), and the pre-commit guard refuses any
- * staged blob over 2 MB. Gzipped it is 599,002 bytes (~585 kB). See
- * docs/known-limitations.md.
+ * cohort is about 11.0 MB, and the pre-commit guard refuses any staged blob
+ * over 2 MB. Gzipped it is about 600 kB; the exact figure is in the commit
+ * that last regenerated it. See docs/known-limitations.md.
  */
 import { gzipSync } from 'node:zlib';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -49,6 +53,17 @@ const OUT_PATH = join(REPO_ROOT, 'public/examples/example-cohort.barnestrack.jso
 
 /** The name the loader looks for to know the example cohort is already loaded. */
 export const EXAMPLE_SESSION_NAME = 'Example cohort';
+
+/**
+ * The example cohort's session id (D68). A session id is generated once, when
+ * the session is created, and never changes; for a bundle that is rebuilt from
+ * the same source file that moment is this constant, so every rebuild is
+ * byte-identical and `tests/demo/bundle.test.ts` can compare a rebuild to the
+ * committed file. The source session's own `toolVersion` is kept: it names the
+ * build that produced the immutable automatic layer, and the derived cache is
+ * recomputed on load by whichever build opens the bundle.
+ */
+export const EXAMPLE_SESSION_ID = '7a1f4c2e-3b5d-4e8f-9a0b-1c2d3e4f5a6b';
 
 /**
  * Measured from `data/barnes-maze/` in the sample-data repository, and checked
@@ -263,6 +278,8 @@ function withDerivedLayers(session: SessionFile): SessionFile {
       corrections: analysis.corrections,
       mazeMap,
       mazeTransform: video.mazeTransform,
+      trialType: video.trialType,
+      targetHole: video.targetHole,
       index: {
         width: video.referenceResolution.width,
         height: video.referenceResolution.height,
@@ -280,6 +297,7 @@ export async function buildExampleSession(): Promise<SessionFile> {
   const session = withDerivedLayers(
     withoutPlaceholderHashes({
       ...source,
+      sessionId: EXAMPLE_SESSION_ID,
       name: EXAMPLE_SESSION_NAME,
       videos: withRealFingerprints(source.videos, fingerprints),
     }),

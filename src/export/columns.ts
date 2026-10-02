@@ -33,11 +33,13 @@ function toColumns<Row>(meta: Record<keyof Row, ColumnMeta>): readonly ColumnSpe
 
 const TRIAL_COLUMN_META: Record<keyof TrialRow, ColumnMeta> = {
   sessionId: { header: 'session_id', unit: '' },
+  sessionName: { header: 'session_name', unit: '' },
   videoId: { header: 'video_id', unit: '' },
   animal: { header: 'animal', unit: '' },
   day: { header: 'day', unit: '' },
   trialLabel: { header: 'trial_label', unit: '' },
   group: { header: 'group', unit: '' },
+  trialType: { header: 'trial_type', unit: '' },
   targetHole: { header: 'target_hole', unit: 'hole index' },
   trialStart_s: { header: 'trial_start_s', unit: 's' },
   primaryLatency_s: { header: 'primary_latency_s', unit: 's' },
@@ -52,6 +54,7 @@ const TRIAL_COLUMN_META: Record<keyof TrialRow, ColumnMeta> = {
   strategySource: { header: 'strategy_source', unit: '' },
   escaped: { header: 'escaped', unit: 'bool' },
   noEscapeConfirmed: { header: 'no_escape_confirmed', unit: 'bool' },
+  noEscapeConfirmedBy: { header: 'no_escape_confirmed_by', unit: '' },
   status: { header: 'status', unit: '' },
   reviewFlags: { header: 'review_flags', unit: '' },
   trackedFraction: { header: 'tracked_fraction', unit: '0–1' },
@@ -80,6 +83,7 @@ const TRIAL_COLUMN_META: Record<keyof TrialRow, ColumnMeta> = {
 
 const EVENT_COLUMN_META: Record<keyof EventRow, ColumnMeta> = {
   sessionId: { header: 'session_id', unit: '' },
+  sessionName: { header: 'session_name', unit: '' },
   videoId: { header: 'video_id', unit: '' },
   trialLabel: { header: 'trial_label', unit: '' },
   eventId: { header: 'event_id', unit: '' },
@@ -100,6 +104,7 @@ const EVENT_COLUMN_META: Record<keyof EventRow, ColumnMeta> = {
   evidenceCorrected: { header: 'evidence_corrected', unit: 'bool' },
   correctionIds: { header: 'correction_ids', unit: '' },
   confirmed: { header: 'confirmed', unit: 'bool' },
+  reviewer: { header: 'reviewer', unit: '' },
   autoHoleIndex: { header: 'auto_hole_index', unit: '' },
   autoStartFrame: { header: 'auto_start_frame', unit: '' },
   autoEndFrame: { header: 'auto_end_frame', unit: '' },
@@ -110,6 +115,7 @@ const EVENT_COLUMN_META: Record<keyof EventRow, ColumnMeta> = {
 
 const QUALITY_COLUMN_META: Record<keyof QualityRow, ColumnMeta> = {
   sessionId: { header: 'session_id', unit: '' },
+  sessionName: { header: 'session_name', unit: '' },
   videoId: { header: 'video_id', unit: '' },
   trackedFraction: { header: 'tracked_fraction', unit: '0–1' },
   notDetectedFraction: { header: 'not_detected_fraction', unit: '0–1' },

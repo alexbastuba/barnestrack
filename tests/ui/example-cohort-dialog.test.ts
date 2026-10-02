@@ -28,6 +28,8 @@ function descriptor(filename: string, byteLength: number): VideoDescriptor {
     fingerprint: { byteLength, durationSeconds: 30.2, frameCount: 905, sha256: 'a'.repeat(64) },
     referenceResolution: { width: 640, height: 480 },
     mazeTransform: { translateX: 0, translateY: 0, rotationDeg: 0, scale: 1 },
+    trialType: 'acquisition',
+    targetHole: null,
     metadata: {},
   };
 }
