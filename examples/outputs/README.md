@@ -15,6 +15,9 @@ was reformatted, re-ordered or hand-edited.
 Every row carries `tool_version` (`barnestrack v0.1.0 (bc81fe7)`),
 `schema_version` and `parameters_hash`; the hash is identical across all three
 files, so the numbers and the parameters that made them cannot drift apart.
+These files are export schema 1 as 0.1.0 wrote it and are kept as that record,
+not regenerated; the current build writes export schema 2, and
+`docs/data-contracts.md` lists what changed.
 
 The export also writes `barnestrack_export.xlsx` (the same three tables as
 sheets) and a copy of the session file. Neither is committed: the XLSX adds
