@@ -521,6 +521,12 @@ session it is found (D39).
   `matchEvents([auto 10–14, auto 16–25], [corrected 10–25], [p@15])`: one row, shadow `{16, 25}`,
   and the visit at 10–14 gone. The XLSX readme now says so. Smallest fix: a flag naming the
   vanished id, or a row with `source = auto` and a "removed" marker — either is a decision.
+- **An autosave record from a newer build is kept only until the next change.** `restore()` leaves
+  a record whose schema this build cannot read where it is and starts empty, but the first change
+  in the new session autosaves over it, because there is one autosave slot per browser (the entry
+  above on that slot). The user is told nothing either way. Smallest fix: when `restore()` refuses
+  a record, say so on the Videos step and skip autosaving until the user has loaded or started a
+  session on purpose.
 - **A range trimmed by a second reviewer keeps its first reviewer's timestamp under the second's
   name.** `eraseFrames` re-makes a trimmed range as a new object with the old `timestamp`, and the
   store stamps every re-made entry with the session's current reviewer, so the entry's `reviewer`

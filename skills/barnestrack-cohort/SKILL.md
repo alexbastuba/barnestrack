@@ -37,8 +37,8 @@ Reading conventions that apply to all three CSVs:
 - Seconds are rounded to 3 decimal places and centimetres to 2; fractions are unrounded.
 - `tool_version`, `schema_version` and `parameters_hash` are on every row of every file. This
   skill describes **export schema 2**, which tool 0.2.0 introduced. `tool_version` names the
-  build that created the session, which can be older than the build that exported it, so read
-  `schema_version`, never `tool_version`, for a file's shape. A schema-1 file has fewer columns
+  build that wrote the export; a later build can write the same schema, so read
+  `schema_version`, not `tool_version`, for a file's shape. A schema-1 file has fewer columns
   and different semantics for some of them: no `session_name`, `trial_type`, `review_flags`,
   `no_escape_confirmed_by`, `evidence_corrected`, `correction_ids`, `confirmed` or `reviewer`;
   `session_id` is the cohort's editable name rather than a stable id; `events.csv` holds no

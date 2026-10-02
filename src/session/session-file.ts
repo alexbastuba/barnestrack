@@ -179,7 +179,7 @@ function requiredFieldProblem(value: Record<string, unknown>, version: number): 
       }
       if (typeof targetHole === 'number' && holeCount !== null && targetHole >= holeCount) {
         return complaint(
-          `video ${i + 1} in its list names target hole ${targetHole}, but its maze map has ${holeCount} holes (0 to ${holeCount - 1})`,
+          `video ${i + 1} in its list names target hole ${targetHole} and its maze map has only ${holeCount} holes (0 to ${holeCount - 1})`,
         );
       }
     }

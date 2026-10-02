@@ -218,7 +218,7 @@ describe('schema version 2 (D68)', () => {
     };
     const e = parseSessionDocument(JSON.stringify(offRing));
     expect(e.ok).toBe(false);
-    if (!e.ok) expect(e.message).toContain('video 2 in its list names target hole 99, but its maze map has 20 holes (0 to 19)');
+    if (!e.ok) expect(e.message).toContain('video 2 in its list names target hole 99 and its maze map has only 20 holes (0 to 19)');
     // without a map there is nothing to check against, so the same document parses
     const unmapped = { ...offRing, mazeMap: null };
     expect(parseSessionDocument(JSON.stringify(unmapped)).ok).toBe(true);

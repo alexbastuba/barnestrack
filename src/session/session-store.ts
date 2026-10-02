@@ -128,8 +128,9 @@ export class SessionStore {
   /** Loads the autosave record, if there is one. Returns whether anything was restored. */
   async restore(): Promise<boolean> {
     const stored = await this.storage.load();
-    // Nothing to restore, and nothing worth overwriting work in memory with.
-    if (!stored || stored.file.videos.length === 0) return false;
+    // Nothing to restore, and nothing worth overwriting work in memory with. A record whose
+    // file has no video list at all is not one this build can read either.
+    if (!stored || !Array.isArray(stored.file.videos) || stored.file.videos.length === 0) return false;
     if (this.session.videos.length > 0) return false;
     // A record from an earlier build may carry a version-1 file (D68); it is
     // migrated exactly as a loaded file is, and the next autosave writes it back.
@@ -252,11 +253,22 @@ export class SessionStore {
     this.updateVideo(videoId, (video) => ({ ...video, trialType }));
   }
 
-  /** D68: this video's own target hole under the map's numbering, or null for the map's. */
+  /**
+   * D68: this video's own target hole under the map's numbering, or null for the map's. A hole
+   * the map does not have is refused, so the store never writes a file its own parser refuses.
+   */
   setTargetHole(videoId: VideoId, targetHole: number | null): void {
     if (!this.videoById(videoId)) return;
+    if (targetHole !== null && !this.isHoleOnRing(targetHole)) return;
     this.invalidateDerived();
     this.updateVideo(videoId, (video) => ({ ...video, targetHole }));
+  }
+
+  /** Whether `hole` is one of the current map's holes; true with no map, since there is nothing to check against. */
+  private isHoleOnRing(hole: number): boolean {
+    if (!Number.isInteger(hole) || hole < 0) return false;
+    const map = this.session.mazeMap;
+    return map === null || hole < map.holes.n;
   }
 
   // ---- attachments (this tab only) -----------------------------------------
@@ -432,6 +444,13 @@ export class SessionStore {
     const calibrated = map !== null && map.calibration.platformDiameter_cm > 0;
     this.session.mazeMap = calibrated ? map : null;
     this.draftMazeMap = calibrated ? null : map;
+    // A per-video target the new ring does not have falls back to the map's target (D68): the
+    // number meant a hole that no longer exists, and the parser would refuse the file.
+    if (calibrated) {
+      this.session.videos = this.session.videos.map((video) =>
+        video.targetHole !== null && video.targetHole >= map.holes.n ? { ...video, targetHole: null } : video,
+      );
+    }
     this.invalidateDerived();
     this.changed();
   }

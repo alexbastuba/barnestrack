@@ -3,7 +3,7 @@ import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
 import type { SessionFile } from '../../src/contracts/session.js';
 import { findByFingerprint } from '../../src/session/attach.js';
 import { setPoint } from '../../src/session/corrections.js';
-import { isSessionId } from '../../src/session/session-file.js';
+import { isSessionId, parseSessionDocument, serializeSessionFile } from '../../src/session/session-file.js';
 import { DEFAULT_SESSION_NAME, SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import {
@@ -110,6 +110,29 @@ describe('SessionStore', () => {
     store.setTargetHole('vid_01', 4);
     expect(store.videoById('vid_01')!.targetHole).toBe(4);
     expect(store.analysisFor('vid_01')!.derived).toBeNull();
+  });
+
+  it('never writes a per-video target the map does not have, so its own parser never refuses the file (D68)', () => {
+    const { store } = newStore();
+    store.replaceSession(fullSession()); // a 20-hole map
+    store.setTargetHole('vid_01', 999);
+    store.setTargetHole('vid_01', -1);
+    store.setTargetHole('vid_01', 2.5);
+    expect(store.videoById('vid_01')!.targetHole).toBeNull();
+    store.setTargetHole('vid_01', 19);
+    expect(store.videoById('vid_01')!.targetHole).toBe(19);
+    // a smaller ring drops the override that no longer names a hole; a hole still on the ring stays
+    store.setTargetHole('vid_02', 3);
+    const map = fullSession().mazeMap!;
+    store.setMazeMap({ ...map, holes: { ...map.holes, n: 12 } });
+    expect(store.videoById('vid_01')!.targetHole).toBeNull();
+    expect(store.videoById('vid_02')!.targetHole).toBe(3);
+    expect(parseSessionDocument(serializeSessionFile(store.current)).ok).toBe(true);
+    // with no map there is nothing to check against, exactly as the parser has it
+    store.setMazeMap(null);
+    store.setTargetHole('vid_01', 999);
+    expect(store.videoById('vid_01')!.targetHole).toBe(999);
+    expect(parseSessionDocument(serializeSessionFile(store.current)).ok).toBe(true);
   });
 
   it('restores a version-1 autosave record as a version-2 session (D68)', async () => {
