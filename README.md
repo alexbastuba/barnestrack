@@ -85,11 +85,11 @@ npm run typecheck
 npm run build   # static site in dist/, deployable as-is
 ```
 
-`npm test` runs 1,220 unit tests, all passing, with 18 skipped. Most cover the pure layers —
+`npm test` runs 1,223 unit tests, all passing, with 18 skipped. Most cover the pure layers —
 metrics, event detection, cleaning, strategy, maze geometry, the export writers, the session file
 and the MP4 parser; a smaller set covers the DOM-free parts of the interface. Of the skips, fifteen
 are the sample-video tests, two rebuild the example bundle and one skips for its own reason, so
-with both variables below set it is 1,237 passing and a single skip.
+with both variables below set it is 1,240 passing and a single skip.
 
 Three optional extras:
 
