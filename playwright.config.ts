@@ -1,7 +1,8 @@
 /**
- * Browser checks for what Vitest cannot run (WebCodecs). Not part of CI in
- * this chunk; run locally with `npx playwright test`. Uses the installed
- * Google Chrome (`channel: 'chrome'`), never a downloaded browser.
+ * Browser checks for what Vitest cannot run (WebCodecs). `npm run test:browser`
+ * runs every spec locally; CI's browser-smoke job runs `npm run test:browser:ci`
+ * (app-smoke and track). Uses the installed Google Chrome (`channel: 'chrome'`),
+ * never a downloaded browser.
  */
 import { defineConfig } from '@playwright/test';
 

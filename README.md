@@ -83,13 +83,12 @@ npm test        # unit tests (vitest)
 npm run lint
 npm run typecheck
 npm run build   # static site in dist/, deployable as-is
+npm run test:browser:ci   # browser checks CI runs, in your installed Chrome; needs dist/ and ffmpeg
 ```
 
-`npm test` runs 1,165 unit tests, all passing, with 18 skipped. Most cover the pure layers —
-metrics, event detection, cleaning, strategy, maze geometry, the export writers, the session file
-and the MP4 parser; a smaller set covers the DOM-free parts of the interface. Of the skips, fifteen
-are the sample-video tests, two rebuild the example bundle and one skips for its own reason, so
-with both variables below set it is 1,182 passing and a single skip.
+`npm test` covers the pure layers — metrics, event detection, cleaning, strategy, maze geometry,
+the export writers, the session file and the MP4 parser — and the DOM-free parts of the interface.
+Tests that need the sample videos or the demo take's session file skip themselves and say so.
 
 Three optional extras:
 
@@ -99,16 +98,17 @@ Three optional extras:
 - `BARNESTRACK_DEMO_SESSION=/path/to/session.barnestrack.json npm test` includes the two tests that
   regenerate the bundled example cohort from the demo take's saved session
   (`scripts/build-example-bundle.ts`). That file is 11 MB and is not committed either.
-- `npx playwright test` runs the browser checks against your installed Google Chrome. They are not
-  part of CI; [`tests/browser/README.md`](tests/browser/README.md) says what each spec covers and
-  records what was verified by hand instead.
+- `npm run test:browser` runs every browser check against your installed Google Chrome (set
+  `BARNESTRACK_SAMPLE_DIR` to include the sample-video specs). CI runs two of them, the shipped-UI
+  flow and a generated clip through tracking; [`tests/browser/README.md`](tests/browser/README.md)
+  says what each spec covers and records what was verified by hand instead.
 
 [`examples/outputs/`](examples/outputs/) holds the CSVs and `parameters.json` this tool exported
 during the recorded demo, unmodified — what the deliverable actually looks like, without running
 anything.
 
-CI runs lint, typecheck, tests and the build on every push
-([`.github/workflows`](.github/workflows)).
+CI runs lint, typecheck, tests and the build on every push and pull request, and
+`npm run test:browser:ci` in a separate job ([`.github/workflows`](.github/workflows)).
 
 One consequence worth stating plainly: the deployment configuration is not in this repository. The
 site is built and served by Cloudflare Pages from the dashboard — build command `npm run build`,

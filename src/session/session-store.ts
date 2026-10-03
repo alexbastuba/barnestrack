@@ -501,10 +501,13 @@ export class SessionStore {
    * than the state at the moment it joined the queue.
    */
   private queueSave(): void {
-    this.saveChain = this.saveChain
+    const chain: Promise<void> = this.saveChain
       .then(async () => {
         await this.storage.save(this.toStoredSession());
-        if (this.saveTimer === null) this.saveState = 'saved';
+        // Saved only when no edit is waiting on its timer and no later write
+        // was queued behind this one: an earlier write finishing must not say
+        // "saved" while the newest state is still on its way to storage.
+        if (this.saveTimer === null && this.saveChain === chain) this.saveState = 'saved';
         this.emit();
       })
       .catch((error: unknown) => {
@@ -512,5 +515,6 @@ export class SessionStore {
         this.emit();
         this.onSaveError(error instanceof Error ? error : new Error(String(error)));
       });
+    this.saveChain = chain;
   }
 }

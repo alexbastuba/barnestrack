@@ -16,7 +16,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "test:browser:ci": "playwright test tests/browser/app-smoke.spec.ts tests/browser/track.spec.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
