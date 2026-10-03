@@ -9,6 +9,7 @@
  */
 import type { SessionFile } from '../contracts/session.js';
 import {
+  cohortCaption,
   DEFAULT_METRIC,
   mean,
   METRIC_LABELS,
@@ -19,6 +20,7 @@ import {
 import {
   beginFigure,
   drawAxes,
+  drawCaption,
   drawGlyph,
   drawLegend,
   drawUnavailable,
@@ -50,6 +52,8 @@ export interface GroupComparison {
   groups: GroupSummary[];
   /** Trials carrying metadata, whether or not they have a value. */
   trialCount: number;
+  /** How many trials are plotted and why the rest are not (D66). */
+  caption: string;
 }
 
 export function groupComparison(
@@ -68,6 +72,7 @@ export function groupComparison(
     metric,
     metricLabel: METRIC_LABELS[metric],
     trialCount: points.length,
+    caption: cohortCaption(points),
     groups: [...byGroup.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([group, entry]) => ({
@@ -182,6 +187,7 @@ export const groupComparisonFigure: FigureSpec = {
       ],
       plot.y + plot.height + 54,
     );
+    drawCaption(frame, comparison.caption);
     endFigure(frame);
   },
 
@@ -192,7 +198,7 @@ export const groupComparisonFigure: FigureSpec = {
     }
     return {
       title: `${TITLE} — ${comparison.metricLabel}`,
-      summary: `${comparison.metricLabel} by group: the mean, one standard deviation, and every trial behind it.`,
+      summary: `${comparison.metricLabel} by group: the mean, one standard deviation, and every trial behind it. ${comparison.caption}.`,
       columns: ['Group', 'Trials', 'Mean', 'SD', 'Trials with no value'],
       rows: comparison.groups.map((group) => [
         group.group,

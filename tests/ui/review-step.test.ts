@@ -568,7 +568,8 @@ describe('the review queue', () => {
     expect(queued().length).toBe(before.length - 1);
     expect(count()).toBe(describeQueue(before.length - 1));
     const after = harness.store.analysisFor(video.id)!.derived!.events.find((e) => e.id === kept.id)!;
-    expect(after.source).toBe('corrected');
+    expect(after.source).toBe('auto');
+    expect(after.confirmed).toBe(true);
     expect(after.holeIndex).toBe(kept.holeIndex);
     expect(after.startFrame).toBe(kept.startFrame);
     expect(after.endFrame).toBe(kept.endFrame);
@@ -588,7 +589,8 @@ describe('the review queue', () => {
     const row = eventRows(harness.store.current, TOOL_VERSION).find(
       (candidate) => candidate.videoId === video.id && candidate.eventId === kept.id,
     )!;
-    expect(row.source).toBe('corrected');
+    expect(row.source).toBe('auto');
+    expect(row.confirmed).toBe(true);
 
     // Reverting puts it back in the queue.
     const confirmation = [...harness.step.body.querySelectorAll('.corrections-list li')].find((li) =>

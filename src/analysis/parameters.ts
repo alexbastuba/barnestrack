@@ -96,7 +96,7 @@ const ANALYSIS_PARAMETER_DEFINITIONS: Record<AnalysisParameterPath, string> = {
   'escapeEntry.persistCutoff_s':
     'The trial ends at the first entry that lasts at least this long or to the end of the video; total latency is the time of its first lost frame (seconds).',
   trialCutoff_s:
-    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review (seconds).',
+    'The trial ends this long after the trial start when the animal has not entered the escape box; total latency is then left blank, escaped is false and the status is review unless a person confirmed the non-escape. A probe trial has no escape box, so it always runs to this cutoff and not escaping never makes it review (seconds).',
   'targetQuadrant.holeSpan':
     'The target quadrant is the sector of the platform reaching this many hole spacings either side of the target hole; 2.5 holes on a 20-hole ring is a 90° sector (holes).',
   kinematicsSmoothingWindowFrames:
@@ -272,44 +272,85 @@ export type MetricKey = keyof TrialMetrics;
 
 export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   trialStart_s:
-    'When the trial started: the first confident, mouse-sized detection inside the platform after the last oversized-foreground frame, or the frame the user chose; every latency is measured from here, never from frame 0 (seconds; O5).',
+    'When the trial started: the first confident, mouse-sized detection inside the platform after the last oversized-foreground frame, or the frame the user chose; every latency is measured from here, never from frame 0; blank when no trial start could be proposed (seconds).',
   primaryLatency_s:
-    'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds; O3).',
+    'Time from the trial start to the first target event — the first investigation of the target hole or, when the animal entered without a detected investigation, the escape entry; blank when the target was never reached (seconds).',
   totalLatency_s:
-    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on (seconds; O4).',
+    'Time from the trial start to the first frame of the escape-box entry that ended the trial; blank when the animal never entered before the cutoff or the end of the video, unless censoring to the cutoff is on, and always blank for a probe trial, which has no escape box (seconds).',
   primaryErrors:
-    'Investigations of non-target holes before the first target event, repeat visits included (count; O2).',
+    'Investigations of non-target holes before the first target event, repeat visits included; blank, not zero, when there is no trial window to count over (count).',
   totalErrors:
-    'Investigations of non-target holes over the whole trial, repeat visits included; an investigation of the target hole is never an error (count; O2).',
+    'Investigations of non-target holes over the whole trial, repeat visits included; an investigation of the target hole is never an error; blank, not zero, when there is no trial window to count over (count).',
   pathLength_cm:
-    'Distance travelled by the body centroid over positioned frames within the trial, gaps excluded (cm; O9).',
+    'Distance travelled by the body centroid over positioned frames within the trial, gaps excluded; blank when there is no trial window (cm).',
   pathLengthSmoothed_cm:
-    'The same path after the median filter of the smoothing window; the mean speed uses this one (cm; O9).',
+    'The same path after the median filter of the smoothing window; the mean speed uses this one; blank when there is no trial window (cm).',
   meanSpeed_cmPerS:
-    'Smoothed path length divided by the tracked time within the trial, excluding time after the escape; blank with no tracked time (cm/s; O9).',
+    'Smoothed path length divided by the tracked time within the trial, excluding time after the escape; blank with no tracked time or no trial window (cm/s).',
   targetQuadrantTime_s:
-    'Time the centroid spent inside the sector centred on the target hole (seconds; O6).',
+    'Time the centroid spent inside the sector centred on the target hole; blank when there is no trial window (seconds).',
   strategy:
-    'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose (spatial, serial or random; O7).',
+    'The search strategy the rule engine assigned from the search phase — trial start to the first target visit — or the one the user chose; unclassified when there is no trial window or nothing to classify over, because a class is a measurement and an empty search measures nothing (spatial, serial, random or unclassified; rules from Gawel et al. 2019, Table 1).',
   strategySource:
-    'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—; D23).',
-  escaped: 'Whether a persistent escape-box entry ended the trial (yes/no; O4).',
+    'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—).',
+  escaped:
+    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box (yes/no).',
   noEscapeConfirmed:
-    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry found afterwards contradicts the confirmation and the entry wins (yes/no; D63).',
+    'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry that ended the trial found afterwards contradicts the confirmation and the entry wins, while a shorter one is noted beside it; blank for a probe trial (yes/no).',
   status:
-    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed (—; O5).',
+    'ok when the animal escaped, or never entered and a person confirmed it, and nothing else needs a look; review when the trial never resolved or a review flag was raised; unresolved when no trial start could be proposed, in which case every measure over the trial window is blank. A probe trial has no escape box, so not escaping never makes it review (—).',
   trackedFraction:
-    'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier (fraction; D30).',
-  correctionCount: 'Number of corrections in this video’s corrections layer (count; D25).',
+    'Fraction of trial-window frames whose detection state is tracked; low-confidence frames are not counted here, unlike the quality tier; blank when there is no trial window (fraction).',
+  correctionCount:
+    'Number of corrections in this video’s corrections layer; a confirmation — an event kept as it stands — is not a correction and is not counted (count).',
 };
 
-/** The decision each metric definition cites, for the definitions disclosure. */
-export const METRIC_DECISIONS: Record<MetricKey, string> = Object.fromEntries(
-  (Object.keys(METRIC_DEFINITIONS) as MetricKey[]).map((key) => {
-    const match = /\b([OD]\d+)\)\.?$/.exec(METRIC_DEFINITIONS[key]);
-    return [key, match?.[1] ?? ''];
-  }),
-) as Record<MetricKey, string>;
+/**
+ * The decision each metric comes from, for the definitions disclosure and the
+ * export. Written out rather than parsed from the definition text, as for the
+ * parameters: a user-facing sentence cites a paper where there is one, not
+ * this project's decision numbers.
+ */
+export const METRIC_DECISIONS: Record<MetricKey, string> = {
+  trialStart_s: 'O5',
+  primaryLatency_s: 'O3',
+  totalLatency_s: 'O4',
+  primaryErrors: 'O2',
+  totalErrors: 'O2',
+  pathLength_cm: 'O9',
+  pathLengthSmoothed_cm: 'O9',
+  meanSpeed_cmPerS: 'O9',
+  targetQuadrantTime_s: 'O6',
+  strategy: 'D58',
+  strategySource: 'D23',
+  escaped: 'O4',
+  noEscapeConfirmed: 'D63',
+  status: 'D66',
+  trackedFraction: 'D30',
+  correctionCount: 'D64',
+};
+
+// ---------------------------------------------------------------------------
+// The states an escape entry can be in (D67): the detector's reading is an
+// inference until a person says what they saw. One sentence per state, shown
+// verbatim in the definitions panel, saying how each enters the latency and
+// the error counts.
+// ---------------------------------------------------------------------------
+
+export type EscapeEntryState = 'inferred' | 'confirmed' | 'asserted' | 'reclassified' | 'rejected';
+
+export const ESCAPE_ENTRY_STATE_DEFINITIONS: Record<EscapeEntryState, string> = {
+  inferred:
+    'Inferred: the tracker lost the animal at the target hole, or saw only a small or fragmented blob there, for at least the minimum entry duration with no full-size detection elsewhere; it is the tool’s reading of a disappearance, not a sighting of the animal in the box (the papers’ criterion is the whole body inside the hole, Gawel et al. 2019). When it persists it ends the trial and sets the total latency at its first lost frame; frames after it count toward nothing.',
+  confirmed:
+    'Confirmed: a person watched the clip and kept the inferred entry as it stands. It enters the total latency and the error counts exactly as the inferred entry did; the record says a person agreed, and if a later re-analysis removes the entry or moves its start the confirmation is flagged as contradicted.',
+  asserted:
+    'Asserted by range: a person marked “in the escape box from here”, so the entry begins at the marked frame whatever the tracker saw. It ends the trial when it persists, the total latency is the marked frame, and the entry is exported as the person’s claim; a range starting where the track puts the animal far from any hole is kept and flagged.',
+  reclassified:
+    'Reclassified as tracking loss: a person said the animal was lost here, not in the escape box. The frames stay a gap, the event is a tracking failure that counts toward no latency and no error, and the trial end, total latency and errors are recomputed as if no entry had been found.',
+  rejected:
+    'Rejected: a person deleted the inferred entry. Nothing is counted for it, the trial end is re-resolved (a later persistent entry, the cutoff, or the end of the video), and the deletion is a correction that can be reverted.',
+};
 
 // ---------------------------------------------------------------------------
 // O8 · maze geometry defaults, used by `src/maze/ring.ts` and the maze step.

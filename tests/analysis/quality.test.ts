@@ -76,6 +76,9 @@ function eventOf(kind: EventRecord['kind'], pointUsed: EventRecord['pointUsed'])
     minCentroidDistance_cm: 1,
     evidence: '',
     source: 'auto',
+    evidenceCorrected: false,
+    correctionIds: [],
+    confirmed: false,
   };
 }
 

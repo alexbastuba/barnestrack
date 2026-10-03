@@ -127,8 +127,8 @@ describe('the rows a trial has', () => {
     mount();
     const raw = valueControl('Path length (raw)').textContent;
     const smoothed = valueControl('Path length (smoothed)').textContent;
-    expect(raw).toBe(`${noEscape.analysis.metrics.pathLength_cm.toFixed(2)} cm`);
-    expect(smoothed).toBe(`${noEscape.analysis.metrics.pathLengthSmoothed_cm.toFixed(2)} cm`);
+    expect(raw).toBe(`${noEscape.analysis.metrics.pathLength_cm!.toFixed(2)} cm`);
+    expect(smoothed).toBe(`${noEscape.analysis.metrics.pathLengthSmoothed_cm!.toFixed(2)} cm`);
     expect(raw).not.toBe(smoothed);
   });
 });

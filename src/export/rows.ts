@@ -12,15 +12,21 @@
  * quality report, where chunk 5 stamps the hash of the full parameter set (D51);
  * nothing here computes a hash.
  */
+import { latestCorrection } from '../analysis/corrections.js';
+import type { EventRecord } from '../contracts/events.js';
 import type { EventRow, QualityRow, TrialRow } from '../contracts/exportRows.js';
 import { EXPORT_SCHEMA_VERSION } from '../contracts/exportRows.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type {
-  DerivedLayer,
-  SessionFile,
-  VideoAnalysis,
-  VideoDescriptor,
+import { reviewFlagCodes } from '../contracts/reviewFlags.js';
+import {
+  effectiveTargetHole,
+  type CorrectionEntry,
+  type DerivedLayer,
+  type SessionFile,
+  type VideoAnalysis,
+  type VideoDescriptor,
 } from '../contracts/session.js';
+import { eventCorrectionsFor } from '../session/corrections.js';
 
 /** Seconds are reported to 3 dp and centimetres to 2 dp; fractions are left alone. */
 function seconds(value: number): number;
@@ -41,11 +47,20 @@ function round(value: number, digits: number): number {
 }
 
 /**
- * The session has no separate identifier, so the cohort name is what identifies
- * it in an export (D47 makes the name the user-editable cohort label).
+ * D68: the reviewers behind an event — those on the point and range corrections
+ * inside its span (`correctionIds`) and on the event corrections that address
+ * it — unique, `;`-joined; null when none of them named one.
  */
-function sessionId(session: SessionFile): string {
-  return session.name;
+function reviewersOf(entries: readonly CorrectionEntry[], event: EventRecord): string | null {
+  const inSpan = new Set(event.correctionIds);
+  const touching = [
+    ...entries.filter((entry) => inSpan.has(entry.id)),
+    ...eventCorrectionsFor({ entries }, event.id),
+  ];
+  const reviewers = [
+    ...new Set(touching.map((entry) => entry.reviewer).filter((r): r is string => !!r)),
+  ];
+  return reviewers.length > 0 ? reviewers.join(';') : null;
 }
 
 interface AnalysedVideo {
@@ -119,15 +134,18 @@ export function trialRows(
   const thresholds = thresholdColumns(parameters);
   return analysedVideos(session).map(({ descriptor, analysis }) => {
     const metrics = analysis.derived.metrics;
+    const noEscape = latestCorrection(analysis.corrections.entries, 'no_escape');
     return {
-      sessionId: sessionId(session),
+      sessionId: session.sessionId,
+      sessionName: session.name,
       videoId: descriptor.id,
       animal: descriptor.metadata.animal ?? null,
       day: descriptor.metadata.day ?? null,
       trialLabel: descriptor.metadata.trial ?? null,
       group: descriptor.metadata.group ?? null,
-      // D62: the map's target hole, so the row says which hole every latency and error is about
-      targetHole: session.mazeMap?.target.holeIndex ?? null,
+      trialType: descriptor.trialType,
+      // D62, D68: the effective target hole, so the row says which hole every latency and error is about
+      targetHole: session.mazeMap ? effectiveTargetHole(descriptor, session.mazeMap) : null,
       trialStart_s: seconds(metrics.trialStart_s),
       primaryLatency_s: seconds(metrics.primaryLatency_s),
       totalLatency_s: seconds(metrics.totalLatency_s),
@@ -141,15 +159,14 @@ export function trialRows(
       strategySource: metrics.strategySource,
       escaped: metrics.escaped,
       // D63: reports the correction being in force. A contradicted confirmation writes it beside
-      // `status = review`; the status is what says the tool and the person disagree.
-      //
-      // `?? false` because a session file written before D63 has no such field on its persisted
-      // metrics, and a bool column must not have a third, blank value. The app never reaches this
-      // — loading a session invalidates the derived layers and re-derives them — but `trialRows`
-      // is callable on a parsed document, and a blank there would be a value the skill does not
-      // document.
-      noEscapeConfirmed: metrics.noEscapeConfirmed ?? false,
+      // `status = review`; the status is what says the tool and the person disagree. Blank on a
+      // probe trial (D66, D68), which has no escape box to confirm anything about.
+      noEscapeConfirmed: metrics.noEscapeConfirmed,
+      noEscapeConfirmedBy:
+        metrics.noEscapeConfirmed === true ? (noEscape?.reviewer ?? null) : null,
       status: metrics.status,
+      // D66: the reason travels with the row
+      reviewFlags: reviewFlagCodes(analysis.derived.reviewFlags).join(';'),
       trackedFraction: metrics.trackedFraction,
       correctionCount: metrics.correctionCount,
       ...thresholds,
@@ -159,10 +176,11 @@ export function trialRows(
 }
 
 /**
- * One row per investigation or escape-box entry. A tracking failure is never an
- * event row: O4 makes it a finding of the quality report, and `events.csv`'s
- * documented `kind` domain is `investigation | escape_entry`. The failure keeps
- * its `EventRecord` — it is reported in `quality.csv` and in the timeline.
+ * One row per event of every kind. Since D67 a tracking failure is a row too
+ * (`kind = tracking_failure`, `hole_index` blank away from any hole): a loss
+ * the tracker found, and an entry a human reclassified as a loss, both belong
+ * in the file that says what happened to the animal, and the row count of
+ * `events.csv` is the length of `derived.events`.
  */
 export function eventRows(
   session: SessionFile,
@@ -171,10 +189,12 @@ export function eventRows(
   const rows: EventRow[] = [];
   for (const { descriptor, analysis } of analysedVideos(session)) {
     for (const event of analysis.derived.events) {
-      if (event.kind === 'tracking_failure') continue;
-      const corrected = event.source === 'corrected';
+      // D65: the auto-only values travel whenever the record carries them — an event a human
+      // edited, or one the automatic detection also found but measured over corrected frames.
+      const shadow = event.autoShadow;
       rows.push({
-        sessionId: sessionId(session),
+        sessionId: session.sessionId,
+        sessionName: session.name,
         videoId: descriptor.id,
         trialLabel: descriptor.metadata.trial ?? null,
         eventId: event.id,
@@ -194,9 +214,13 @@ export function eventRows(
         minCentroidDistance_cm: centimetres(event.minCentroidDistance_cm),
         evidenceSummary: event.evidence,
         source: event.source,
-        autoHoleIndex: corrected ? (event.autoShadow?.holeIndex ?? null) : null,
-        autoStartFrame: corrected ? (event.autoShadow?.startFrame ?? null) : null,
-        autoEndFrame: corrected ? (event.autoShadow?.endFrame ?? null) : null,
+        evidenceCorrected: event.evidenceCorrected,
+        correctionIds: event.correctionIds.join(';'),
+        confirmed: event.confirmed,
+        reviewer: reviewersOf(analysis.corrections.entries, event),
+        autoHoleIndex: shadow ? shadow.holeIndex : null,
+        autoStartFrame: shadow ? shadow.startFrame : null,
+        autoEndFrame: shadow ? shadow.endFrame : null,
         ...provenance(session, analysis, toolVersion),
       });
     }
@@ -211,7 +235,8 @@ export function qualityRows(
   return analysedVideos(session).map(({ descriptor, analysis }) => {
     const quality = analysis.derived.quality;
     return {
-      sessionId: sessionId(session),
+      sessionId: session.sessionId,
+      sessionName: session.name,
       videoId: descriptor.id,
       trackedFraction: quality.detectionStateFractions.tracked,
       notDetectedFraction: quality.detectionStateFractions.not_detected,

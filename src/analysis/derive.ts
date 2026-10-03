@@ -4,14 +4,21 @@
  * deterministic; never mutates its inputs; no DOM, no video, no clock.
  *
  * Order: validate → geometry → point/range corrections → cleaning → trial
- * start → losses and the automatic trial end → investigations → event
- * corrections → (further detection passes while a correction moves the first
- * persistent escape entry, so the trial end follows the corrected events) →
- * kinematics → strategy → metrics → quality.
+ * start → losses and the automatic trial end → investigations → provenance
+ * (the same detection over the automatic frames alone, matched against the
+ * corrected one, D65) → event corrections → (further detection passes while a
+ * correction moves the first persistent escape entry, so the trial end follows
+ * the corrected events) → kinematics → strategy → metrics → quality.
  */
+import type { EventRecord } from '../contracts/events.js';
 import type { MazeMapFile, SimilarityTransform } from '../contracts/mazeMap.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { AutoLayer, CorrectionsLayer, DerivedLayer } from '../contracts/session.js';
+import type {
+  AutoLayer,
+  CorrectionsLayer,
+  DerivedLayer,
+  TrialType,
+} from '../contracts/session.js';
 import type { Mp4Index } from '../video/mp4-index.js';
 import { cleanTrack, type CleaningReport } from './clean.js';
 import { applyTrackCorrections, latestCorrection } from './corrections.js';
@@ -24,6 +31,7 @@ import {
 } from './events.js';
 import { mazeGeometry, type MazeGeometry } from './geometry.js';
 import { computeKinematics, type KinematicsSummary } from './kinematics.js';
+import { frameCorrectionSpans, matchEvents } from './match-events.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
   ANALYSIS_MODEL,
@@ -54,6 +62,10 @@ export interface DeriveInput {
   index: Pick<Mp4Index, 'width' | 'height'> & Partial<Pick<Mp4Index, 'timebaseAnomalies'>>;
   /** Every threshold, including the strategy, censoring and tier blocks (D55). */
   parameters: Parameters;
+  /** D68: `VideoDescriptor.trialType`; acquisition when absent. A probe trial has no escape box. */
+  trialType?: TrialType;
+  /** D68: `VideoDescriptor.targetHole`; the map's target when absent or null. */
+  targetHole?: number | null;
 }
 
 /**
@@ -79,6 +91,7 @@ export function toDerivedLayer(analysis: DerivedAnalysis): DerivedLayer {
     events: analysis.events,
     metrics: analysis.metrics,
     quality: analysis.quality,
+    reviewFlags: analysis.reviewFlags,
   };
 }
 
@@ -87,12 +100,15 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   assertValidParameters(parameters);
   const parametersHash = hashParameters(parameters);
   const trackingParametersHash = hashTrackingParameters(parameters.tracking);
+  // D68: a probe trial has no escape box; the target hole may be this video's own
+  const escapeBox = (input.trialType ?? 'acquisition') !== 'probe';
 
   const g = mazeGeometry({
     map: mazeMap,
     transform: mazeTransform,
     referenceResolution: { width: index.width, height: index.height },
     parameters,
+    targetHole: input.targetHole ?? null,
   });
 
   const corrected = applyTrackCorrections(auto.frames, corrections);
@@ -102,12 +118,43 @@ export function derive(input: DeriveInput): DerivedAnalysis {
 
   const proposal = proposeTrialStart(cleaned.track, a, corrections);
   const pts = eventPoints(a, g, parameters, cleaned.track);
-  const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts };
+  const ctx: EventContext = { frames: cleaned.track, a, g, p: parameters, pts, escapeBox };
+
+  /*
+   * D65: provenance is the difference between two detections. When any point or range correction
+   * is in force, detection also runs over the automatic frames alone — same parameters, same trial
+   * start, same trial window — and the corrected detection's events are labelled by matching the
+   * two lists. With no frame correction the two detections are identical, so the single pass is
+   * its own auto-only pass and every event is automatic and untouched.
+   */
+  const spans = frameCorrectionSpans(corrections.entries);
+  let ctxAuto: EventContext | null = null;
+  if (spans.length > 0) {
+    const autoArrays = buildTrackArrays(auto.frames, g);
+    const cleanedAuto = cleanTrack(auto.frames, autoArrays, g, parameters);
+    const aAuto = buildTrackArrays(cleanedAuto.track, g);
+    ctxAuto = {
+      frames: cleanedAuto.track,
+      a: aAuto,
+      g,
+      p: parameters,
+      pts: eventPoints(aAuto, g, parameters, cleanedAuto.track),
+      escapeBox,
+    };
+  }
+  const withProvenance = (detected: AutoEvents): EventRecord[] => {
+    if (ctxAuto === null || detected.endFrame === null) return detected.events;
+    const autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
+      endFrame: detected.endFrame,
+      endReason: detected.endReason,
+    });
+    return matchEvents(autoOnly.events, detected.events, spans);
+  };
 
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);
   let correctedEvents = applyEventCorrections(
     ctx,
-    autoEvents.events,
+    withProvenance(autoEvents),
     corrections,
     autoEvents.endFrame,
   );
@@ -144,7 +191,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       });
       correctedEvents = applyEventCorrections(
         ctx,
-        autoEvents.events,
+        withProvenance(autoEvents),
         corrections,
         autoEvents.endFrame,
       );
@@ -156,8 +203,10 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   });
 
   // A flag raised on an automatic event goes with the event: once the user has deleted it, the
-  // flag has nothing to point at, and a trial must be able to reach "ok" after review (D20).
-  const liveEventIds = new Set(correctedEvents.events.map((ev) => ev.id));
+  // flag has nothing to point at, and a trial must be able to reach "ok" after review (D20). An
+  // entry the user reclassified as a tracking failure (D67) keeps its id but is no longer an
+  // entry, so a flag about the entry goes too.
+  const liveEvents = new Map(correctedEvents.events.map((ev) => [ev.id, ev]));
   const flagFollowsEvent = (f: ReviewFlag): boolean =>
     f.code === 'physically_unlikely_entry' || f.code === 'tracking_failure_at_hole';
   const reviewFlags: ReviewFlag[] = [
@@ -166,7 +215,12 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     ...autoEvents.flags,
     ...correctedEvents.flags,
     ...endFlags,
-  ].filter((f) => !(flagFollowsEvent(f) && f.eventId !== undefined && !liveEventIds.has(f.eventId)));
+  ].filter((f) => {
+    if (!flagFollowsEvent(f) || f.eventId === undefined) return true;
+    const live = liveEvents.get(f.eventId);
+    if (live === undefined) return false;
+    return !(f.code === 'physically_unlikely_entry' && live.kind === 'tracking_failure');
+  });
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
   // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
   // stamped on this analysis would then name a configuration that never ran, so say so.
@@ -220,20 +274,54 @@ export function derive(input: DeriveInput): DerivedAnalysis {
    * would let `escaped = false, no_escape_confirmed = true, status = ok` ship over an entry the
    * tool itself found and printed. The two cases read differently and say so.
    */
-  const noEscape = latestCorrection(corrections.entries, 'no_escape');
+  const noEscape = escapeBox ? latestCorrection(corrections.entries, 'no_escape') : null;
+  if (!escapeBox) {
+    // D68: a probe trial has no escape box, so a correction about one does not apply. Said out
+    // loud rather than ignored (D57: corrections are honoured, contradictions are visible).
+    for (const c of corrections.entries) {
+      if (c.kind === 'range' && c.rangeType === 'in_escape_box') {
+        reviewFlags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          frameIndex: c.startFrame,
+          message: `This video is a probe trial, which has no escape box, so the escape-box range ${c.id} (frames ${c.startFrame}–${c.endFrame}) produces no entry; its frames are kept as a gap. Mark them not visible instead, or change the trial type.`,
+        });
+      } else if (c.kind === 'no_escape') {
+        reviewFlags.push({
+          code: 'orphaned_correction',
+          correctionId: c.id,
+          message: `This video is a probe trial, which has no escape box to confirm anything about, so the confirmed non-escape ${c.id} does not apply; revert it, or change the trial type.`,
+        });
+      }
+    }
+  }
   const escapeEntries = correctedEvents.events.filter((ev) => ev.kind === 'escape_entry');
   if (noEscape !== null && escapeEntries.length > 0) {
     const because = noEscape.reason ? ` ("${noEscape.reason}")` : '';
     const first = escapeEntries.reduce((a, b) => (a.startFrame <= b.startFrame ? a : b));
-    reviewFlags.push({
-      code: 'no_escape_contradicted',
-      correctionId: noEscape.id,
-      frameIndex: first.startFrame,
-      message:
-        bounds.endReason === 'escape'
-          ? `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. The entry stands: revert the confirmation, or revert what produced the entry.`
-          : `${escapeEntries.length === 1 ? 'An escape entry was' : `${escapeEntries.length} escape entries were`} detected at ${first.startTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. ${escapeEntries.length === 1 ? 'It is' : 'They are'} too short to end the trial, or outside it, so the trial is not marked escaped — check the entry and then either revert the confirmation or delete the entry.`,
-    });
+    const lastFrameIndex = cleaned.track[cleaned.track.length - 1]!.frameIndex;
+    // D67's amendment of D63: an entry that ended the trial, or is persistent, contradicts the
+    // confirmation outright; an entry over the minimum duration but under the persist cutoff —
+    // the animal put its head in and came back out — stands beside it as a note.
+    const persistent = escapeEntries.some((ev) => isPersistentEscape(ev, lastFrameIndex, parameters));
+    if (bounds.endReason === 'escape' || persistent) {
+      reviewFlags.push({
+        code: 'no_escape_contradicted',
+        correctionId: noEscape.id,
+        frameIndex: first.startFrame,
+        message:
+          bounds.endReason === 'escape'
+            ? `An escape entry ends this trial at ${bounds.endTime_s.toFixed(2)} s, contradicting the confirmation that the animal never entered the escape box${because}. The entry stands: revert the confirmation, or revert what produced the entry.`
+            : `A persistent escape entry was detected at ${first.startTime_s.toFixed(2)} s, outside the trial window, contradicting the confirmation that the animal never entered the escape box${because}. It did not end the trial, so the trial is not marked escaped — check the entry and then either revert the confirmation or delete the entry.`,
+      });
+    } else {
+      reviewFlags.push({
+        code: 'non_persistent_entry_noted',
+        correctionId: noEscape.id,
+        frameIndex: first.startFrame,
+        message: `${escapeEntries.length === 1 ? 'An escape entry was' : `${escapeEntries.length} escape entries were`} detected at ${first.startTime_s.toFixed(2)} s, over the minimum entry duration but under the persist cutoff: the animal was seen again, so the trial was not ended and the confirmation that it never entered the escape box${because} stands. Noted here, not contradicted; reclassify the entry as a tracking failure or delete it if it was never an entry.`,
+      });
+    }
   }
 
   const metrics = computeMetrics({
@@ -243,7 +331,8 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     kinematics,
     a,
     strategy,
-    noEscapeConfirmed: noEscape !== null,
+    noEscapeConfirmed: escapeBox ? noEscape !== null : null,
+    trialType: input.trialType ?? 'acquisition',
     // A confirmation ("Keep": an event correction marked `confirmed`) says the
     // tool was right, so counting it as a correction would report a hand edit
     // that never happened — a queue of thirty good events walked with K would

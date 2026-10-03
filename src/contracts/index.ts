@@ -5,5 +5,6 @@ export * from './parameters.js';
 export * from './events.js';
 export * from './metrics.js';
 export * from './quality.js';
+export * from './reviewFlags.js';
 export * from './session.js';
 export * from './exportRows.js';

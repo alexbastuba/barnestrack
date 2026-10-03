@@ -37,8 +37,8 @@ The work is four steps, and the page says the same thing at the top of each one:
    evidence behind each event, a metrics card and a quality summary. Every threshold that
    decides a number is editable there, each with its definition, and a badge says what a change
    moved; the figures and the export bundle are on the same step. An investigation that is right as it
-   stands is kept with one key (K): it is recorded as the user's, with the same hole and frames the
-   tool found, and leaves the list of events to check.
+   stands is kept with one key (K): it stays the tool's event, marked confirmed, with the same hole
+   and frames the tool found, and leaves the list of events to check.
 
 Three things shape everything else:
 
@@ -152,7 +152,17 @@ parametric, shared across the cohort, and placed per video. Exports are three ti
 `parameters.json`, the session file and an XLSX, every row stamped with the tool version, the
 schema version and a parameters hash — and every trial row with its `target_hole`, because Gawel's
 protocol rotates the platform between trials and a latency is meaningless without the hole it was
-measured to (D62). Two places where the sample data forced a refinement are
+measured to (D62), which is why a video can name its own target and its trial type, acquisition or
+probe, a probe having no escape box and so no escape measures (D68). The session carries a stable
+id and a reviewer, stamped onto every correction, so a merged spreadsheet joins on the id and an
+`ok` that rests on a person's confirmation says whose (D68). Whether an event is the tool's or a
+person's is decided by running the detection twice, over the automatic track alone and over the
+corrected one, and comparing: an event only the corrected run finds is the person's, one both
+find but differently is the tool's with corrected evidence, and the automatic values travel beside
+it (D65). Where there is no trial window there is no number — the cell is blank, never zero, and
+the strategy reads `unclassified`, never a confident class of nothing (D66). An escape entry is an
+inference a person can confirm, reject or reclassify as a loss of tracking (D67). Two places where
+the sample data forced a refinement are
 worth naming: same-timestamp frames are ordered by the bitstream's picture order count, because
 the decoder emits them that way and a simpler rule makes the tracking pass non-monotone (D45); and
 an animal split into pieces by a hole's shadow is merged into one candidate, marked
@@ -244,6 +254,9 @@ The numbers below are what the tool ships with today.
   The cutoff is 180 s; a trial that never reaches the escape box leaves total latency blank, sets
   `escaped` false and is marked `review` rather than being given the cutoff as a number — until a
   person confirms the animal genuinely never went in, which is the only thing that clears it (D63).
+  A brief head-in-and-out at the escape hole beside such a confirmation is noted, not treated as a
+  contradiction (D67). A probe trial has no escape box, so it runs to the cutoff with its escape
+  measures blank and is never sent to review for not escaping (D68).
 - **What is the target quadrant? (O6)** A 90° sector centred on the target hole — the target plus
   or minus 2.5 holes on a 20-hole ring. Four fixed quadrants with the target's quadrant selected is
   recorded as the alternative.
@@ -297,8 +310,10 @@ Five further ambiguities were resolved structurally rather than numerically:
   handle, and IndexedDB could hold the file, but that puts copies of a lab's video data in a browser
   profile without anyone asking for it. Dropping the same file back in is one gesture, and the
   fingerprint recognises it even if it was renamed.
-- **Inter-rater comparison** — corrections carry `source: user` and a timestamp but no reviewer
-  identity (O14); adding one is cheap when a lab actually wants two reviewers on the same video.
+- **Inter-rater comparison** — a session names its reviewer and every correction is stamped with
+  it (D68), so two exports of one cohort scored by two people can be told apart by the `reviewer`
+  column; the comparison itself (agreement per event, per trial) is not built, and the field that
+  sets the reviewer is still to come in the interface.
 - **Perspective correction** — the platform is fitted as a circle in image pixels. A camera that is
   not directly overhead images it as an ellipse, so distances near the far rim are slightly
   under-measured. Fixing it properly needs a homography and a ground-plane assumption, a larger
@@ -385,7 +400,7 @@ that answers them. Add it to Claude Code or claude.ai, point it at an export fol
 It reads the exported files and nothing else — no server, no connection to the application, no
 access to the videos. It works from the three CSVs and the parameter set, and falls back to the
 session file in the same folder only when those cannot answer the question. It knows the column
-list and the units, and it is
+list and the units, reads `schema_version` before pooling two files, and it is
 built around the rules that make a cohort answer honest: it will not fold trials marked `review`
 into a headline number without saying so, it treats a blank cell as "not recorded" rather than
 zero, and it refuses to compare two cohorts without first checking that their `parameters_hash`

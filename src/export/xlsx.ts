@@ -97,7 +97,7 @@ function addReadme(
     ],
     [
       'events',
-      'One row per hole investigation or escape-box entry, with the frame range, the times (s), the closest nose and centroid approach (cm) and the plain-language evidence. A loss of tracking is not an event: it is reported on the quality sheet.',
+      'One row per hole investigation, escape-box entry or tracking failure, with the frame range, the times (s), the closest nose and centroid approach (cm), the plain-language evidence, and where the event came from: source, evidence_corrected, correction_ids and confirmed. A tracking failure (kind = tracking_failure) never counts toward a latency or an error; the quality sheet reports the gaps as well.',
     ],
     [
       'quality',
@@ -119,7 +119,7 @@ function addReadme(
     ],
     [
       'Corrections',
-      'A corrected event carries the automatic values alongside it in the auto_hole_index, auto_start_frame and auto_end_frame columns; nothing automatic is overwritten. correction_count on the trials sheet says how many edits a trial carries.',
+      'A corrected or evidence-corrected event carries the automatic values alongside it in the auto_hole_index, auto_start_frame and auto_end_frame columns; the automatic layer itself is never overwritten, though an automatic event that the corrected detection no longer finds has no row of its own. A confirmed event is the automatic one a person kept as it stands. An escape-box entry is the tool’s inference from a loss of detection at the target hole, not a sighting of the animal in the box, until a person confirms, rejects or reclassifies it as a tracking failure. correction_count on the trials sheet says how many edits a trial carries; confirmations are not counted. review_flags on the trials sheet lists why a trial reads review; a review row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape.',
     ],
     [
       'Thresholds that are not columns',

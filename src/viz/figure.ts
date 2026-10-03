@@ -102,6 +102,20 @@ export function endFigure(frame: FigureFrame): void {
   frame.ctx.restore();
 }
 
+/**
+ * One line of soft-ink text along the figure's bottom edge: what a cohort
+ * figure says about the trials it left out ("n = 3 of 4; 1 unresolved", D66),
+ * so the exclusion travels with the PNG and not only with the mirror table.
+ */
+export function drawCaption(frame: FigureFrame, text: string): void {
+  const { ctx, palette, size } = frame;
+  ctx.fillStyle = palette.inkSoft;
+  ctx.font = figureFont(ANNOTATION_SIZE);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, TITLE_X, size.height - 6);
+}
+
 /** The sentence a figure draws instead of an empty box when it has no data. */
 export function drawUnavailable(frame: FigureFrame, message: string): void {
   const { ctx, palette, plot } = frame;

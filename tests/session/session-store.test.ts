@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PARAMETERS } from '../../src/analysis/parameters.js';
+import type { SessionFile } from '../../src/contracts/session.js';
 import { findByFingerprint } from '../../src/session/attach.js';
+import { setPoint } from '../../src/session/corrections.js';
+import { isSessionId, parseSessionDocument, serializeSessionFile } from '../../src/session/session-file.js';
 import { DEFAULT_SESSION_NAME, SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
-import { fingerprint, fullSession, TOOL_VERSION, videoDescriptor } from './fixtures.js';
+import {
+  fingerprint,
+  fullSession,
+  legacySessionDocument,
+  TOOL_VERSION,
+  videoDescriptor,
+} from './fixtures.js';
 
 function newStore(): { store: SessionStore; storage: MemorySessionStorage } {
   const storage = new MemorySessionStorage();
@@ -18,14 +27,153 @@ const test51 = {
 };
 
 describe('SessionStore', () => {
-  it('starts as a valid, empty schema-1 session', () => {
+  it('starts as a valid, empty schema-2 session with a fresh id and no reviewer', () => {
     const { store } = newStore();
-    expect(store.current.schemaVersion).toBe(1);
+    expect(store.current.schemaVersion).toBe(2);
+    expect(isSessionId(store.current.sessionId)).toBe(true);
+    expect(store.current.reviewer).toBeNull();
     expect(store.current.toolVersion).toBe(TOOL_VERSION);
     expect(store.current.name).toBe(DEFAULT_SESSION_NAME);
     expect(store.current.videos).toEqual([]);
     expect(store.current.mazeMap).toBeNull();
     expect(store.current.parameters).toBeNull();
+  });
+
+  it('adds a video as an acquisition trial measured against the map’s target (D68)', () => {
+    const { store } = newStore();
+    const { descriptor } = store.addVideo(test50);
+    expect(descriptor.trialType).toBe('acquisition');
+    expect(descriptor.targetHole).toBeNull();
+  });
+
+  it('stamps the session reviewer onto the corrections a write adds or re-makes, and leaves the rest alone (D68)', () => {
+    const { store } = newStore();
+    store.replaceSession(fullSession());
+    const videoId = 'vid_01';
+    const before = store.analysisFor(videoId)!.corrections.entries;
+    expect(before[0]!.reviewer).toBe('A. Reviewer');
+
+    store.setReviewer('  B. Reviewer ');
+    expect(store.current.reviewer).toBe('B. Reviewer');
+    const added = setPoint(
+      store.analysisFor(videoId)!.corrections,
+      5,
+      'centroid',
+      { x: 1, y: 2, confidence: 1, valid: true },
+      { id: 'corr_02', timestamp: '2026-10-01T10:00:00.000Z' },
+    );
+    store.setCorrections(videoId, added);
+    const after = store.analysisFor(videoId)!.corrections.entries;
+    expect(after.find((e) => e.id === 'corr_01')!.reviewer).toBe('A. Reviewer');
+    expect(after.find((e) => e.id === 'corr_02')!.reviewer).toBe('B. Reviewer');
+
+    // re-placing the first point re-makes its entry: the new write is the new reviewer's
+    store.setCorrections(
+      videoId,
+      setPoint(
+        store.analysisFor(videoId)!.corrections,
+        1,
+        'nose',
+        { x: 3, y: 4, confidence: 1, valid: true },
+        { id: 'ignored', timestamp: '2026-10-01T10:01:00.000Z' },
+      ),
+    );
+    expect(store.analysisFor(videoId)!.corrections.entries.find((e) => e.id === 'corr_01')!.reviewer).toBe('B. Reviewer');
+
+    // with no reviewer named, a new entry says so explicitly
+    store.setReviewer('');
+    expect(store.current.reviewer).toBeNull();
+    store.setCorrections(
+      videoId,
+      setPoint(
+        store.analysisFor(videoId)!.corrections,
+        9,
+        'nose',
+        { x: 3, y: 4, confidence: 1, valid: true },
+        { id: 'corr_03', timestamp: '2026-10-01T10:02:00.000Z' },
+      ),
+    );
+    expect(store.analysisFor(videoId)!.corrections.entries.find((e) => e.id === 'corr_03')!.reviewer).toBeNull();
+  });
+
+  it('drops the derived cache when a video’s trial type or target hole changes (D68)', () => {
+    const { store } = newStore();
+    store.replaceSession(fullSession());
+    const layer = fullSession().analyses['vid_01']!.derived;
+    store.setDerivedLayer('vid_01', layer);
+    expect(store.analysisFor('vid_01')!.derived).not.toBeNull();
+    store.setTrialType('vid_01', 'probe');
+    expect(store.videoById('vid_01')!.trialType).toBe('probe');
+    expect(store.analysisFor('vid_01')!.derived).toBeNull();
+
+    store.setDerivedLayer('vid_01', layer);
+    store.setTargetHole('vid_01', 4);
+    expect(store.videoById('vid_01')!.targetHole).toBe(4);
+    expect(store.analysisFor('vid_01')!.derived).toBeNull();
+  });
+
+  it('never writes a per-video target the map does not have, so its own parser never refuses the file (D68)', () => {
+    const { store } = newStore();
+    store.replaceSession(fullSession()); // a 20-hole map
+    store.setTargetHole('vid_01', 999);
+    store.setTargetHole('vid_01', -1);
+    store.setTargetHole('vid_01', 2.5);
+    expect(store.videoById('vid_01')!.targetHole).toBeNull();
+    store.setTargetHole('vid_01', 19);
+    expect(store.videoById('vid_01')!.targetHole).toBe(19);
+    // a smaller ring drops the override that no longer names a hole; a hole still on the ring stays
+    store.setTargetHole('vid_02', 3);
+    const map = fullSession().mazeMap!;
+    store.setMazeMap({ ...map, holes: { ...map.holes, n: 12 } });
+    expect(store.videoById('vid_01')!.targetHole).toBeNull();
+    expect(store.videoById('vid_02')!.targetHole).toBe(3);
+    expect(parseSessionDocument(serializeSessionFile(store.current)).ok).toBe(true);
+    // with no map there is nothing to check against, exactly as the parser has it
+    store.setMazeMap(null);
+    store.setTargetHole('vid_01', 999);
+    expect(store.videoById('vid_01')!.targetHole).toBe(999);
+    expect(parseSessionDocument(serializeSessionFile(store.current)).ok).toBe(true);
+  });
+
+  it('restores a version-1 autosave record as a version-2 session (D68)', async () => {
+    const { store, storage } = newStore();
+    await storage.save({
+      file: legacySessionDocument() as unknown as SessionFile,
+      draftMazeMap: null,
+      mazeClicks: {},
+      parameters: null,
+      savedAt: '2026-09-30T10:00:00.000Z',
+    });
+    expect(await store.restore()).toBe(true);
+    expect(store.current.schemaVersion).toBe(2);
+    expect(isSessionId(store.current.sessionId)).toBe(true);
+    expect(store.current.reviewer).toBeNull();
+    expect(store.current.videos.every((v) => v.trialType === 'acquisition' && v.targetHole === null)).toBe(true);
+    expect(store.current.name).toBe('cohort3 day1');
+    // the next autosave writes version 2 with the same id
+    const id = store.current.sessionId;
+    store.setName('renamed');
+    await store.flush();
+    const saved = await storage.load();
+    expect(saved!.file.schemaVersion).toBe(2);
+    expect(saved!.file.sessionId).toBe(id);
+  });
+
+  it('leaves an autosave record it cannot read where it is, instead of loading it as current', async () => {
+    const { store, storage } = newStore();
+    const newer = { ...fullSession(), schemaVersion: 3 } as unknown as SessionFile;
+    await storage.save({
+      file: newer,
+      draftMazeMap: null,
+      mazeClicks: {},
+      parameters: null,
+      savedAt: '2026-09-30T10:00:00.000Z',
+    });
+    expect(await store.restore()).toBe(false);
+    expect(store.current.videos).toEqual([]);
+    expect(store.current.schemaVersion).toBe(2);
+    // the record is untouched for the build that wrote it
+    expect((await storage.load())!.file.schemaVersion).toBe(3);
   });
 
   it('names the session after the first video, and never overwrites a user name', () => {

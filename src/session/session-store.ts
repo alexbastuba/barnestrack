@@ -21,6 +21,7 @@ import type {
   CorrectionsLayer,
   DerivedLayer,
   SessionFile,
+  TrialType,
   VideoAnalysis,
   VideoDescriptor,
   VideoFingerprint,
@@ -31,7 +32,7 @@ import type { Mp4Index } from '../video/mp4-index.js';
 import { findByFingerprint } from './attach.js';
 import { createSessionFile } from './session-file.js';
 import type { SessionStorage } from './storage.js';
-import type { StoredSession, VideoId } from './stored.js';
+import { migrateStoredSession, type StoredSession, type VideoId } from './stored.js';
 
 /** The open file behind a video in this tab. Never serialised. */
 export interface VideoAttachment {
@@ -126,10 +127,16 @@ export class SessionStore {
 
   /** Loads the autosave record, if there is one. Returns whether anything was restored. */
   async restore(): Promise<boolean> {
-    const record = await this.storage.load();
-    // Nothing to restore, and nothing worth overwriting work in memory with.
-    if (!record || record.file.videos.length === 0) return false;
+    const stored = await this.storage.load();
+    // Nothing to restore, and nothing worth overwriting work in memory with. A record whose
+    // file has no video list at all is not one this build can read either.
+    if (!stored || !Array.isArray(stored.file.videos) || stored.file.videos.length === 0) return false;
     if (this.session.videos.length > 0) return false;
+    // A record from an earlier build may carry a version-1 file (D68); it is
+    // migrated exactly as a loaded file is, and the next autosave writes it back.
+    // A record this build cannot read (a newer schema) is left untouched.
+    const record = migrateStoredSession(stored);
+    if (record === null) return false;
     this.closeAttachments();
     this.session = record.file;
     this.draftMazeMap = record.draftMazeMap;
@@ -193,6 +200,9 @@ export class SessionStore {
       referenceResolution: video.referenceResolution,
       mazeTransform: { ...IDENTITY_TRANSFORM },
       metadata: {},
+      // D68 defaults: an acquisition trial measured against the map's target
+      trialType: 'acquisition',
+      targetHole: null,
     };
     this.session.videos = [...this.session.videos, descriptor];
     if (this.session.name === DEFAULT_SESSION_NAME) {
@@ -227,6 +237,38 @@ export class SessionStore {
   setName(name: string): void {
     this.session.name = name;
     this.changed();
+  }
+
+  /** D68: the person reviewing this cohort, stamped onto every correction written from now on. */
+  setReviewer(reviewer: string | null): void {
+    const trimmed = reviewer?.trim() ?? '';
+    this.session.reviewer = trimmed.length > 0 ? trimmed : null;
+    this.changed();
+  }
+
+  /** D68: acquisition or probe. A probe has no escape box, so every derived layer is recomputed. */
+  setTrialType(videoId: VideoId, trialType: TrialType): void {
+    if (!this.videoById(videoId)) return;
+    this.invalidateDerived();
+    this.updateVideo(videoId, (video) => ({ ...video, trialType }));
+  }
+
+  /**
+   * D68: this video's own target hole under the map's numbering, or null for the map's. A hole
+   * the map does not have is refused, so the store never writes a file its own parser refuses.
+   */
+  setTargetHole(videoId: VideoId, targetHole: number | null): void {
+    if (!this.videoById(videoId)) return;
+    if (targetHole !== null && !this.isHoleOnRing(targetHole)) return;
+    this.invalidateDerived();
+    this.updateVideo(videoId, (video) => ({ ...video, targetHole }));
+  }
+
+  /** Whether `hole` is one of the current map's holes; true with no map, since there is nothing to check against. */
+  private isHoleOnRing(hole: number): boolean {
+    if (!Number.isInteger(hole) || hole < 0) return false;
+    const map = this.session.mazeMap;
+    return map === null || hole < map.holes.n;
   }
 
   // ---- attachments (this tab only) -----------------------------------------
@@ -274,13 +316,26 @@ export class SessionStore {
   /**
    * Replaces one video's corrections layer (D9, D25). The automatic layer is
    * never touched; the derived cache is left for the caller to recompute.
+   *
+   * D68: every entry that is not the very same object as one already in the
+   * layer is stamped with the session's reviewer at this moment. The pure
+   * operations in `./corrections.js` pass untouched entries through by
+   * reference and re-make every entry they touch — an edit, a merged range —
+   * so the stamp lands on exactly what this write changed, matching its
+   * timestamp, and an entry written under one reviewer keeps that name when
+   * another reviewer writes something else.
    */
   setCorrections(videoId: VideoId, corrections: CorrectionsLayer): void {
     const existing = this.session.analyses[videoId];
     if (!existing) return;
+    const previous = new Set(existing.corrections.entries);
+    const reviewer = this.session.reviewer;
+    const entries = corrections.entries.map((entry) =>
+      previous.has(entry) ? entry : { ...entry, reviewer },
+    );
     this.session.analyses = {
       ...this.session.analyses,
-      [videoId]: { ...existing, corrections },
+      [videoId]: { ...existing, corrections: { entries } },
     };
     this.changed();
   }
@@ -389,6 +444,13 @@ export class SessionStore {
     const calibrated = map !== null && map.calibration.platformDiameter_cm > 0;
     this.session.mazeMap = calibrated ? map : null;
     this.draftMazeMap = calibrated ? null : map;
+    // A per-video target the new ring does not have falls back to the map's target (D68): the
+    // number meant a hole that no longer exists, and the parser would refuse the file.
+    if (calibrated) {
+      this.session.videos = this.session.videos.map((video) =>
+        video.targetHole !== null && video.targetHole >= map.holes.n ? { ...video, targetHole: null } : video,
+      );
+    }
     this.invalidateDerived();
     this.changed();
   }

@@ -365,7 +365,7 @@ describe('describeDiff over a real re-derivation', () => {
       ...p,
       targetQuadrant: { holeSpan: 9.5 },
     }));
-    expect(after.metrics.targetQuadrantTime_s).toBeGreaterThan(before.metrics.targetQuadrantTime_s);
+    expect(after.metrics.targetQuadrantTime_s).toBeGreaterThan(before.metrics.targetQuadrantTime_s!);
     expect(describeDiff(before, after)).toContain('target quadrant time 78.11 s → 178.27 s');
   });
 

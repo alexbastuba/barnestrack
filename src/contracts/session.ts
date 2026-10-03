@@ -20,9 +20,22 @@ import type { FrameIndex, NamedPointId, Track, TrackFrame } from './track.js';
 import type { EventRecord } from './events.js';
 import type { TrialMetrics } from './metrics.js';
 import type { QualityReport } from './quality.js';
+import type { ReviewFlag } from './reviewFlags.js';
 import type { ToolVersion } from './version.js';
 
-export const SESSION_SCHEMA_VERSION = 1;
+/**
+ * Version 2 (D68): `sessionId`, `reviewer`, per-video `trialType` and
+ * `targetHole`, `reviewer` on every correction. A version-1 file is migrated
+ * in memory on load (`src/session/migrate.ts`) and written back as version 2.
+ */
+export const SESSION_SCHEMA_VERSION = 2;
+
+/**
+ * What kind of trial a video records (D68). A probe trial has no escape box:
+ * escape detection is off, the trial runs to the cutoff, the escape measures
+ * are blank, and not escaping is never a reason for review.
+ */
+export type TrialType = 'acquisition' | 'probe';
 
 /**
  * Identifies video content independent of filename/path, so a session
@@ -51,6 +64,22 @@ export interface VideoDescriptor {
   /** Fit of the session's shared maze map onto this video. D10, D28. */
   mazeTransform: SimilarityTransform;
   metadata: VideoMetadata;
+  /** D68: acquisition (an escape box is present) or probe (none). Migrated files read acquisition. */
+  trialType: TrialType;
+  /**
+   * D68: this video's target hole under the map's numbering (D49) when it
+   * differs from the map's, else null. Gawel's protocol rotates the platform
+   * between trials, so one map can serve trials whose target moved.
+   */
+  targetHole: number | null;
+}
+
+/** The hole every latency and error of a video is measured against: its own override, else the map's (D68). */
+export function effectiveTargetHole(
+  video: Pick<VideoDescriptor, 'targetHole'>,
+  mazeMap: Pick<MazeMapFile, 'target'>,
+): number {
+  return video.targetHole ?? mazeMap.target.holeIndex;
 }
 
 /** A sparse, human-made edit. Always additive: never mutates the auto layer. D9, D25. */
@@ -67,6 +96,12 @@ interface CorrectionBase {
   /** ISO 8601. */
   timestamp: string;
   source: 'user';
+  /**
+   * D68: who made the correction — the session's reviewer at the time it was
+   * written, stamped by the session store; null when no reviewer was named.
+   * Absent only on an entry that has not been through the store yet.
+   */
+  reviewer?: string | null;
 }
 
 export interface PointCorrection extends CorrectionBase {
@@ -102,6 +137,13 @@ export interface EventCorrection extends CorrectionBase {
    * `metrics.correctionCount`.
    */
   confirmed?: true;
+  /**
+   * D67: "that was not an entry, the tracker lost the animal" — an `edit` of an
+   * `escape_entry` that makes it a `tracking_failure`. The frames stay a gap,
+   * the event keeps its hole and span with the entry's values as its shadow,
+   * and the trial end, latency and errors are recomputed without the entry.
+   */
+  newKind?: 'tracking_failure';
 }
 
 export interface TrialStartCorrection extends CorrectionBase {
@@ -109,7 +151,12 @@ export interface TrialStartCorrection extends CorrectionBase {
   frameIndex: FrameIndex;
 }
 
-export type SearchStrategy = 'spatial' | 'serial' | 'random';
+/**
+ * The rule engine's classes (D23, D58) plus `unclassified`: there was no
+ * trial window, or nothing to classify over — no investigation and no target
+ * visit — so no rule applies and no class is a measurement (D66).
+ */
+export type SearchStrategy = 'spatial' | 'serial' | 'random' | 'unclassified';
 
 export interface StrategyOverrideCorrection extends CorrectionBase {
   kind: 'strategy_override';
@@ -146,6 +193,8 @@ export interface DerivedLayer {
   events: readonly EventRecord[];
   metrics: TrialMetrics;
   quality: QualityReport;
+  /** What a human should look at before trusting the trial; the codes travel in `trials.csv` (D66). */
+  reviewFlags: readonly ReviewFlag[];
 }
 
 export interface VideoAnalysis {
@@ -163,8 +212,12 @@ export interface VideoAnalysis {
 export interface SessionFile {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   toolVersion: ToolVersion;
-  /** User-editable cohort name; defaults to the first video's filename. D47. */
+  /** D68: a UUID generated once when the session is created, never edited; `session_id` in every export. */
+  sessionId: string;
+  /** User-editable cohort name; defaults to the first video's filename. D47. `session_name` in every export. */
   name: string;
+  /** D68: the person reviewing this cohort, set once per session; copied onto every correction as it is written. */
+  reviewer: string | null;
   videos: VideoDescriptor[];
   /**
    * The one shared source of calibration for the cohort (D10, D44); a cohort

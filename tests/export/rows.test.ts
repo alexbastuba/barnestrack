@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EXPORT_SCHEMA_VERSION } from '../../src/contracts/exportRows.js';
+import { TRIAL_COLUMNS } from '../../src/export/columns.js';
+import { toCsv } from '../../src/export/csv.js';
 import { eventRows, qualityRows, trialRows } from '../../src/export/rows.js';
 import {
   FIXTURE_PARAMETERS,
   FIXTURE_PARAMETERS_HASH,
+  FIXTURE_SESSION_ID,
   FIXTURE_TOOL_VERSION,
   syntheticSession,
 } from '../fixtures/synthetic-analysis.js';
@@ -36,15 +39,73 @@ describe('trialRows', () => {
     }
   });
 
-  it('names the map’s target hole on every row, and leaves it blank without a map (D62)', () => {
+  it('names the effective target hole on every row, and leaves it blank without a map (D62, D68)', () => {
     const rows = trialRows(session);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.targetHole).toBe(session.mazeMap!.target.holeIndex);
     // Gawel's protocol rotates the platform between trials, so the column has to move with the map
     const rotated = { ...session, mazeMap: { ...session.mazeMap!, target: { holeIndex: 13 } } };
     expect(trialRows(rotated).map((r) => r.targetHole)).toEqual(rows.map(() => 13));
+    // and with the video, when one trial's target differs from the map's (D68)
+    const overridden = {
+      ...session,
+      videos: session.videos.map((video, i) => (i === 1 ? { ...video, targetHole: 4 } : video)),
+    };
+    expect(trialRows(overridden).map((r) => r.targetHole)).toEqual([7, 4, 7]);
     // a session with no map has no analyses either (D47), but the column is nullable regardless
     expect(trialRows({ ...session, mazeMap: null }).every((r) => r.targetHole === null)).toBe(true);
+  });
+
+  it('identifies the session by its id and carries the editable name beside it, on every file (D68)', () => {
+    for (const row of [...trialRows(session), ...eventRows(session), ...qualityRows(session)]) {
+      expect(row.sessionId).toBe(FIXTURE_SESSION_ID);
+      expect(row.sessionName).toBe('Barnes cohort A');
+    }
+    const renamed = { ...session, name: 'Barnes cohort A (renamed)' };
+    expect(trialRows(renamed)[0]!.sessionId).toBe(FIXTURE_SESSION_ID);
+    expect(trialRows(renamed)[0]!.sessionName).toBe('Barnes cohort A (renamed)');
+  });
+
+  it('carries the trial type, and leaves a probe trial’s escape measures blank (D68)', () => {
+    const edited = syntheticSession();
+    edited.videos[1] = { ...edited.videos[1]!, trialType: 'probe' };
+    const derived = edited.analyses[edited.videos[1]!.id]!.derived!;
+    derived.metrics = { ...derived.metrics, escaped: null, totalLatency_s: null, noEscapeConfirmed: null };
+    const rows = trialRows(edited);
+    expect(rows.map((r) => r.trialType)).toEqual(['acquisition', 'probe', 'acquisition']);
+    expect(rows[1]).toMatchObject({ escaped: null, totalLatency_s: null, noEscapeConfirmed: null, noEscapeConfirmedBy: null });
+    const csv = toCsv(TRIAL_COLUMNS, rows);
+    const headers = csv.split('\r\n')[0]!.split(',');
+    const cells = csv.split('\r\n')[2]!.split(',');
+    for (const header of ['escaped', 'total_latency_s', 'no_escape_confirmed', 'no_escape_confirmed_by']) {
+      expect(cells[headers.indexOf(header)], header).toBe('');
+    }
+    expect(cells[headers.indexOf('trial_type')]).toBe('probe');
+  });
+
+  it('names the reviewer behind a correction on the event row and behind a confirmed non-escape on the trial row (D68)', () => {
+    const edited = syntheticSession();
+    const videoId = edited.videos[0]!.id;
+    const analysis = edited.analyses[videoId]!;
+    const [edit] = analysis.corrections.entries;
+    analysis.corrections = {
+      entries: [
+        { ...edit!, reviewer: 'B. Reviewer' },
+        { id: 'n1', kind: 'no_escape', timestamp: '2026-10-01T10:00:00.000Z', source: 'user', reviewer: 'C. Reviewer', reason: 'watched it' },
+      ],
+    };
+    analysis.derived!.metrics = { ...analysis.derived!.metrics, noEscapeConfirmed: true };
+    const corrected = eventRows(edited).find((row) => row.videoId === videoId && row.source === 'corrected')!;
+    expect(corrected.reviewer).toBe('B. Reviewer');
+    const untouched = eventRows(edited).find((row) => row.videoId === videoId && row.source === 'auto')!;
+    expect(untouched.reviewer).toBeNull();
+    const trial = trialRows(edited).find((row) => row.videoId === videoId)!;
+    expect(trial.noEscapeConfirmed).toBe(true);
+    expect(trial.noEscapeConfirmedBy).toBe('C. Reviewer');
+    // an unnamed reviewer is blank, never the string "null"
+    const unnamed = syntheticSession();
+    unnamed.analyses[videoId]!.corrections = { entries: [{ ...edit!, reviewer: null }] };
+    expect(eventRows(unnamed).find((row) => row.videoId === videoId && row.source === 'corrected')!.reviewer).toBeNull();
   });
 
   it('carries every event-defining threshold as its own column (D11)', () => {
@@ -82,7 +143,7 @@ describe('trialRows', () => {
       // the fixture's trials all have a start and tracked time, so neither nullable cell is null here
       expect(typeof row.trialStart_s).toBe('number');
       expect(row.trialStart_s).toBe(Number(row.trialStart_s!.toFixed(3)));
-      expect(row.pathLength_cm).toBe(Number(row.pathLength_cm.toFixed(2)));
+      expect(row.pathLength_cm).toBe(Number(row.pathLength_cm!.toFixed(2)));
       expect(row.meanSpeed_cmPerS).toBe(Number(row.meanSpeed_cmPerS!.toFixed(2)));
     }
   });
@@ -99,15 +160,83 @@ describe('trialRows', () => {
   });
 });
 
+/*
+ * D66: a number that cannot be established is an empty cell, never 0; a legitimate zero is `0`;
+ * and the review flag codes travel with the row.
+ */
+describe('nulls, zeros and review flags (D66)', () => {
+  function cell(csv: string, rowIndex: number, header: string): string {
+    const lines = csv.split('\r\n');
+    const headers = lines[0]!.split(',');
+    return lines[rowIndex + 1]!.split(',')[headers.indexOf(header)]!;
+  }
+
+  it('writes an empty cell for an unresolved trial’s window measures, and 0 for a resolved zero', () => {
+    const edited = syntheticSession();
+    const [first, second] = edited.videos.map((video) => edited.analyses[video.id]!.derived!);
+    first!.metrics = {
+      ...first!.metrics,
+      status: 'unresolved',
+      trialStart_s: null,
+      primaryLatency_s: null,
+      totalLatency_s: null,
+      primaryErrors: null,
+      totalErrors: null,
+      pathLength_cm: null,
+      pathLengthSmoothed_cm: null,
+      meanSpeed_cmPerS: null,
+      targetQuadrantTime_s: null,
+      trackedFraction: null,
+      strategy: 'unclassified',
+    };
+    second!.metrics = { ...second!.metrics, primaryErrors: 0, totalErrors: 0 };
+    const csv = toCsv(TRIAL_COLUMNS, trialRows(edited));
+    for (const header of [
+      'primary_errors',
+      'total_errors',
+      'path_length_cm',
+      'path_length_smoothed_cm',
+      'mean_speed_cm_per_s',
+      'target_quadrant_time_s',
+      'tracked_fraction',
+    ]) {
+      expect(cell(csv, 0, header), header).toBe('');
+    }
+    expect(cell(csv, 0, 'strategy')).toBe('unclassified');
+    expect(cell(csv, 0, 'status')).toBe('unresolved');
+    expect(cell(csv, 1, 'primary_errors')).toBe('0');
+    expect(cell(csv, 1, 'total_errors')).toBe('0');
+  });
+
+  it('writes the review flag codes derive() raised, unique and in a stable order, blank when none', () => {
+    const edited = syntheticSession();
+    const derived = edited.analyses[edited.videos[0]!.id]!.derived!;
+    derived.reviewFlags = [
+      { code: 'stale_auto_layer', message: 'other tracking parameters' },
+      { code: 'oversized_in_trial', message: 'a hand', frameIndex: 12 },
+      { code: 'stale_auto_layer', message: 'said twice' },
+    ];
+    const csv = toCsv(TRIAL_COLUMNS, trialRows(edited));
+    expect(cell(csv, 0, 'review_flags')).toBe('oversized_in_trial;stale_auto_layer');
+    expect(cell(csv, 1, 'review_flags')).toBe('');
+    // the column sits right after status, so a reader sees the reason beside the verdict
+    const headers = csv.split('\r\n')[0]!.split(',');
+    expect(headers[headers.indexOf('status') + 1]).toBe('review_flags');
+  });
+});
+
 describe('eventRows', () => {
   const rows = eventRows(session);
   const events = Object.values(session.analyses).flatMap((analysis) => analysis.derived!.events);
 
-  it('drops tracking failures: they belong to the quality report, never an event (O4)', () => {
+  it('exports tracking failures as rows of their own kind, with a blank hole away from any hole (D67)', () => {
     const failures = events.filter((event) => event.kind === 'tracking_failure');
     expect(failures.length).toBeGreaterThan(0);
-    expect(rows).toHaveLength(events.length - failures.length);
-    expect(rows.every((row) => row.kind !== 'tracking_failure')).toBe(true);
+    expect(rows).toHaveLength(events.length);
+    const failureRows = rows.filter((row) => row.kind === 'tracking_failure');
+    expect(failureRows).toHaveLength(failures.length);
+    expect(failureRows.every((row) => row.holeIndex === null && row.isTarget === false)).toBe(true);
+    expect(failureRows.every((row) => row.source === 'auto' && row.confirmed === false)).toBe(true);
   });
 
   it('keeps every investigation and escape entry', () => {
@@ -116,19 +245,21 @@ describe('eventRows', () => {
     );
   });
 
-  it('fills the auto_* shadow columns only on a corrected row (D11, D26)', () => {
+  it('fills the auto_* shadow columns on a corrected or evidence-corrected row, never on an untouched one (D11, D26, D65)', () => {
     const corrected = rows.filter((row) => row.source === 'corrected');
-    const automatic = rows.filter((row) => row.source === 'auto');
+    const untouched = rows.filter((row) => row.source === 'auto' && !row.evidenceCorrected);
     expect(corrected.length).toBeGreaterThan(0);
     for (const row of corrected) {
       expect(row.autoStartFrame).not.toBeNull();
       expect(row.autoEndFrame).not.toBeNull();
       expect(row.autoEndFrame).not.toBe(row.endFrame);
     }
-    for (const row of automatic) {
+    for (const row of untouched) {
       expect(row.autoHoleIndex).toBeNull();
       expect(row.autoStartFrame).toBeNull();
       expect(row.autoEndFrame).toBeNull();
+      expect(row.correctionIds).toBe('');
+      expect(row.confirmed).toBe(false);
     }
   });
 

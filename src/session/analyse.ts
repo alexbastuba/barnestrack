@@ -42,6 +42,8 @@ export function deriveInputFor(store: SessionStore, videoId: VideoId): DeriveInp
     corrections: analysis.corrections,
     mazeMap,
     mazeTransform: video.mazeTransform,
+    trialType: video.trialType,
+    targetHole: video.targetHole,
     index: {
       width: video.referenceResolution.width,
       height: video.referenceResolution.height,

@@ -36,6 +36,9 @@ const EVENT_KEYS = [
   'minCentroidDistance_cm',
   'evidence',
   'source',
+  'evidenceCorrected',
+  'correctionIds',
+  'confirmed',
 ].sort();
 
 function run(

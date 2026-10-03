@@ -56,6 +56,8 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   correction_out_of_range: 'correction out of range',
   stale_auto_layer: 'stale automatic track',
   no_escape_contradicted: 'contradicted non-escape',
+  confirmation_contradicted: 'contradicted confirmation',
+  non_persistent_entry_noted: 'short entry noted',
 };
 
 /** The review flags that belong to one event. */
@@ -151,7 +153,7 @@ export function createEventCard(
       ' ',
       // A kept event is the user's, but it says the same thing the tool did.
       // The word is there for the same reason "user" is: never colour alone.
-      ...(corrected && current.confirmed === true
+      ...(current.confirmed === true
         ? [el('span', { class: 'badge badge-ok', text: 'confirmed' }), ' ']
         : []),
     ]);

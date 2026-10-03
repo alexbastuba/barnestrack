@@ -108,7 +108,8 @@ describe('analyseVideo', () => {
 
     const reloaded = new SessionStore(storage, TOOL_VERSION, { autosaveDelayMs: 0 });
     expect(await reloaded.restore()).toBe(true);
-    expect(reloaded.analysisFor(VIDEO)?.corrections.entries).toEqual([relabel]);
+    // the store stamps the session's reviewer (none here) onto every entry it writes (D68)
+    expect(reloaded.analysisFor(VIDEO)?.corrections.entries).toEqual([{ ...relabel, reviewer: null }]);
     expect(reloaded.current.parameters).toEqual(DEFAULT_PARAMETERS);
     const again = analyseVideo(reloaded, VIDEO)!.analysis;
     expect(again.events).toEqual(corrected.events);

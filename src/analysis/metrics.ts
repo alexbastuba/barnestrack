@@ -6,12 +6,12 @@
 import type { EventRecord } from '../contracts/events.js';
 import type { TrialMetrics } from '../contracts/metrics.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { SearchStrategy } from '../contracts/session.js';
+import type { SearchStrategy, TrialType } from '../contracts/session.js';
 import type { KinematicsSummary } from './kinematics.js';
 import { isRecorded } from './parameters.js';
 import { STATE_CODE, type TrackArrays } from './track-arrays.js';
 import type { TrialBounds } from './trial.js';
-import type { ReviewFlag } from './types.js';
+import { isSoftReviewFlag, type ReviewFlag } from './types.js';
 
 export interface MetricsInput {
   bounds: TrialBounds;
@@ -21,10 +21,12 @@ export interface MetricsInput {
   /** The cleaned track as arrays. */
   a: TrackArrays;
   strategy: { strategy: SearchStrategy; strategySource: 'auto' | 'corrected' };
-  /** A `no_escape` correction is in force: the human says this animal never entered (D63). */
-  noEscapeConfirmed: boolean;
+  /** A `no_escape` correction is in force: the human says this animal never entered (D63). null on a probe trial (D68). */
+  noEscapeConfirmed: boolean | null;
   correctionCount: number;
   parameters: Parameters;
+  /** D68: a probe trial has no escape box — its escape measures are blank and not escaping is never review. Acquisition when absent. */
+  trialType?: TrialType;
 }
 
 /** A persistent entry lasts to the end of the video or at least the persist cutoff (O4). */
@@ -64,10 +66,13 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   const start = bounds.startFrame;
   const end = bounds.endFrame;
   const noTrial = start === null || end === null;
+  // D68: a probe trial has no escape box, so nothing about escaping is a measurement of it
+  const probe = (input.trialType ?? 'acquisition') === 'probe';
 
-  const escaped = bounds.endReason === 'escape';
-  const totalLatency =
-    escaped && !noTrial
+  const escaped: boolean | null = probe ? null : bounds.endReason === 'escape';
+  const totalLatency = probe
+    ? null
+    : escaped && !noTrial
       ? bounds.endTime_s - bounds.startTime_s
       : parameters.trialCensoring.censorToCutoff && !noTrial
         ? parameters.trialCutoff_s
@@ -91,20 +96,26 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     if (target === null || ev.startFrame < target.startFrame) primaryErrors++;
   }
 
-  let trackedFraction = Number.NaN;
+  let trackedFraction: number | null = null;
   if (!noTrial) {
     let tracked = 0;
     for (let i = start; i <= end; i++) if (a.state[i] === STATE_CODE.tracked) tracked++;
     trackedFraction = tracked / (end - start + 1);
   }
+  // D66: a measure over a window that does not exist is null, never 0 and never NaN; a resolved
+  // trial keeps its numbers, zeros included
+  const overWindow = (value: number): number | null =>
+    !noTrial && isRecorded(value) ? value : null;
 
   // A trial with no escape entry is `review` by construction: the tool cannot tell a non-escaper
   // from a missed entry. D63 lets a human say which it was, and a confirmed non-escape reads `ok`
   // unless something else was flagged — including the contradiction flag `derive()` raises when an
   // escape entry turns up beside the confirmation, so the entry wins without a special case here.
+  // D67: a soft flag notes something without sending the trial to review
+  const hardFlags = flags.filter((flag) => !isSoftReviewFlag(flag));
   const status: TrialMetrics['status'] = noTrial
     ? 'unresolved'
-    : flags.length > 0 || (!escaped && !noEscapeConfirmed)
+    : hardFlags.length > 0 || (!probe && !escaped && !noEscapeConfirmed)
       ? 'review'
       : 'ok';
 
@@ -113,18 +124,18 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
     trialStart_s: isRecorded(bounds.startTime_s) ? bounds.startTime_s : null,
     primaryLatency_s: primaryLatency,
     totalLatency_s: totalLatency,
-    primaryErrors,
-    totalErrors,
-    pathLength_cm: kinematics.pathLength_cm,
-    pathLengthSmoothed_cm: kinematics.pathLengthSmoothed_cm,
-    meanSpeed_cmPerS: isRecorded(kinematics.meanSpeed_cmPerS) ? kinematics.meanSpeed_cmPerS : null,
-    targetQuadrantTime_s: kinematics.targetQuadrantTime_s,
+    primaryErrors: noTrial ? null : primaryErrors,
+    totalErrors: noTrial ? null : totalErrors,
+    pathLength_cm: overWindow(kinematics.pathLength_cm),
+    pathLengthSmoothed_cm: overWindow(kinematics.pathLengthSmoothed_cm),
+    meanSpeed_cmPerS: overWindow(kinematics.meanSpeed_cmPerS),
+    targetQuadrantTime_s: overWindow(kinematics.targetQuadrantTime_s),
     strategy: strategy.strategy,
     strategySource: strategy.strategySource,
     escaped,
-    noEscapeConfirmed,
+    noEscapeConfirmed: probe ? null : noEscapeConfirmed,
     status,
-    trackedFraction,
+    trackedFraction: overWindow(trackedFraction ?? Number.NaN),
     correctionCount,
   };
 }

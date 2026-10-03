@@ -384,12 +384,20 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
   let autoStrategy: SearchStrategy;
   let runnerUp: SearchStrategy;
   let rules: RuleOutcome[];
+  // D66: a class is a measurement, so where there is nothing to measure there is no class
   if (bounds.startFrame === null || bounds.endFrame === null) {
-    autoStrategy = 'random';
-    runnerUp = 'random';
+    autoStrategy = 'unclassified';
+    runnerUp = 'unclassified';
     rules = [];
     reasoning.push(
-      'Not classified: no trial start could be proposed, so the placeholder rules were not applied; recorded as random.',
+      'Not classified: no trial start could be proposed, so there is no trial window to classify over.',
+    );
+  } else if (!features.targetReached && features.sequence.length === 0) {
+    autoStrategy = 'unclassified';
+    runnerUp = 'unclassified';
+    rules = [];
+    reasoning.push(
+      'Not classified: no investigation and no target visit in the trial, so there is nothing to classify over; no rule applies to an empty search (Gawel et al. 2019, Table 1 presupposes hole searches), and the trial status says why.',
     );
   } else {
     rules = evaluateRules(features, parameters.strategy);
@@ -437,11 +445,6 @@ export function classifyStrategy(input: StrategyInput): StrategyResult {
     reasoning.push(
       `Classified as ${winner} (the first rule to fire in the order ${ORDER.join(' → ')}; rule set from Gawel et al. 2019, Table 1); runner-up ${runnerUp}.`,
     );
-    if (!features.targetReached && features.sequence.length === 0) {
-      reasoning.push(
-        'No investigation and no target visit in the trial: the classification rests on an empty search and should be read with the trial status.',
-      );
-    }
   }
 
   if (override !== null) {

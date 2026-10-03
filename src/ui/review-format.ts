@@ -76,11 +76,13 @@ export function metricValueText(metrics: TrialMetrics, key: MetricKey): string {
       return formatPercentage(value as number);
     case 'escaped':
     case 'noEscapeConfirmed':
-      return value ? 'yes' : 'no';
+      // a value the contract leaves blank (a probe trial's escape, D66, D68) is a dash, not "no"
+      return value === null ? '—' : value ? 'yes' : 'no';
     case 'primaryErrors':
     case 'totalErrors':
     case 'correctionCount':
-      return String(value);
+      // null where no trial window exists (D66): never "0", never "null"
+      return isRecorded(value as number | null) ? String(value) : '—';
     case 'strategy':
     case 'strategySource':
     case 'status':

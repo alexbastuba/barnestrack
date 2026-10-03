@@ -7,19 +7,6 @@ session it is found (D39).
 
 ## Defects
 
-- **Only an investigation can be kept, because a confirmation is re-measured.** `Keep (K)` writes an
-  event `edit`, and `applyEventCorrections` re-measures an edited event over its span: it recomputes
-  `point_used`, `min_nose_distance_cm`, `min_centroid_distance_cm` and the evidence sentence. On a
-  span that is mostly unpositioned — an escape entry or a tracking failure — that does not reproduce
-  the automatic values. Measured on the fixture cohort: keeping `auto-escape_entry-h7-f851`
-  (test53) moved `point_used` from `nose` to `centroid`, `min_nose_distance_cm` from 1.11 to null
-  and `min_centroid_distance_cm` to NaN, and dropped `nose_judged_event_fraction` from 1 to 0.857 —
-  under a note saying nothing had changed, and with D11's shadow columns covering only the hole and
-  the frames. Keep is therefore refused on those two kinds (the button is disabled and says why).
-  Even on an investigation the evidence sentence is replaced by the correction's own, so a
-  bout-merge explanation is lost from the card and from `events.csv`. The fix is in
-  `src/analysis/events.ts`: carry the target's point, distances and evidence through when an edit
-  changes neither hole nor frames.
 - **Whether a target has been named is session-run state, not part of the map.** `mazeMap.target`
   is required by the contract, so a new map is born with `holeIndex: 0` and the Maze step has to
   remember whether anyone has actually chosen it: the first target click on a brand-new map names
@@ -40,40 +27,14 @@ session it is found (D39).
   is honest; the exported number is not obviously wrong to a reader who does not open the card.
   Smallest fix: flag when the marked frame's last positioned event point is within the entry radius
   of a hole that is not the target, naming that hole — a second branch beside the one D57 added.
-- **A trial carrying a non-persistent escape entry cannot be confirmed as a non-escape without
-  deleting the entry first (D63).** An animal that puts its head into the escape hole for a second
-  or two, backs out and never goes in produces an `escape_entry` that is over
-  `escapeEntry.minDuration_s` but under `escapeEntry.persistCutoff_s`: `escaped` stays false, the
-  trial stays `review`, and the confirmation checkbox is disabled, because a confirmation standing
-  beside any escape entry is contradicted by design (the entry wins). The trial is a genuine
-  non-escaper and the tool will not let it be recorded as one in a single action. The way through
-  is to delete the event and then confirm — two corrections, both revertable, and the hint says so
-  — but that asks the user to erase the tool's evidence in order to agree with it, which is the
-  wrong shape. Smallest fix: let a confirmation stand against a *non-persistent* entry with a
-  softer flag that does not force `review`, keeping the hard contradiction for an entry that
-  actually ended the trial. That is a D63 amendment and needs Alex's sign-off.
-- **A trial can read `ok` on one anonymous person's word (D63, O14).** A confirmed non-escape moves
-  the status to `ok`, and the correction carries `source: 'user'` and a timestamp but no reviewer
-  identity, because O14 leaves reviewer identity unbuilt. In a cohort scored by two people, an
-  exported `no_escape_confirmed = true` cannot be attributed, and `status = ok` no longer means
-  only "the tool found an escape and flagged nothing" — it can mean "somebody said so". The reason
-  string is the only attribution, and it is free text. Adding a reviewer identity to
-  `CorrectionBase` is the fix O14 already names; D63 raises what it costs to leave out.
-- **The two halves of the definitions panel read differently.** Since chunk 10a the 24 parameter
-  definitions end in their unit alone, while every metric definition still ends in a decision id —
-  "…never from frame 0 (seconds; O5)." — because `tests/ui/review-format.test.ts` pins
-  `METRIC_DEFINITIONS[key]` to `/\(.+; [OD]\d+\)\.$/` and that file belongs to the interface
-  chunk. A user reading the panel sees this project's internal numbering on one half and not the
-  other. Smallest fix: strip the suffixes from `METRIC_DEFINITIONS`, give `METRIC_DECISIONS` an
-  explicit table as `PARAMETER_DECISIONS` now has, and re-point that assertion.
 - **`gapFilling.enabled` is not a `trials.csv` column, though `gap_fill_max_duration_s` is.** D60
   made the on/off switch the load-bearing one — filling is off by default — and the column set
   carries only the ceiling it would apply if it were on. Two cohorts differing solely in that
   setting are distinguishable by `parameters_hash` and by `parameters.json`, both of which travel
   in every export, so nothing is unreconcilable; but a reader comparing threshold columns alone
-  sees identical rows. Not fixed here because a new column means regenerating
-  `skills/barnestrack-cohort/SKILL.md` and its binding test for a value the hash already covers.
-  Smallest fix: a `gap_fill_enabled` bool column in `thresholdColumns()`
+  sees identical rows. Export schema 2 regenerated `skills/barnestrack-cohort/SKILL.md` anyway and
+  still did not add it, because the column is outside D65–D68 and a threshold column needs its own
+  decision. Smallest fix: a `gap_fill_enabled` bool column in `thresholdColumns()`
   (`src/export/rows.ts`) and `TRIAL_COLUMN_META`, plus that regeneration.
 - **Every maze nudge re-derives the whole cohort, from a step the user is not looking at.** The app
   shell refreshes every step on every store notification, and the Review step re-derives whatever
@@ -205,12 +166,6 @@ session it is found (D39).
   short run at a non-target hole that happens to reach the last frame of the clip is not
   entry-shaped and raises nothing. Only test53, whose run lasts 2.37 s and clears the minimum on
   duration alone, carries the flag on the sample data.
-- **The O7 empty search still classifies as spatial under Gawel's rules.** A trial with no
-  investigation and no target visit satisfies the spatial rule's three limits vacuously — 0 errors
-  ≤ 2, max hole distance 0 ≤ 1, 0 crossings ≤ 0 — and D58's tighter numbers do not change that.
-  The reasoning says so and the status carries the warning, but the class itself reads as a
-  confident spatial search of nothing. The fix is a fourth outcome ("not classified") for a trial
-  with an empty sequence, which is a contract change to `SearchStrategy`.
 - **The review step addresses frames by position, not by sample-table index.** The playhead is a
   position in the track and is written as a correction's `frameIndex`; event bars and seek targets
   use `EventRecord.startFrame`, a frame index, on the same axis. The two agree for every track the
@@ -264,14 +219,19 @@ session it is found (D39).
   `nose_judged_event_fraction`, so the share is visible and a proximity-weighted rule can replace
   the current one without a schema change (O16, O1).
 - **A few derived numbers still carry `NaN` rather than `null`.** D55 made `trialStart_s`,
-  `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable; `minCentroidDistance_cm` (a loss with no
-  positioned approach frame) and the kinematics fractions of an empty trial are still typed as
-  plain `number` and hold `NaN`, which JSON writes as `null`. Consumers treat non-finite and null
-  alike (`isRecorded()`) and the CSV writer emits an empty cell for either.
+  `meanSpeed_cmPerS` and `minNoseDistance_cm` nullable, and D66 made the six window measures of
+  `TrialMetrics` null on an unresolved trial. What remains: `minCentroidDistance_cm` on an event
+  with no positioned approach frame, and the quality fractions of an empty span or a video with no
+  nose-judged event (`src/analysis/quality.ts`) are still typed as plain `number` and hold `NaN`,
+  which JSON writes as `null`. Consumers treat non-finite and null alike (`isRecorded()`) and the
+  CSV writer emits an empty cell for either.
 - **Cleaning counts and the strategy reasoning are not persisted.** `n_filled_frames`, the outlier
-  indices, the unfilled-gap reasons, the trial bounds, the strategy features and reasoning and the
-  review flags live on the result of `derive()` and not in the session's `DerivedLayer`; they are
-  recomputed on load, never stored.
+  indices, the unfilled-gap reasons, the trial bounds and the strategy features and reasoning live
+  on the result of `derive()` and not in the session's `DerivedLayer`; they are recomputed on load,
+  never stored. The review flags left this list in chunk 12: `trials.csv` is written from the
+  derived layer, so D66's `review_flags` column put them there as a fifth field, which amends
+  D55's "four fields" wording. The amendment was in the plan Alex approved for the chunk and is
+  recorded in `docs/data-contracts.md` §3; its entry in `docs/decisions.md` is still to be written.
 - **`src/viz/figure-export.ts` has no automated test.** Node has neither `OffscreenCanvas` nor
   `document`, so the one module that turns a figure into a PNG cannot be exercised by Vitest; its
   test only asserts that it says so plainly rather than failing obscurely. Everything it draws is
@@ -287,18 +247,6 @@ session it is found (D39).
   is already deflated, so only the JSON and the CSVs would benefit. A fix would be a raw-deflate
   implementation, or `CompressionStream('deflate-raw')` where the browser has it, behind the same
   `zipStore` signature.
-- **`session_id` in the exports is the cohort name, not a stable identifier.** `SessionFile` (D9,
-  D47) has no id field, only the user-editable `name`, so that is what `trials.csv`, `events.csv`
-  and `quality.csv` carry in `session_id`. Renaming a cohort changes the value in every row exported
-  afterwards, and two cohorts that happen to share a name are indistinguishable in a merged
-  spreadsheet. A fix is a generated, immutable session id in the session contract, which needs a
-  schema-version bump and Alex's sign-off.
-- **`events.csv` cannot express a tracking failure.** `EventKind` admits `tracking_failure`, but D11
-  and `docs/data-contracts.md` give the exported `kind` column the domain
-  `investigation | escape_entry`, and O4 makes a loss away from any hole a finding of the quality
-  report rather than an event. `eventRows()` therefore drops those records; they survive in the
-  session file, in `quality.csv` as gaps, and in the timeline. Anyone reconciling the two files must
-  know that the event count in `events.csv` is not the length of `derived.events`.
 - **A cohort of more than six animals cannot be read from the learning curve's key in print.**
   `src/viz/learning-curve.ts` gives each animal a marker shape from a list of six and a dash
   pattern from a list of four, and in the print theme every series is black. The *lines* stay
@@ -378,9 +326,10 @@ session it is found (D39).
   `trials.csv status=review parameters_hash=ac9eef30…` and `parameters.json tracking
   .tailOpeningRadius_cm = 1`, with nothing naming the 0.8 the track was actually made with. A
   reader reconciling two cohorts by `parameters_hash` treats them as the same configuration.
-  Smallest fix: a `review_flags` column on `trials.csv` listing each video's flag codes, and a
-  `tracking_parameters_hash` column beside `parameters_hash` — both export-schema changes needing
-  Alex's sign-off and a `EXPORT_SCHEMA_VERSION` bump.
+  Half fixed by D66: `trials.csv` now carries `review_flags`, so the row says `stale_auto_layer`
+  beside `status = review` and a reader knows the track and the hash disagree. What is still
+  missing is the hash the track was actually made with: a `tracking_parameters_hash` column beside
+  `parameters_hash`, an export-schema change needing Alex's sign-off.
 - **Filled centroids enter event distances, evidence counts and the nose histogram unmarked (trust
   audit A5).** `eventPoints`, `spanDistances` and `pointUsedFor` read every `cValid` frame
   (`src/analysis/events.ts`), and a filled frame is `cValid=1` carrying the tracker's original
@@ -436,8 +385,9 @@ session it is found (D39).
   the count comes from their uncertain frames alone, so a video carrying a
   `physically_unlikely_entry` flag and no uncertain frames reads as `nothing to check` until it is
   selected, when the number corrects itself. Deriving every video to label a dropdown would cost a
-  cohort sweep per keystroke, which is the defect recorded two entries above. A fix is to keep the
-  flag list on the derived layer rather than only on the full analysis.
+  cohort sweep per keystroke, which is the defect recorded two entries above. D66 put the flag list
+  on the derived layer (`DerivedLayer.reviewFlags`), so the fix is now one read in the selector;
+  the selector does not make it yet (chunk 15).
 - **"Maze set on k of N videos" cannot tell a confirmed video from an unconfirmed one.** Per-video
   maze confirmation is session state and was deliberately not built. The count in
   `src/ui/next-step.ts` therefore treats a video as set when it carries a fitted (non-identity)
@@ -542,6 +492,70 @@ session it is found (D39).
   - Review's layout is chunk 15's.
   - For the other steps, the smallest change is a sticky `.next-step` bar. That is a layout
     decision for Alex rather than a styling fix.
+- **The interface still speaks schema 1 and the pre-D65 provenance; chunk 15 wires it.**
+  Everything D65–D68 added is in the contracts, the engine, the session store and the exports; the
+  Review step has no control for any of it and four of its readers assume the old shape. Nothing
+  in the interface sets `reviewer`, `trialType` or `targetHole`, so every session this build
+  creates has a null reviewer, every video is an acquisition trial with no target override, and
+  `no_escape_confirmed_by` and `reviewer` export blank; the only way to a probe trial or a
+  per-video target today is to edit the session file. `Keep (K)` is still disabled on anything but
+  an investigation (`src/ui/review-step.ts:528`), with an explanation at `:601` that D65 made
+  false: a confirmation now keeps the event's point, distances and evidence verbatim, so an escape
+  entry can be kept. The non-escape checkbox is still disabled beside any escape entry (`:928`),
+  though the engine now accepts a confirmation beside a non-persistent entry and raises the soft
+  `non_persistent_entry_noted` instead of a contradiction; the way through is still to delete the
+  entry. The events table labels a row "confirmed" only when `source === 'corrected'` (`:1543`),
+  which a confirmation no longer is, so a kept event reads as plain `auto` in the table — the event
+  card and the queue count were re-pointed, so the card says confirmed and the count falls. The
+  review canvas draws the map's target rather than the video's effective target (`:702`). The
+  metrics card prints `Escaped: no` for a probe trial's null (`src/ui/components/metrics-card.ts:230`),
+  and the change badge prints `null` for a null error count
+  (`src/ui/components/describe-diff.ts:196`). No control reclassifies an escape entry as a
+  tracking failure, and `physically_unlikely_entry` is still the only way such an entry reaches a
+  person. D67 asks for the entry to read as an inference "everywhere it appears", and two places
+  still state it as a fact: the detector's evidence sentence ("Escape-box entry at the target hole
+  7: …", `src/analysis/events.ts`), left alone because the migration test holds the 0.1.0 evidence
+  text verbatim, and the event card, which shows that sentence; the five-state wording in
+  `ESCAPE_ENTRY_STATE_DEFINITIONS` (`src/analysis/parameters.ts`) is tested but shown nowhere yet.
+  The smallest edits this chunk made inside the interface to keep it working are listed in the
+  chunk report, with line numbers, for chunk 15 to own.
+- **A kind change between the two detections exports as `source = corrected`.** D65 matches an
+  automatic event to a corrected one by kind and hole. A point correction that turns an automatic
+  investigation at the target into an escape entry — or an entry into an investigation — finds no
+  partner on either side, so the corrected event reads `corrected` with the correction's id and no
+  shadow, and the automatic event is simply gone. The provenance is right in the narrow sense (no
+  automatic event of that kind existed) but the shadow columns lose the automatic hole and frames,
+  and the row looks like an assertion the person never made. Smallest fix in
+  `src/analysis/match-events.ts`: a second pass over the leftovers matching on hole and overlap
+  alone, recorded as `evidence_corrected` with the old kind in the evidence sentence.
+- **A range that splits one automatic visit leaves the second fragment `source = corrected`.** Each
+  event is matched at most once, so when a "not visible here" range cuts an automatic investigation
+  in two, the fragment with the larger overlap becomes the evidence-corrected automatic event and
+  the other reads `corrected` with the range's id and no shadow. The count is right; the second
+  fragment's provenance is a human assertion it is not. `tests/analysis/match-events.test.ts` pins
+  the at-most-once rule, which is the chunk's instruction; relaxing it to one-to-many on the
+  automatic side would need a shadow per fragment and a decision.
+- **An automatic event the corrected detection no longer finds has no row anywhere.** D65 names
+  three outcomes — only in the corrected detection, in both and equal, in both and different — and
+  not the fourth: only in the automatic one. A "not visible here" range laid over an automatic
+  investigation removes it from the corrected detection, and a point nudge that merges two
+  automatic visits into one leaves the smaller unmatched; in both cases the automatic event is in
+  no row of `events.csv`, carried by no shadow column, and named by no flag. Measured with
+  `matchEvents([auto 10–14, auto 16–25], [corrected 10–25], [p@15])`: one row, shadow `{16, 25}`,
+  and the visit at 10–14 gone. The XLSX readme now says so. Smallest fix: a flag naming the
+  vanished id, or a row with `source = auto` and a "removed" marker — either is a decision.
+- **An autosave record from a newer build is kept only until the next change.** `restore()` leaves
+  a record whose schema this build cannot read where it is and starts empty, but the first change
+  in the new session autosaves over it, because there is one autosave slot per browser (the entry
+  above on that slot). The user is told nothing either way. Smallest fix: when `restore()` refuses
+  a record, say so on the Videos step and skip autosaving until the user has loaded or started a
+  session on purpose.
+- **A range trimmed by a second reviewer keeps its first reviewer's timestamp under the second's
+  name.** `eraseFrames` re-makes a trimmed range as a new object with the old `timestamp`, and the
+  store stamps every re-made entry with the session's current reviewer, so the entry's `reviewer`
+  and `timestamp` can disagree. The trim *was* the second reviewer's act, so the name is right and
+  the timestamp is stale; smallest fix is for `eraseFrames` to restamp the timestamp of a range it
+  changes.
 
 ## Excluded scope
 
@@ -555,16 +569,6 @@ session it is found (D39).
   mask is a track-contract change and a tracker change together. Until then the entry frame is the
   first frame the animal could not be seen, which on a re-encoded clip is a few frames after the
   head goes in.
-- **A trial cannot name its own target hole, and a probe trial has no type (D62).** `trials.csv`
-  now carries `target_hole`, but it is the whole session's map target: a cohort recorded with the
-  platform rotated between trials — which is Gawel's protocol — has one map and therefore one
-  target for every row. The design is recorded and not built: a per-video target override on
-  `VideoDescriptor`, and a per-video trial type (`acquisition | probe`, a probe having no escape
-  box and therefore no escape metrics). Both are session schema v2 and land together, so neither is
-  done piecemeal. D63 has since closed the other half of the probe case by hand: a trial with no
-  escape entry can be confirmed as a genuine non-escape and read `ok`, one video at a time, which
-  is not the same as a trial type the tool knows about but does remove the "flagged forever"
-  consequence.
 - **A head-in-hole is not inferred from the nose vector when the nose is lost over the hole (O1).**
   The event point is the nose when its heading confidence clears the cutoff and the centroid
   otherwise, and the hole test is a distance. When an animal puts its head into a hole the nose is

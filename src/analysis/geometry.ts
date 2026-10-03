@@ -15,6 +15,7 @@ import type {
   SimilarityTransform,
 } from '../contracts/mazeMap.js';
 import type { Parameters } from '../contracts/parameters.js';
+import { effectiveTargetHole } from '../contracts/session.js';
 import { holeCentres, pxPerCm as platformPxPerCm, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
 import { angleDifferenceDeg, normaliseDeg } from '../maze/types.js';
@@ -62,6 +63,8 @@ export interface GeometryInput {
   transform: SimilarityTransform;
   referenceResolution: Resolution;
   parameters: Parameters;
+  /** D68: this video's target hole when it overrides the map's (`VideoDescriptor.targetHole`); null or absent for the map's. */
+  targetHole?: number | null;
 }
 
 export function mazeGeometry(input: GeometryInput): MazeGeometry {
@@ -83,6 +86,15 @@ export function mazeGeometry(input: GeometryInput): MazeGeometry {
   if (!(transform.scale > 0) || !Number.isFinite(transform.scale)) {
     throw new RangeError(`maze transform scale must be positive, got ${transform.scale}`);
   }
+  const targetOverride = input.targetHole ?? null;
+  if (
+    targetOverride !== null &&
+    (!Number.isInteger(targetOverride) || targetOverride < 0 || targetOverride >= map.holes.n)
+  ) {
+    throw new RangeError(
+      `the video's target hole must name one of ${map.holes.n} holes, got ${targetOverride}`,
+    );
+  }
   const placed = transformMap(map, transform, referenceResolution);
   const pxPerCm = platformPxPerCm(placed.platform, placed.calibration.platformDiameter_cm);
   if (pxPerCm === null || !Number.isFinite(pxPerCm)) {
@@ -102,7 +114,8 @@ export function mazeGeometry(input: GeometryInput): MazeGeometry {
     holeY[c.holeIndex] = c.y;
     holes.push({ holeIndex: c.holeIndex, x: c.x, y: c.y });
   }
-  const target = placed.target.holeIndex;
+  // D68: the video's own target when it has one, else the map's — the one place this is decided
+  const target = effectiveTargetHole({ targetHole: targetOverride }, placed);
   const platform = placed.platform;
   const centreAngleDeg = normaliseDeg(
     (Math.atan2(holeY[target]! - platform.cy, holeX[target]! - platform.cx) * 180) / Math.PI,

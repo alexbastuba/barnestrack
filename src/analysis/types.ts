@@ -1,22 +1,12 @@
-/** Result types shared across the analysis modules. */
-
-export type ReviewFlagCode =
-  | 'physically_unlikely_entry'
-  | 'tracking_failure_at_hole'
-  | 'oversized_in_trial'
-  | 'orphaned_correction'
-  | 'correction_out_of_range'
-  /** The automatic layer was produced by other tracking parameters than the ones in force (D51). */
-  | 'stale_auto_layer'
-  /** A confirmed non-escape now has an escape entry beside it; the entry wins (D63). */
-  | 'no_escape_contradicted';
-
-/** Something a human should look at before trusting the trial; every one sets the status to review. */
-export interface ReviewFlag {
-  code: ReviewFlagCode;
-  /** Plain-language reason, shown in the UI. */
-  message: string;
-  frameIndex?: number;
-  eventId?: string;
-  correctionId?: string;
-}
+/**
+ * Result types shared across the analysis modules. The review flag types
+ * live in the contracts since D66 (they are persisted on the derived layer)
+ * and are re-exported here for the modules that import them from the
+ * analysis layer.
+ */
+export type { ReviewFlag, ReviewFlagCode } from '../contracts/reviewFlags.js';
+export {
+  SOFT_REVIEW_FLAG_CODES,
+  isSoftReviewFlag,
+  reviewFlagCodes,
+} from '../contracts/reviewFlags.js';
