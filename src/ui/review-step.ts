@@ -810,30 +810,30 @@ export function createReviewStep(context: AppContext): Step {
 
   // ---- toolbar ---------------------------------------------------------------------------
 
-  const noseButton = button('Nose (N)', () => setTool('nose'), { attrs: { 'aria-pressed': 'false' } });
-  const centroidButton = button('Centroid (C)', () => setTool('centroid'), { attrs: { 'aria-pressed': 'false' } });
-  const toolOffButton = button('Off (Esc)', () => setTool('off'));
-  const invalidButton = button('Mark invalid (X)', () => markInvalid());
-  const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible());
-  const escapeBoxButton = button('Entered the escape box here — ends the trial (B)', () => markEscapeBox());
+  const noseButton = button('Nose (N)', () => setTool('nose'), { class: 'btn-quiet', attrs: { 'aria-pressed': 'false' } });
+  const centroidButton = button('Centroid (C)', () => setTool('centroid'), { class: 'btn-quiet', attrs: { 'aria-pressed': 'false' } });
+  const toolOffButton = button('Off (Esc)', () => setTool('off'), { class: 'btn-quiet' });
+  const invalidButton = button('Mark invalid (X)', () => markInvalid(), { class: 'btn-secondary' });
+  const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible(), { class: 'btn-secondary' });
+  const escapeBoxButton = button('Entered the escape box here — ends the trial (B)', () => markEscapeBox(), { class: 'btn-secondary' });
   const escapeBoxHint = el('span', {
     id: uniqueId('review-escape-hint'),
     class: 'hint',
     text: 'The trial ends at this frame and total latency is stamped here, so place it on the frame the animal was last seen going in.',
   });
   escapeBoxButton.setAttribute('aria-describedby', escapeBoxHint.id);
-  const addEventButton = button('Add investigation from here… (A)', () => addEventHere());
-  const deleteEventButton = button('Delete event (Delete)', () => deleteSelected());
+  const addEventButton = button('Add investigation from here… (A)', () => addEventHere(), { class: 'btn-secondary' });
+  const deleteEventButton = button('Delete event (Delete)', () => deleteSelected(), { class: 'btn-secondary' });
   const holeSelect = el('select', { id: uniqueId('review-hole'), attrs: { 'aria-label': 'Hole of the selected event' } });
   holeSelect.addEventListener('change', () => relabelSelected(Number(holeSelect.value)));
-  const edgeStartButton = button('Start edge (S)', () => selectEdge('start'), { attrs: { 'aria-pressed': 'false' } });
-  const edgeEndButton = button('End edge (D)', () => selectEdge('end'), { attrs: { 'aria-pressed': 'false' } });
-  const trialStartButton = button('Set trial start here (T)', () => trialStartHere());
+  const edgeStartButton = button('Start edge (S)', () => selectEdge('start'), { class: 'btn-quiet', attrs: { 'aria-pressed': 'false' } });
+  const edgeEndButton = button('End edge (D)', () => selectEdge('end'), { class: 'btn-quiet', attrs: { 'aria-pressed': 'false' } });
+  const trialStartButton = button('Set trial start here (T)', () => trialStartHere(), { class: 'btn-secondary' });
   const revertTrialStartButton = button('Revert trial start', () => {
     const layer = layerOrNull();
     if (!layer) return;
     commit(revertTrialStart(layer), 'Trial start reverted to automatic');
-  });
+  }, { class: 'btn-quiet' });
   /*
    * D63: "the animal never entered the escape box", asserted by a person.
    *
@@ -950,7 +950,7 @@ export function createReviewStep(context: AppContext): Step {
             : 'Ticking this says the animal genuinely never went in, which is what lets the trial read ok.';
   }
 
-  const playButton = button('Play / pause (Space)', () => togglePlay());
+  const playButton = button('Play / pause (Space)', () => togglePlay(), { class: 'btn-quiet' });
 
   // A group, not a toolbar: the arrows step frames here, they do not move between the buttons.
   const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools' } }, [
@@ -1213,15 +1213,15 @@ export function createReviewStep(context: AppContext): Step {
    */
   const queueCount = el('strong', { class: 'queue-count', attrs: { role: 'status' } });
   const queuePrevious = button('Previous flagged', () => goToQueued(-1), {
-    class: 'queue-step',
+    class: 'btn-quiet queue-step',
     attrs: { 'aria-keyshortcuts': '[' },
   });
   const queueNext = button('Next flagged', () => goToQueued(1), {
-    class: 'queue-step',
+    class: 'btn-quiet queue-step',
     attrs: { 'aria-keyshortcuts': ']' },
   });
   const keepButton = button('Keep (K)', () => keepSelected(), {
-    class: 'queue-step',
+    class: 'btn-secondary queue-step',
     attrs: { 'aria-keyshortcuts': 'K' },
   });
   const currentEventLine = el('p', { class: 'current-event-line' });
@@ -1528,7 +1528,7 @@ export function createReviewStep(context: AppContext): Step {
             renderEventsTable();
             renderQueue();
             timeline.surface.focus(); // the table was rebuilt under this button
-          }, { class: 'metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
+          }, { class: 'btn-quiet metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
         ]),
         el('td', { text: ev.holeIndex === null ? '—' : String(ev.holeIndex) }),
         el('td', { text: ev.isTarget ? 'target' : '' }),
@@ -1601,7 +1601,7 @@ export function createReviewStep(context: AppContext): Step {
                 seek(f, true);
                 timeline.surface.focus(); // the rows were rebuilt under this button
               },
-              { class: 'metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } },
+              { class: 'btn-quiet metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } },
             ),
           ]),
           el('td', { text: frame.t_s.toFixed(3) }),
@@ -1656,7 +1656,7 @@ export function createReviewStep(context: AppContext): Step {
                     seek(frame, true);
                     timeline.surface.focus();
                   },
-                  { attrs: { 'aria-label': `Seek to frame ${frame}` } },
+                  { class: 'btn-quiet', attrs: { 'aria-label': `Seek to frame ${frame}` } },
                 )
               : null,
             ' ',
@@ -1670,7 +1670,7 @@ export function createReviewStep(context: AppContext): Step {
               }
               // The list was rebuilt under this button; keep the keyboard in the step.
               timeline.surface.focus();
-            }),
+            }, { class: 'btn-quiet' }),
           ]);
         }),
     );

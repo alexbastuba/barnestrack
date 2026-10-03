@@ -380,3 +380,55 @@ under a comment saying the Review step is a placeholder until chunk 6. Chunk 6 h
 step with the most markup in the application is the one step never scanned. Adding it is not a
 one-line change — the Review step needs a video selected and an analysis on screen before a scan
 means anything, and whatever it reports will need triaging against `docs/known-limitations.md`.
+
+### Chunk 13 — the visual pass (D70)
+
+**How it was run.** `npm run build && npx tsx scripts/screenshots.ts` serves `dist/` with
+`vite preview` on port 4317 and drives the installed Google Chrome. Each combination gets a fresh
+context, loads the example cohort through "Load the results only", and takes each step from the
+top of the page.
+- Sizes: 1366 × 768 and 1400 × 866, each at 100 % and 200 %.
+- 200 % is real browser zoom, not a scaled picture: the CSS viewport is halved (683 × 384 and
+  700 × 433) at `deviceScaleFactor: 2`.
+- It wrote 16 PNGs and `summary.json` to the untracked `notes/screens/chunk-13/`. It also measured
+  the empty Videos step before the cohort was loaded.
+
+**What was checked, per step and combination:**
+- whether the page scrolls sideways;
+- every visible primary, whether it is enabled, and whether it sits wholly inside the first screen;
+- every visible button with zero or more than one tier class (the `src/demo/` panel is excluded,
+  see `docs/known-limitations.md`);
+- an axe `color-contrast` scan of the whole page, which also covers the Review step that the smoke
+  spec's axe loop skips.
+
+**Measured:**
+- No horizontal scroll at any of the 20 measurements.
+- No untiered and no multi-tier button.
+- Zero contrast failures.
+- `npx playwright test tests/browser/app-smoke.spec.ts` after `npm run build` was unchanged from
+  BASE: 9 passed, 1 skipped (the demo flow, already skipped), and only the moderate `region`
+  finding on `.stepper`.
+
+**Primaries at 1366 × 768, 100 %** (the cohort's done state, so Track all is disabled):
+
+| Step | Primary rendered | On the first screen? | Horizontal scroll |
+|---|---|---|---|
+| Videos | Next step → Maze, at y = 1725 px | no | no |
+| Maze | Next step → Track, at y = 2631 px | no | no |
+| Track | Track all untracked (disabled, unfilled); Next step → Review & Export, at y = 1191 px | no | no |
+| Review | Export bundle (.zip), at y = 11 022 px of an 11 806 px page | no | no |
+
+- **Empty Videos:** no primary at all. That is the recorded known limitation, not an oversight.
+- **Other sizes:** 1400 × 866 gives the same answers. At 200 % the header and the status banner
+  alone fill the first screen, so no step content is visible without scrolling.
+- **Review:** its vertical layout is chunk 15's work and is recorded here, not changed.
+
+**Looked at by eye:**
+- Every corner is square.
+- The three tiers are distinguishable in the screenshots: a filled accent primary, a 1 px outlined
+  secondary, accent text for quiet.
+- A disabled Track all reads as unavailable rather than as the main action, and the queue line
+  beside it says "3 of 3 videos tracked".
+- The export manifest table: names left, counts right in tabular numerals, contents left. The
+  64-character hash breaks inside the line at 200 % rather than widening the page.
+- Status badges keep their glyph and word.

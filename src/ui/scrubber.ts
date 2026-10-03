@@ -60,9 +60,9 @@ export class Scrubber {
     this.readout = el('span', { class: 'frame-readout' });
 
     this.element = el('div', { class: 'scrubber' }, [
-      button('Previous frame', () => this.step(-1), { class: 'step-button' }),
+      button('Previous frame', () => this.step(-1), { class: 'btn-quiet step-button' }),
       this.range,
-      button('Next frame', () => this.step(1), { class: 'step-button' }),
+      button('Next frame', () => this.step(1), { class: 'btn-quiet step-button' }),
       el('div', { class: 'field frame-field' }, [
         el('label', { text: 'Frame', attrs: { for: this.number.id } }),
         this.number,

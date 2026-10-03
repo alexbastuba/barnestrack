@@ -505,6 +505,43 @@ session it is found (D39).
 - **CI's browser-smoke job is not a required check.** It fails the workflow on a red spec, but
   whether a red run blocks a merge is a GitHub branch-protection setting, not a file in this
   repository. It has to be set on the repository by its owner.
+- **The empty Videos step has no primary action (D70).** D70 gives each step one filled primary,
+  its main action. Videos' intake action is "Choose a folder", which is secondary. The reason is
+  the shared Next-step button: it becomes primary once a video is in (`tests/ui/videos-step.test.ts`
+  pins that), and a primary intake would leave two filled primaries on the loaded step. So until a
+  video is loaded, the Videos step shows no primary. The file input and the drop zone carry the
+  intake.
+  - Track is consistent by a different route: Track all is primary and is disabled exactly when no
+    video is left to track, and a disabled primary is drawn unfilled.
+  - One state shows no filled primary at all on Track: a video that cannot be tracked (detached, or
+    the maze not placed on it) is neither untracked nor analysed, so Track all and Next step are
+    both disabled.
+  - Smallest fix, needing logic outside chunk 13's class-only rule: let the intake button hand its
+    tier to Next step when `videosMissing()` becomes null.
+- **The example-cohort panel's buttons carry no tier class.** `src/demo/example-cohort-ui.ts` is
+  outside chunk 13's files. Its buttons render with the bare `button` rule, which is the secondary
+  look, and the consent dialog's confirm keeps the legacy `primary` class, which the stylesheet
+  aliases to `btn-primary`. They look right, but a reader auditing tiers by class finds "Load
+  example cohort", "Load the results only", Cancel and the replace confirmation untiered.
+  Smallest fix: `btn-secondary` on the first three and `btn-secondary danger` on the confirmation.
+  Keep `primary` beside `btn-primary` on the dialog's confirm, because `.example-dialog .primary`
+  is what `tests/ui/example-cohort-dialog.test.ts` and `tests/browser/app-smoke.spec.ts` click.
+- **Two disabled buttons do not say why on screen (D70).**
+  - "Save session file" is disabled while the session has no videos, with no sentence beside it.
+  - "Keep (K)" gives its reason for refusing an escape entry or a tracking failure only as a
+    `title` tooltip, which a keyboard or touch user never sees.
+  - The other disabled controls all have a reason in a line next to them: Track all ("3 of 3 videos
+    tracked"), Previous/Next flagged (the queue count), Export map (the scale readout), Save PNG
+    (the figure note) and the Review tools (the not-attached note).
+  - Adding the two sentences is a text change in `app.ts` and `review-step.ts`, outside chunk 13.
+- **No step's primary is on the first screen (D70 check, chunk 13).** The Next-step button sits at
+  the foot of each step's panel, which is 1191–2631 px down at 1366 × 768. Review's Export is at
+  about 11 000 px of an 11 800 px page. At 200 % zoom the header and the status banner alone fill
+  the first screen. Nothing is unreachable — every control is in tab order and nothing scrolls
+  sideways — but "one thing to press" is never in view.
+  - Review's layout is chunk 15's.
+  - For the other steps, the smallest change is a sticky `.next-step` bar. That is a layout
+    decision for Alex rather than a styling fix.
 
 ## Excluded scope
 

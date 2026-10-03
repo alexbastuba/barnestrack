@@ -209,7 +209,9 @@ export function createReviewFigures(
   const cohortHeading = el('h4', { text: 'The cohort' });
   const cohortGrid = el('div', { class: 'figure-grid' });
   const missingLine = el('p', { class: 'figure-missing' });
-  const trackButton = button('Go to the Track step', () => callbacks.onGoToTrack());
+  const trackButton = button('Go to the Track step', () => callbacks.onGoToTrack(), {
+    class: 'btn-secondary',
+  });
   const missing = el('div', { class: 'figure-missing-block' }, [missingLine, trackButton]);
 
   const cards: Card[] = [];
@@ -221,7 +223,7 @@ export function createReviewFigures(
     const table = el('div', { class: 'table-scroll' });
     const save = button(`Save PNG (${exportScale}×)`, () => {
       void savePng(figure);
-    });
+    }, { class: 'btn-secondary' });
     // The `<figure>` holds only the canvas and its caption, which HTML requires
     // to be that element's first or last child; the heading, the note, the table
     // and the button belong to the card around it.

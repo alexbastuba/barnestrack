@@ -338,7 +338,7 @@ export function createQualityPanel(
                 callbacks.onAnnounce?.(`Moved to frame ${gap.startFrame}, the start of this gap.`);
               },
               {
-                class: 'seek-cell',
+                class: 'btn-quiet seek-cell',
                 attrs: { 'aria-label': `Go to frame ${gap.startFrame}, the start of this gap` },
               },
             ),

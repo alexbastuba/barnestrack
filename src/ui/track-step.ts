@@ -108,12 +108,12 @@ export function createTrackStep(context: AppContext): Step {
     for (const id of ids) runner.enqueue(id);
     context.announce(`Queued ${ids.length} video${ids.length === 1 ? '' : 's'} for tracking.`);
   });
-  trackAllButton.className = 'primary';
+  trackAllButton.className = 'btn-primary';
 
   const cancelAllButton = button('Cancel all', () => {
     runner.cancelAll();
     context.announce('Cancelling the tracking queue.');
-  });
+  }, { class: 'btn-secondary' });
 
   const queueState = el('p', { class: 'queue-state', attrs: { 'aria-live': 'off' } });
 
@@ -234,12 +234,12 @@ function createVideoCard(context: AppContext, videoId: VideoId, runner: Tracking
 
   const trackButton = button('Track', () => {
     runner.enqueue(videoId);
-  });
+  }, { class: 'btn-quiet' });
   // So a disabled button says why, not just that it is disabled.
   trackButton.setAttribute('aria-describedby', blockedNote.id);
   const cancelButton = button('Cancel', () => {
     runner.cancel(videoId);
-  });
+  }, { class: 'btn-quiet' });
 
   const progressText = el('p', {
     class: 'track-progress-text',
@@ -706,7 +706,7 @@ function createParameterPanel(
       `Expected body area set to ${learned.area.toFixed(1)} cm², learned from ${learned.filename}.`,
     );
     refresh();
-  });
+  }, { class: 'btn-secondary' });
 
   rows.push(
     el('div', { class: 'field track-param' }, [
@@ -740,7 +740,7 @@ function createParameterPanel(
     onChange();
     refresh();
     context.announce('Tracking parameters reset to their defaults.');
-  });
+  }, { class: 'btn-secondary' });
 
   const panel = disclosure('Tracking parameters', [
     el('p', {

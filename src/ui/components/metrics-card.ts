@@ -300,7 +300,7 @@ export function createMetricsCard(
         );
       },
       {
-        class: 'metric-value',
+        class: 'btn-quiet metric-value',
         attrs: { 'aria-label': `${spec.name} ${spec.value}, go to frame ${frame}` },
       },
     );
@@ -352,7 +352,7 @@ export function createMetricsCard(
     problem.hidden = true;
     callbacks.onOverride(select.value as SearchStrategy, text);
     callbacks.onAnnounce?.(`Strategy overridden to ${select.value}.`);
-  });
+  }, { class: 'btn-secondary' });
 
   const revert = button('Revert to automatic', () => {
     const id = current.strategyOverrideId;
@@ -361,7 +361,7 @@ export function createMetricsCard(
     callbacks.onAnnounce?.(
       `Override removed; the automatic classification ${current.analysis.strategy.autoStrategy} applies again.`,
     );
-  });
+  }, { class: 'btn-quiet' });
 
   const overrideControls = el('div', { class: 'strategy-override' }, [
     el('div', { class: 'field' }, [

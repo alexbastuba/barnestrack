@@ -67,7 +67,7 @@ export function createVideosStep(context: AppContext): Step {
 
   const folderButton = button('Choose a folder', () => {
     void pickDirectoryFiles().then((files) => ingest(files));
-  });
+  }, { class: 'btn-secondary' });
 
   const pickers = el('div', { class: 'pickers' }, [
     el('div', { class: 'field' }, [
@@ -310,7 +310,7 @@ export function createVideosStep(context: AppContext): Step {
         render();
         context.showStep('videos');
       },
-      { class: 'remove' },
+      { class: 'btn-quiet remove' },
     );
 
     const root = el('li', { class: 'video-card' }, [

@@ -674,7 +674,7 @@ export function createMazeStep(context: AppContext): Step {
       rimPoints = [];
       context.announce(mode === 'idle' ? 'Action cancelled.' : MODE_PROMPT[mode]);
       render();
-    });
+    }, { class: 'btn-quiet' });
     control.dataset['mode'] = target;
     return control;
   }
@@ -682,7 +682,7 @@ export function createMazeStep(context: AppContext): Step {
   function nudgePad(label: string): HTMLElement {
     const key = (text: string, name: string, dx: number, dy: number) =>
       button(text, () => nudge(dx * nudgeStep(), dy * nudgeStep()), {
-        class: 'nudge',
+        class: 'btn-quiet nudge',
         attrs: { 'aria-label': name },
       });
     return el('div', { class: 'nudge-pad', attrs: { role: 'group', 'aria-label': label } }, [
@@ -744,7 +744,7 @@ export function createMazeStep(context: AppContext): Step {
     canvasView.viewport.focus({ preventScroll: true });
     context.announce('Platform selected. Arrow keys nudge it; hold Shift for 10 pixels.');
     render();
-  });
+  }, { class: 'btn-quiet' });
 
   const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20.' }, (v) => {
     const n = Math.round(v);
@@ -836,7 +836,7 @@ export function createMazeStep(context: AppContext): Step {
     updateMap((m) => ({ ...m, holes: { ...m.holes, offsets: [] } }));
     context.announce('Every hole is back on the generated ring.');
     render();
-  });
+  }, { class: 'btn-quiet' });
 
   const diameterField = numberField(
     'Platform diameter (cm)',
@@ -854,10 +854,12 @@ export function createMazeStep(context: AppContext): Step {
   );
   const scaleReadout = el('p', { class: 'scale-readout' });
 
-  const exportButton = button('Export map', exportMap);
-  const importButton = button('Import map', () => void importMap());
+  const exportButton = button('Export map', exportMap, { class: 'btn-secondary' });
+  const importButton = button('Import map', () => void importMap(), { class: 'btn-secondary' });
   const applySelect = el('select', { id: 'maze-apply-from' });
-  const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value));
+  const applyButton = button('Apply map from this video', () => applyMapFrom(applySelect.value), {
+    class: 'btn-secondary',
+  });
 
   const modeStatus = el('p', { class: 'mode-status' });
   /**
