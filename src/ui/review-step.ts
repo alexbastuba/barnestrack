@@ -138,6 +138,10 @@ const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 /** Frames either side of the playhead in the frames table. */
 const FRAME_TABLE_RADIUS = 7;
+/** The frames table's numeric columns, right-aligned on the tabular figures (`.num`). */
+const FRAME_NUMERIC_COLUMNS: ReadonlySet<string> = new Set(['t (s)', 'Centroid x', 'Centroid y', 'Nose x', 'Nose y', 'Nose conf.']);
+/** The events table's numeric columns. */
+const EVENT_NUMERIC_COLUMNS: ReadonlySet<string> = new Set(['Hole', 'Frames', 'Start (s)', 'Duration (s)', 'Min nose (cm)', 'Min centroid (cm)']);
 
 function newMeta(): CorrectionMeta {
   const uuid =
@@ -1452,7 +1456,7 @@ export function createReviewStep(context: AppContext): Step {
         el('thead', {}, [
           el('tr', {}, [
             ...['Frame', 't (s)', 'State', 'Reason', 'Centroid x', 'Centroid y', 'Centroid source', 'Nose x', 'Nose y', 'Nose conf.', 'Nose source', 'Event', 'Corrections'].map((text) =>
-              el('th', { text, attrs: { scope: 'col' } }),
+              el('th', { text, class: FRAME_NUMERIC_COLUMNS.has(text) ? 'num' : undefined, attrs: { scope: 'col' } }),
             ),
           ]),
         ]),
@@ -1752,7 +1756,7 @@ export function createReviewStep(context: AppContext): Step {
           el('thead', {}, [
             el('tr', {}, [
               ...['Kind', 'Hole', 'Target', 'Frames', 'Start (s)', 'Duration (s)', 'Point used', 'Min nose (cm)', 'Min centroid (cm)', 'Source', 'Flag', 'Evidence'].map((text) =>
-                el('th', { text, attrs: { scope: 'col' } }),
+                el('th', { text, class: EVENT_NUMERIC_COLUMNS.has(text) ? 'num' : undefined, attrs: { scope: 'col' } }),
               ),
             ]),
           ]),
@@ -1793,15 +1797,15 @@ export function createReviewStep(context: AppContext): Step {
               { class: 'btn-quiet metric-value', attrs: { 'aria-label': `Seek to frame ${f}` } },
             ),
           ]),
-          el('td', { text: frame.t_s.toFixed(3) }),
+          el('td', { class: 'num', text: frame.t_s.toFixed(3) }),
           el('td', { text: STATE_WORDS[frame.detectionState] }),
           el('td', { text: frame.reason }),
-          el('td', { text: frame.centroid.valid ? frame.centroid.x.toFixed(1) : '—' }),
-          el('td', { text: frame.centroid.valid ? frame.centroid.y.toFixed(1) : '—' }),
+          el('td', { class: 'num', text: frame.centroid.valid ? frame.centroid.x.toFixed(1) : '—' }),
+          el('td', { class: 'num', text: frame.centroid.valid ? frame.centroid.y.toFixed(1) : '—' }),
           el('td', { text: frame.centroid.source }),
-          el('td', { text: frame.nose.valid ? frame.nose.x.toFixed(1) : '—' }),
-          el('td', { text: frame.nose.valid ? frame.nose.y.toFixed(1) : '—' }),
-          el('td', { text: frame.nose.valid ? frame.noseHeadingConfidence.toFixed(2) : '—' }),
+          el('td', { class: 'num', text: frame.nose.valid ? frame.nose.x.toFixed(1) : '—' }),
+          el('td', { class: 'num', text: frame.nose.valid ? frame.nose.y.toFixed(1) : '—' }),
+          el('td', { class: 'num', text: frame.nose.valid ? frame.noseHeadingConfidence.toFixed(2) : '—' }),
           el('td', { text: frame.nose.source }),
           el('td', { text: ev ? `${ev.wording.toLowerCase()} ${ev.label}${ev.corrected ? ' (user)' : ''}` : '' }),
           el('td', { text: marks.map((m) => describeCorrection(m)).join('; ') }),

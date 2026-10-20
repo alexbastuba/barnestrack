@@ -186,8 +186,10 @@ describe('the network-consent dialog', () => {
     expect(store.videos.every((video) => !store.isAttached(video.id))).toBe(true);
     const outcome = said[said.length - 1]!;
     expect(outcome).toContain('Could not reach the sample-data repository');
-    // One sentence, not the same one three times over (D37).
+    // One sentence, not the same one three times over (D37), naming every clip that failed.
     const occurrences = outcome.split('Could not reach the sample-data repository').length - 1;
     expect(occurrences).toBe(1);
+    for (const clip of SAMPLE_CLIPS) expect(outcome).toContain(clip.filename);
+    expect(outcome).toContain('download test50.mp4, test51.mp4 and test53.mp4 yourself and drop them');
   });
 });

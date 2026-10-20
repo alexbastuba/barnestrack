@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PARAMETERS,
+  ESCAPE_ENTRY_STATE_DEFINITIONS,
   PARAMETER_DEFINITIONS,
   parameterAt,
   parameterPaths,
@@ -128,6 +129,24 @@ describe('every parameter is on screen with its definition', () => {
     expect(slider.value).toBe('180');
     expect(number.value).toBe('180');
     expect(slider.getAttribute('aria-label')).toBe('Trial cutoff slider');
+  });
+});
+
+describe('the escape-entry block (D67)', () => {
+  it('says how each of the five states enters latency and errors, in the analysis module’s words', () => {
+    mount();
+    const block = container.querySelector('details.param-block[data-block="escapeEntry"]')!;
+    const states = block.querySelector('dl.escape-entry-states')!;
+    expect([...states.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual([
+      'Inferred escape entry',
+      'Escape entry — confirmed',
+      'Escape entry — marked by you',
+      'Tracking loss — reclassified by you',
+      'Rejected (deleted)',
+    ]);
+    const text = states.textContent ?? '';
+    for (const sentence of Object.values(ESCAPE_ENTRY_STATE_DEFINITIONS)) expect(text).toContain(sentence);
+    expect(text).not.toMatch(/\((D|O)\d/);
   });
 });
 

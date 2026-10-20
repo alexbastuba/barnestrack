@@ -226,14 +226,18 @@ export function createQualityPanel(
         el('h4', { text: 'What the strip is drawing' }),
         el('p', { class: 'mirror-summary', text: description.summary }),
         scrollRegion(description.title, [
-          el('table', { class: 'mirror-table' }, [
+          el('table', { class: 'mirror-table has-num' }, [
             el('caption', { text: description.title }),
             el('thead', {}, [
               el(
                 'tr',
                 {},
-                description.columns.map((column) =>
-                  el('th', { text: column, attrs: { scope: 'col' } }),
+                description.columns.map((column, i) =>
+                  el('th', {
+                    text: column,
+                    class: description.rows.some((row) => typeof row[i] === 'number') ? 'num' : undefined,
+                    attrs: { scope: 'col' },
+                  }),
                 ),
               ),
             ]),
@@ -248,6 +252,7 @@ export function createQualityPanel(
                     i === 0
                       ? el('th', { text: String(cell ?? '—'), attrs: { scope: 'row' } })
                       : el('td', {
+                          class: typeof cell === 'number' ? 'num' : undefined,
                           text:
                             cell === null
                               ? '—'
@@ -280,13 +285,13 @@ export function createQualityPanel(
         text: `How confident the tracker was about which end of the body is the nose, over the ${formatCount(total)} frames of the trial window. Events use the nose only above the cutoff.`,
       }),
       scrollRegion('Nose-heading confidence', [
-        el('table', { class: 'mirror-table' }, [
+        el('table', { class: 'mirror-table has-num' }, [
           el('caption', { text: 'Nose-heading confidence' }),
           el('thead', {}, [
             el('tr', {}, [
               el('th', { text: 'Confidence', attrs: { scope: 'col' } }),
-              el('th', { text: 'Frames', attrs: { scope: 'col' } }),
-              el('th', { text: 'Share', attrs: { scope: 'col' } }),
+              el('th', { text: 'Frames', class: 'num', attrs: { scope: 'col' } }),
+              el('th', { text: 'Share', class: 'num', attrs: { scope: 'col' } }),
             ]),
           ]),
           el(
@@ -298,8 +303,8 @@ export function createQualityPanel(
                   text: `${bin.min.toFixed(1)}–${bin.max.toFixed(1)}`,
                   attrs: { scope: 'row' },
                 }),
-                el('td', { text: formatCount(bin.count) }),
-                el('td', { text: formatPercent(total === 0 ? Number.NaN : bin.count / total) }),
+                el('td', { class: 'num', text: formatCount(bin.count) }),
+                el('td', { class: 'num', text: formatPercent(total === 0 ? Number.NaN : bin.count / total) }),
               ]),
             ),
           ),

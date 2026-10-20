@@ -1042,6 +1042,22 @@ label {
   text-align: left;
 }
 
+/*
+ * A table that marks its numeric cells (`has-num`): text cells read left, as
+ * text does, and only the `.num` cells — and their headers — right-align on
+ * the tabular figures. Opt-in, so a table that has not marked its numbers yet
+ * keeps today's all-right alignment rather than losing it.
+ */
+.mirror-table.has-num td,
+.mirror-table.has-num thead th {
+  text-align: left;
+}
+
+.mirror-table.has-num td.num,
+.mirror-table.has-num thead th.num {
+  text-align: right;
+}
+
 .mirror-table tr.is-target th,
 .mirror-table tr.is-target td {
   font-weight: 700;

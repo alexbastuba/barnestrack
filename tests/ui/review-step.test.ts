@@ -696,6 +696,18 @@ describe('one selection, from every route (§1)', () => {
     expect(harness.step.body.querySelector('#review-selected .event-evidence')).not.toBeNull();
   });
 
+  it('right-aligns only the numbers in the events table (.num)', () => {
+    const table = harness.step.body.querySelector('#review-events-mirror table')!;
+    expect(table.classList.contains('has-num')).toBe(true);
+    const headers = [...table.querySelectorAll('thead th')].map((th) => [th.textContent, th.classList.contains('num')]);
+    expect(headers).toContainEqual(['Start (s)', true]);
+    expect(headers).toContainEqual(['Point used', false]);
+    expect(headers).toContainEqual(['Source', false]);
+    const cells = table.querySelector('tbody tr')!.querySelectorAll('td');
+    expect(cells[3]!.classList.contains('num')).toBe(true); // start (s)
+    expect(cells[5]!.classList.contains('num')).toBe(false); // point used
+  });
+
   it('E selects the same way, and Shift+E goes back', () => {
     press(harness.step, 'e');
     const first = selectionSeen(harness.step);

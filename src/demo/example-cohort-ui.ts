@@ -28,7 +28,9 @@ import {
   SAMPLE_CLIP_FILENAME,
   attachFetchedClip,
   fetchSampleClip,
+  mergeNetworkFailures,
   type FetchProgress,
+  type NetworkFailure,
 } from './fetch-sample-clip.js';
 
 export const LOAD_BUTTON_LABEL = 'Load example cohort';
@@ -269,6 +271,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   async function fetchAllClips(): Promise<void> {
     let attachedCount = 0;
     const failures: string[] = [];
+    const networkFailures: NetworkFailure[] = [];
 
     for (const clip of SAMPLE_CLIPS) {
       const descriptor = store.videos.find((video) => video.filename === clip.filename);
@@ -293,7 +296,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
         },
       });
       if (result.kind === 'failed') {
-        failures.push(result.message);
+        if (result.network) networkFailures.push(result.network);
+        else failures.push(result.message);
         continue;
       }
       const attached = await attachFetchedClip(store, result.file);
@@ -302,9 +306,9 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     }
 
     const verified = `${attachedCount} of ${SAMPLE_CLIPS.length} clips verified and attached`;
-    // Distinct sentences only: offline, all three fail the same way, and three
-    // copies of one sentence is a 470-character announcement (D37).
-    const distinct = [...new Set(failures)];
+    // One sentence per kind of network failure, naming every clip that failed that way, then
+    // any other failure once: three copies of one sentence is a 470-character announcement (D37).
+    const distinct = [...mergeNetworkFailures(networkFailures), ...new Set(failures)];
     say(
       distinct.length === 0
         ? `${verified} — frames and corrections are available.`
