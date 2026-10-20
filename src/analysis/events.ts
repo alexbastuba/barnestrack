@@ -870,10 +870,14 @@ export function applyEventCorrections(
         source: 'corrected',
         confirmed: false,
         evidence: `Reclassified by the user (correction ${c.id}) from an escape entry to a tracking failure: the animal was lost here, not in the escape box, so these frames stay a gap and the trial, its latency and its errors are computed without an entry. The entry's reading was: ${target.evidence}`,
-        autoShadow: target.autoShadow ?? {
-          holeIndex: target.holeIndex,
-          startFrame: target.startFrame,
-          endFrame: target.endFrame,
+        autoShadow: {
+          ...(target.autoShadow ?? {
+            holeIndex: target.holeIndex,
+            startFrame: target.startFrame,
+            endFrame: target.endFrame,
+          }),
+          // D71: the shadow names the automatic kind once the live kind differs from it
+          kind: target.autoShadow?.kind ?? target.kind,
         },
       };
       events = events.map((x) => (x === target ? reclassified : x));

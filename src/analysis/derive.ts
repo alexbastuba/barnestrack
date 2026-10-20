@@ -148,7 +148,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       endFrame: detected.endFrame,
       endReason: detected.endReason,
     });
-    return matchEvents(autoOnly.events, detected.events, spans);
+    return matchEvents(autoOnly.events, detected.events, spans).events;
   };
 
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);

@@ -45,6 +45,13 @@ export interface EventRecord {
   correctionIds: string[];
   /** A human looked at this event and kept it as it stands (D64, D67). The values are the automatic ones. */
   confirmed: boolean;
-  /** The automatic values, kept alongside a correction so nothing is overwritten silently. D11, D65. */
-  autoShadow?: Pick<EventRecord, 'holeIndex' | 'startFrame' | 'endFrame'>;
+  /**
+   * The automatic values, kept alongside a correction so nothing is overwritten
+   * silently (D11, D65). `kind` is present when the automatic kind differs from
+   * the event's — a correction changed the kind between the two detections, or
+   * a person reclassified an entry as a tracking failure (D67, D71) — and absent
+   * when the kinds agree. The CSV shadow columns carry hole and frames only;
+   * the evidence sentence names the automatic kind.
+   */
+  autoShadow?: Pick<EventRecord, 'holeIndex' | 'startFrame' | 'endFrame'> & { kind?: EventKind };
 }

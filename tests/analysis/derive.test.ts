@@ -1124,7 +1124,8 @@ describe('the escape entry as an inference (D67)', () => {
     expect(failure.source).toBe('corrected');
     expect(failure.holeIndex).toBe(entry.holeIndex);
     expect(failure.startFrame).toBe(entry.startFrame);
-    expect(failure.autoShadow).toEqual({ holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame });
+    // D71: the shadow names the automatic kind, since the live kind no longer is it
+    expect(failure.autoShadow).toEqual({ holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame, kind: 'escape_entry' });
     expect(failure.evidence).toContain('Reclassified by the user');
     // the lost frames are still a gap in the cleaned track
     const lost = d.cleanedTrack.filter((f) => f.frameIndex >= entry.startFrame && f.frameIndex <= entry.endFrame && !f.centroid.valid);
