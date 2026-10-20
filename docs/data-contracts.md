@@ -41,7 +41,8 @@ may carry `kind`; the two detections are matched in two passes (§5), so a kind 
 claim with the automatic event as its shadow; an automatic event the corrected detection no longer
 finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`;
 `escaped` is `null` on an unresolved acquisition row as well as on every probe row, and `false`
-is asserted only for a resolved acquisition trial with no escape entry.
+is asserted only for a resolved acquisition trial with no escape entry; `parameters.json` carries
+`toolVersion` and `parametersHash` beside the set (§7).
 
 ## Conventions used throughout
 
@@ -419,6 +420,10 @@ canonical JSON of the value: object keys sorted by UTF-16 code unit, arrays in t
 whitespace, scalars exactly as `JSON.stringify` writes them, `undefined` properties dropped, hashed
 as UTF-8 bytes. The tracking hash keys the `auto` layer; the full hash keys the `derived` layer and
 stamps every export. Any other implementation (chunk 4's auto-layer writer) must match byte for byte.
+`hashParameters` first drops the two provenance keys a `parameters.json` carries beside the set
+(`PARAMETERS_PROVENANCE_KEYS`: `toolVersion` and `parametersHash`, D71); no `Parameters` value
+inside the app has them, so no stored hash changes, and a `parameters.json` read back hashes to
+the hash it names.
 
 ### Derived-layer definitions
 
@@ -550,6 +555,13 @@ clusters on them (D8, D30).
 Three tidy CSVs, `snake_case` names with unit suffixes, no comment rows, plus `parameters.json`, the
 session file, and one XLSX with the same sheets plus `parameters` and `readme`. Every row carries
 `tool_version`, `schema_version` and `parameters_hash` (`EXPORT_SCHEMA_VERSION = 2`).
+
+`parameters.json` (`PARAMETERS_FILE_NAME` in `src/export`) is the session's parameter set with two
+provenance keys first: `toolVersion` (the build that wrote the export, as on every row) and
+`parametersHash` (the hash the set hashes to; D71, additive, the export schema stays 2). An export
+made before any analysis ran holds the literal `{}`. `hashParameters` drops the two keys before
+hashing (§6), so the file read back hashes to the hash it names and to every row's
+`parameters_hash`.
 
 **Why 2.** Export schema 1 absorbed two additive columns (`target_hole`, D62; `no_escape_confirmed`,
 D63) without a bump, on the argument that every consumer keys on header names and `tool_version`

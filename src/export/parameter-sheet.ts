@@ -97,7 +97,18 @@ export function parameterRows(
   return rows;
 }
 
-/** `parameters.json`: the parameter set itself, pretty-printed, nothing added. */
-export function parametersJson(parameters: Parameters): string {
-  return `${JSON.stringify(parameters, null, 2)}\n`;
+/** What `parameters.json` carries beside the set: the build that wrote it and the hash the set hashes to (D11, D71). */
+export interface ParametersProvenance {
+  toolVersion: string;
+  parametersHash: string;
+}
+
+/**
+ * `parameters.json`: the parameter set, pretty-printed, with `toolVersion` and
+ * `parametersHash` first so a reader sees them at the top. The two keys are not
+ * part of the hashed value (`hashParameters` drops them), so the file hashes to
+ * the hash it names — the reconciliation D11 and D12 exist for.
+ */
+export function parametersJson(parameters: Parameters, provenance: ParametersProvenance): string {
+  return `${JSON.stringify({ ...provenance, ...parameters }, null, 2)}\n`;
 }

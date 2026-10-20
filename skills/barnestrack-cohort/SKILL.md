@@ -25,7 +25,7 @@ keeps the cohort name as it was typed. The six files:
 | `trials.csv`                      | trial                         | 41 columns; the headline numbers                                                                            |
 | `events.csv`                      | event of any kind             | 28 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 21 columns; whether to trust the video at all                                                               |
-| `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
+| `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns, with `toolVersion` and `parametersHash` beside it |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
 | `barnestrack_export.xlsx`         | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
 
@@ -242,8 +242,16 @@ session_id,session_name,video_id,tracked_fraction,not_detected_fraction,ambiguou
 
 ## `parameters.json`
 
-The full parameter set as a JSON object, exactly as the analysis used it — nothing added, no
-wrapper, no hash field. It contains everything `parameters_hash` covers, which is **more than the
+The full parameter set as a JSON object, exactly as the analysis used it, with two provenance
+fields first: `toolVersion` (the build that wrote the export, the same string as every row's
+`tool_version`) and `parametersHash` (what the rest of the file hashes to, the same string as every
+row's `parameters_hash`). Everything else in the object is the parameter set — no wrapper. The two
+provenance fields are not part of the hashed value, so hashing the file with the tool's own hasher
+reproduces `parametersHash`; a file whose `parametersHash` differs from the rows' `parameters_hash`
+was assembled from more than one export and must not be read as one. An export written by tool
+0.2.0 or earlier has neither field; read `parameters_hash` from the rows instead.
+
+It contains everything `parameters_hash` covers, which is **more than the
 threshold columns in `trials.csv`**: the kinematics block (`speedWindowFrames`,
 `duplicateTimestampFactor`, `dropGapFactor`), `kinematicsSmoothingWindowFrames`,
 `gapFilling.enabled`, and the whole `tracking` subtree are hashed but are not columns. When two

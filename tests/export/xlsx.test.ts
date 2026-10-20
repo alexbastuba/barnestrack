@@ -128,8 +128,11 @@ describe('parameterRows', () => {
     expect(rows.find((row) => row.name === 'noseConfidenceCutoff')?.definition).toContain('nose');
   });
 
-  it('round-trips parameters.json', () => {
-    expect(JSON.parse(parametersJson(FIXTURE_PARAMETERS))).toEqual(FIXTURE_PARAMETERS);
-    expect(parametersJson(FIXTURE_PARAMETERS).endsWith('\n')).toBe(true);
+  it('round-trips parameters.json, with the provenance first (D71)', () => {
+    const provenance = { toolVersion: 'barnestrack v0.2.0 (test)', parametersHash: 'a'.repeat(64) };
+    const text = parametersJson(FIXTURE_PARAMETERS, provenance);
+    expect(JSON.parse(text)).toEqual({ ...provenance, ...FIXTURE_PARAMETERS });
+    expect(Object.keys(JSON.parse(text) as object).slice(0, 2)).toEqual(['toolVersion', 'parametersHash']);
+    expect(text.endsWith('\n')).toBe(true);
   });
 });

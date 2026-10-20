@@ -450,8 +450,24 @@ function hashCanonical(value: unknown): string {
   return sha256Hex(new TextEncoder().encode(canonicalJson(value)));
 }
 
+/**
+ * The two keys a `parameters.json` carries beside the parameter set (D11, D71):
+ * the build that wrote it and the hash of the set. They are never part of the
+ * hashed value, so a `parameters.json` read back hashes to the hash it names;
+ * no `Parameters` value inside the app has them, so no stored hash changes.
+ */
+export const PARAMETERS_PROVENANCE_KEYS = ['toolVersion', 'parametersHash'] as const;
+
 export function hashParameters(parameters: Parameters): string {
-  return hashCanonical(parameters);
+  const {
+    toolVersion: _tool,
+    parametersHash: _hash,
+    ...set
+  } = parameters as Parameters &
+    Partial<Record<(typeof PARAMETERS_PROVENANCE_KEYS)[number], unknown>>;
+  void _tool;
+  void _hash;
+  return hashCanonical(set);
 }
 
 export function hashTrackingParameters(tracking: TrackingParameters): string {

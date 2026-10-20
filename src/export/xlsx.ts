@@ -105,7 +105,7 @@ function addReadme(
     ],
     [
       'parameters',
-      'Every threshold in force for this export, with its value, unit and definition. parameters.json in the same bundle holds the identical set as machine-readable JSON.',
+      'Every threshold in force for this export, with its value, unit and definition. parameters.json in the same bundle holds the identical set as machine-readable JSON, with toolVersion and parametersHash beside it.',
     ],
     ['', ''],
     ['Note', 'Detail'],
@@ -119,7 +119,7 @@ function addReadme(
     ],
     [
       'Corrections',
-      'A corrected or evidence-corrected event carries the automatic values alongside it in the auto_hole_index, auto_start_frame and auto_end_frame columns; the automatic layer itself is never overwritten, though an automatic event that the corrected detection no longer finds has no row of its own. A confirmed event is the automatic one a person kept as it stands. An escape-box entry is the tool’s inference from a loss of detection at the target hole, not a sighting of the animal in the box, until a person confirms, rejects or reclassifies it as a tracking failure. correction_count on the trials sheet says how many edits a trial carries; confirmations are not counted. review_flags on the trials sheet lists why a trial reads review; a review row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape.',
+      'A corrected or evidence-corrected event carries the automatic values alongside it in the auto_hole_index, auto_start_frame and auto_end_frame columns; the automatic layer itself is never overwritten. An automatic event that the corrected detection no longer finds has no row of its own: the trial carries auto_event_removed_by_correction in review_flags and counts it in correction_count. A corrected row whose auto_* columns are filled is an event a person edited, or one whose kind the corrections changed — its evidence_summary then names the automatic kind. A confirmed event is the automatic one a person kept as it stands. An escape-box entry is the tool’s inference from a loss of detection at the target hole, not a sighting of the animal in the box, until a person confirms, rejects or reclassifies it as a tracking failure. correction_count on the trials sheet says how many edits a trial carries; confirmations are not counted. review_flags on the trials sheet lists why a trial reads review; a review row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape.',
     ],
     [
       'Thresholds that are not columns',
