@@ -20,6 +20,12 @@
  * view is panned, panning uses pointer capture instead of cancelling on
  * `mouseleave`, keyboard and button zoom go through one path, and redraws are
  * coalesced into an animation frame.
+ *
+ * Pointer gestures, in precedence order: Shift or the middle button pans; a
+ * primary press the owner claims through `onDragStart` is a drag (captured,
+ * with a dead zone before the first `onDrag`); any other primary press is a
+ * pick on pointerdown, as it always was. The owner decides what a drag means —
+ * this layer only routes (D69).
  */
 import {
   backingStoreSize,
@@ -42,12 +48,34 @@ export interface CanvasViewOptions {
   paint: OverlayPainter;
   onPick?: (videoPoint: Point, event: PointerEvent) => void;
   onHover?: (videoPoint: Point | null) => void;
+  /**
+   * Direct manipulation (D69). A primary-button press is offered here first;
+   * returning true claims it as a drag — the pointer is captured, `onDrag`
+   * follows every move once the press has travelled the dead zone, and
+   * `onDragEnd` the release. A press that is not claimed is a pick, as before.
+   * `onDragCancel` is the browser taking the pointer away mid-gesture: nothing
+   * was released, so the caller should put things back as they were.
+   */
+  onDragStart?: (videoPoint: Point) => boolean;
+  onDrag?: (videoPoint: Point) => void;
+  onDragEnd?: (videoPoint: Point) => void;
+  onDragCancel?: () => void;
   announce?: (message: string) => void;
 }
 
 const WHEEL_ZOOM_STEP = 1.1;
 const BUTTON_ZOOM_STEP = 1.25;
 const KEYBOARD_PAN_PX = 40;
+/** A press that travels less than this, in screen pixels, is a click that selected something, not a drag. */
+const DRAG_DEAD_ZONE_PX = 3;
+
+interface DragGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  /** True once the pointer has left the dead zone; only then does `onDrag` fire. */
+  moved: boolean;
+}
 
 export class CanvasView {
   readonly element: HTMLElement;
@@ -64,6 +92,7 @@ export class CanvasView {
   private videoHeight = 0;
   private drawScheduled = 0;
   private panning: { pointerId: number; lastX: number; lastY: number } | null = null;
+  private gesture: DragGesture | null = null;
   private destroyed = false;
   private everSized = false;
   /** True once the user has zoomed or panned; until then the view follows the viewport. */
@@ -96,7 +125,7 @@ export class CanvasView {
     this.overlay.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.overlay.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.overlay.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    this.overlay.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    this.overlay.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
     this.overlay.addEventListener('pointerleave', () => this.options.onHover?.(null));
     // Explicitly non-passive: this listener calls preventDefault to stop the page scrolling.
     this.overlay.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
@@ -233,6 +262,13 @@ export class CanvasView {
     // and the click would then land on the wrong hole.
     const point = this.videoPointFor(event);
     this.viewport.focus({ preventScroll: true });
+    if (this.options.onDragStart?.(point) === true) {
+      this.gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false };
+      this.overlay.setPointerCapture(event.pointerId);
+      this.viewport.classList.add('is-dragging');
+      event.preventDefault();
+      return;
+    }
     this.options.onPick?.(point, event);
   }
 
@@ -244,10 +280,47 @@ export class CanvasView {
       this.panning.lastY = event.clientY;
       return;
     }
+    if (this.gesture && this.gesture.pointerId === event.pointerId) {
+      // Measured from the press, not per event, so a slow pointer still adds
+      // up to a drag rather than never leaving the dead zone.
+      if (!this.gesture.moved) {
+        const travelled = Math.hypot(event.clientX - this.gesture.startX, event.clientY - this.gesture.startY);
+        if (travelled < DRAG_DEAD_ZONE_PX) return;
+        this.gesture.moved = true;
+      }
+      this.options.onDrag?.(this.videoPointFor(event));
+      return;
+    }
     this.options.onHover?.(this.videoPointFor(event));
   }
 
   private onPointerUp(event: PointerEvent): void {
+    if (this.gesture && this.gesture.pointerId === event.pointerId) {
+      this.endGesture(event.pointerId);
+      this.options.onDragEnd?.(this.videoPointFor(event));
+      return;
+    }
+    this.endPan(event);
+  }
+
+  private onPointerCancel(event: PointerEvent): void {
+    if (this.gesture && this.gesture.pointerId === event.pointerId) {
+      this.endGesture(event.pointerId);
+      this.options.onDragCancel?.();
+      return;
+    }
+    this.endPan(event);
+  }
+
+  private endGesture(pointerId: number): void {
+    if (this.overlay.hasPointerCapture(pointerId)) {
+      this.overlay.releasePointerCapture(pointerId);
+    }
+    this.gesture = null;
+    this.viewport.classList.remove('is-dragging');
+  }
+
+  private endPan(event: PointerEvent): void {
     if (!this.panning || this.panning.pointerId !== event.pointerId) return;
     if (this.overlay.hasPointerCapture(event.pointerId)) {
       this.overlay.releasePointerCapture(event.pointerId);
