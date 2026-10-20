@@ -42,7 +42,9 @@ session it is found (D39).
   videos are unanalysed. So one arrow key on the Maze step costs a derive per video. Measured on the
   example cohort (5,539 / 741 / 905 frames): 10.5 ms per nudge steady-state, 7.3 ms of it the long
   video. Comfortable at three videos; a sixty-video cohort would put roughly 0.4 s of main-thread
-  work behind each keypress. The fix is to re-derive lazily when the Review step is shown rather
+  work behind each keypress. A handle drag (D69) is previewed in the step and written to the store
+  once, on release, so it costs one derive per drag rather than one per pointer move; the arrow
+  keys still cost one per key. The fix is to re-derive lazily when the Review step is shown rather
   than on every notification, or to move the sweep off the main thread.
 - **The cohort figures always plot primary latency.** `PlottableMetric` offers seven measures and
   `src/viz/cohort.ts` names them all in `METRIC_LABELS`, but the Review step's figures section
@@ -66,11 +68,32 @@ session it is found (D39).
   to `#review-events` so the step's layout owns it, which is the right owner, but the value is
   still a constant rather than something measured from the space beside the timeline. At a very
   short viewport the list scrolls sooner than it needs to.
-- **The maze click count is not in the session file.** The "Maze step: N clicks on the image" badge
-  is the on-screen evidence for the D29 click budget, but `SessionFile` has no field for it (D47
-  did not add one), so it lives only in the browser's autosave record. It therefore survives a
-  reload and is restored with the session, but a session file saved, reset and loaded again comes
-  back with the badge at zero. The maze itself is unaffected.
+- **The maze click count is not in the session file.** The "N clicks on the image" chip is the
+  on-screen evidence for the D29 click budget, but `SessionFile` has no field for it (D47 did not
+  add one), so it lives only in the browser's autosave record. It therefore survives a reload and is
+  restored with the session, but a session file saved, reset and loaded again comes back with the
+  chip at zero. The maze itself is unaffected.
+- **The ring-edge handle can sit on a hole.** The two rim handles are drawn at fixed bearings from
+  the platform centre (315° for the platform edge, 295° for the ring edge, `src/maze/handles.ts`),
+  chosen to fall between holes of a twenty-hole ring whose hole 0 is at 0°. A video whose ring has
+  been turned — the example cohort's are at 352° and 298° — can put a hole under the ring handle,
+  and a ring of another count can too. Nothing is lost: handles answer only while no click action
+  is armed, so an alignment or target click on that hole still reaches the hole, and the handle's
+  label and shape keep it tellable from the hole it overlaps. A handle that keeps clear of the
+  holes would have to move with the ring's phase, which was not built.
+- **Touch and pen pointers are untested on the maze handles.** The drag plumbing is pointer-event
+  based and the overlay has `touch-action: none`, so a finger should drag a handle as a mouse does,
+  but every check was made with a mouse in Google Chrome; the 10 px hit tolerance is a mouse
+  target, not a finger one.
+- **A message in the live region can move the page under a held pointer.** The status banner at
+  the top of the page is as tall as its message. Pressing a maze handle announces a one-line
+  message where the two-line "Example cohort loaded" banner stood, the content below reflows up by
+  22.5 px, and Chrome's scroll anchoring puts 22 px of it back — so the frame ends half a pixel
+  higher under the pointer than it was at the press (measured in `tests/browser/maze.spec.ts`,
+  which maps the press and the release through the frame as each found it). Half a pixel is below
+  anything a user would see; a message that changes the line count more would shift the frame by
+  whole lines. The fix is a fixed minimum height on the banner (`#app-status` in `src/ui/app.ts`
+  and its rule in `src/styles/app.css`), outside chunk 14's boundary.
 - **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a
   similarity from circle correspondences, whose true rotation is exactly zero; the least-squares
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
