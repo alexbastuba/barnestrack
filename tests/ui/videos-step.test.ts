@@ -15,7 +15,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SessionFile, VideoDescriptor } from '../../src/contracts/session.js';
 import { EXAMPLE_SESSION_NAME } from '../../src/demo/example-cohort.js';
 import { LOAD_BUTTON_LABEL, mountExampleCohortPanel } from '../../src/demo/example-cohort-ui.js';
-import { createSessionFile } from '../../src/session/session-file.js';
+import { createSessionFile, parseSessionDocument, serializeSessionFile } from '../../src/session/session-file.js';
+import { syntheticSession } from '../fixtures/synthetic-analysis.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
 import type { AppContext } from '../../src/ui/step.js';
@@ -52,6 +53,81 @@ function exampleSessionFile(): SessionFile {
   };
   return { ...createSessionFile(EXAMPLE_SESSION_NAME, TOOL_VERSION), videos: [video] };
 }
+
+/*
+ * D68 on the card: trial type and a per-video target, written to the descriptor and through
+ * the session file, and the store's silent refusals said on screen.
+ */
+describe('a video card names its trial type and its target', () => {
+  function mounted() {
+    const made = makeStep();
+    made.store.replaceSession(syntheticSession());
+    document.body.replaceChildren(made.body);
+    made.step.refresh();
+    const video = made.store.videos[0]!;
+    const card = [...made.body.querySelectorAll<HTMLElement>('.video-card')].find((c) =>
+      c.querySelector('h3')!.textContent === video.filename,
+    )!;
+    return {
+      ...made,
+      video,
+      card,
+      type: card.querySelector<HTMLSelectElement>('select.trial-type')!,
+      target: card.querySelector<HTMLInputElement>('input.target-hole')!,
+      problem: () => card.querySelector<HTMLElement>('.trial-descriptor .error')!,
+    };
+  }
+
+  it('writes a probe trial and a target override, and both survive the session file', () => {
+    const { store, step, video, card, type, target } = mounted();
+    expect(card.querySelector('label[for="' + type.id + '"]')!.textContent).toBe('Trial type');
+    expect(card.querySelector<HTMLElement>('.probe-note')!.hidden).toBe(true);
+
+    type.value = 'probe';
+    type.dispatchEvent(new Event('change'));
+    target.value = '5';
+    target.dispatchEvent(new Event('change'));
+    step.refresh();
+
+    expect(store.videoById(video.id)).toMatchObject({ trialType: 'probe', targetHole: 5 });
+    expect(card.querySelector<HTMLElement>('.probe-note')!.hidden).toBe(false);
+    expect(card.querySelector('.probe-note')!.textContent).toContain('no escape box');
+
+    const parsed = parseSessionDocument(serializeSessionFile(store.current));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.session.videos.find((v) => v.id === video.id)).toMatchObject({ trialType: 'probe', targetHole: 5 });
+    }
+
+    target.value = '';
+    target.dispatchEvent(new Event('change'));
+    expect(store.videoById(video.id)!.targetHole).toBeNull();
+    step.refresh();
+    expect(target.placeholder).toMatch(/^map's target \(hole \d+\)$/);
+  });
+
+  it('says so when a hole is not on the map, and changes nothing', () => {
+    const { store, video, target, problem } = mounted();
+    target.value = '99';
+    target.dispatchEvent(new Event('change'));
+    expect(store.videoById(video.id)!.targetHole).toBeNull();
+    expect(problem().hidden).toBe(false);
+    expect(problem().textContent).toContain('Hole 99 is not on this map');
+  });
+
+  it('says so when a new map clears an override it no longer has', () => {
+    const { store, step, video, target, problem } = mounted();
+    target.value = '15';
+    target.dispatchEvent(new Event('change'));
+    step.refresh();
+    const map = store.current.mazeMap!;
+    store.setMazeMap({ ...map, holes: { ...map.holes, n: 12 } });
+    step.refresh();
+    expect(store.videoById(video.id)!.targetHole).toBeNull();
+    expect(problem().hidden).toBe(false);
+    expect(problem().textContent).toBe('Target override cleared — hole 15 no longer exists on this map.');
+  });
+});
 
 describe('the Videos step mounts the example cohort panel', () => {
   it('renders the panel inside the step, with no video loaded', () => {

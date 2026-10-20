@@ -16,6 +16,7 @@ import {
 } from '../session/session-file.js';
 import { button, disclosure, el, replaceChildren } from './dom.js';
 import { downloadText, pickFiles } from './download.js';
+import { createReviewerField } from './reviewer-field.js';
 import type { AppContext, Step, StepId } from './step.js';
 
 const SUPPORTED_BROWSERS = 'Chrome or Edge 94 and later, Safari 16.4 and later, or Firefox 130 and later';
@@ -173,7 +174,11 @@ export function mountApp(
     }
     // An autosave completing must not rewrite a field the user is typing in.
     if (document.activeElement !== sessionName) sessionName.value = store.current.name;
-    saveButton.disabled = store.current.videos.length === 0;
+    reviewer.refresh();
+    const nothingToSave = store.current.videos.length === 0;
+    saveButton.disabled = nothingToSave;
+    // A disabled button says why on screen, not only in a tooltip (D70).
+    saveReason.hidden = !nothingToSave;
     const state = store.autosaveState;
     saveState.textContent =
       state === 'saved'
@@ -198,7 +203,14 @@ export function mountApp(
 
   const saveButton = button('Save session file', () => {
     void saveSession();
-  }, { class: 'btn-secondary' });
+  }, { class: 'btn-secondary', attrs: { 'aria-describedby': 'save-reason' } });
+  const saveReason = el('span', {
+    id: 'save-reason',
+    class: 'hint save-reason',
+    text: 'Nothing to save yet: load a video first.',
+  });
+
+  const reviewer = createReviewerField(store, (message) => context.announce(message));
 
   async function saveSession(): Promise<void> {
     await store.flush();
@@ -309,7 +321,9 @@ export function mountApp(
     el('div', { class: 'session-controls' }, [
       el('label', { text: 'Session name', attrs: { for: 'session-name' } }),
       sessionName,
+      ...reviewer.elements,
       saveButton,
+      saveReason,
       loadButton,
       resetButton,
       confirmRow,
