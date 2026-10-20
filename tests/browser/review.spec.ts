@@ -197,7 +197,7 @@ test('corrections made from the keyboard recompute, stay pinned across a thresho
   const nextHole = (hole + 1) % 20;
   await page.keyboard.press('h');
   await page.locator('#panel-review select[aria-label="Hole of the selected event"]').selectOption(String(nextHole));
-  await expect(status).toContainText(`Event moved from hole ${hole} to hole ${nextHole}`);
+  await expect(status).toContainText(`Hole changed from ${hole} to ${nextHole} — revert it with`);
   await expect(rows.first()).toHaveClass(/is-corrected/);
   await expect(rows.first()).toContainText(`user (auto: hole ${hole}`);
   await expect(page.locator('.corrections-list li')).toHaveCount(2);

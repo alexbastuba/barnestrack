@@ -512,6 +512,10 @@ export function createReviewStep(context: AppContext): Step {
 
   /** Everything that draws the selection, redrawn together. */
   function renderSelection(): void {
+    const ev = selectedEvent();
+    if (ev?.holeIndex !== null && ev?.holeIndex !== undefined && document.activeElement !== holeSelect) {
+      holeSelect.value = String(ev.holeIndex);
+    }
     renderEventsTable();
     renderQueue();
     renderStatus();
@@ -1488,10 +1492,11 @@ export function createReviewStep(context: AppContext): Step {
 
   /*
    * The stage (§5 of chunk 15, D70's laptop check): everything a decision about one event needs,
-   * on one screen at 1366 × 768. Left: the clip selector, the frame, the scrubber and the selected
-   * event's card with its evidence and its three actions. Right: the queue (how much is left,
-   * previous / next) and the correction tools under the selection line. Below 1200 px the right
-   * column drops under the left (app.css). The timeline stays outside, full width, on its own row.
+   * on one screen at 1366 × 768. Left: the clip selector, the frame and the scrubber. Right: the
+   * queue (how much is left, previous / next), the selected event's card with its evidence and its
+   * three actions, and the correction tools under the selection line, which scroll inside the
+   * column when they do not fit. Below 1200 px the right column drops under the left (app.css).
+   * The timeline stays outside, full width, on its own row.
    */
   const stage = el('div', { class: 'review-stage' }, [
     el('div', { class: 'review-stage-main' }, [
@@ -1501,9 +1506,8 @@ export function createReviewStep(context: AppContext): Step {
       ]),
       canvasView.element,
       scrubber.element,
-      selectedPanel,
     ]),
-    el('div', { class: 'review-stage-side' }, [queueBar, toolbar]),
+    el('div', { class: 'review-stage-side' }, [queueBar, selectedPanel, toolbar]),
   ]);
 
   body.append(

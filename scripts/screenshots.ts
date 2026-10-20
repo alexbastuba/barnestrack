@@ -8,8 +8,13 @@
  *
  * Serves `dist/` with `vite preview` on a port of its own (so it never reuses a
  * dev server another checkout left running), drives the installed Google
- * Chrome, and writes `notes/screens/chunk-13/<step>-<w>x<h>-<zoom>.png` and a
+ * Chrome, and writes `notes/screens/chunk-15/<step>-<w>x<h>-<zoom>.png` and a
  * `summary.json` beside them. `notes/` is untracked; nothing here is committed.
+ *
+ * Chunk 15 adds a Review shot taken after `]` selects the first queued event,
+ * with the bounding boxes of the regions a decision needs on one screen: the
+ * video, the selected event's card, its evidence, the correction toolbar, the
+ * queue's previous / next and the clip selector.
  *
  * 200 % is emulated the way browser zoom works: the layout viewport is half the
  * window in CSS pixels and every CSS pixel is two device pixels, so the PNG is
@@ -26,7 +31,24 @@ import { LOAD_BUTTON_LABEL } from '../src/demo/example-cohort-ui.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4317;
 const BASE_URL = `http://localhost:${PORT}/`;
-const OUT_DIR = join(ROOT, 'notes/screens/chunk-13');
+const OUT_DIR = join(ROOT, 'notes/screens/chunk-15');
+/** The regions of the selected-event Review shot, by selector. */
+const REVIEW_REGIONS = {
+  video: '#panel-review .viewport',
+  card: '#review-selected .event-card',
+  evidence: '#review-selected .event-evidence',
+  toolbar: '#panel-review .review-tools',
+  queueNav: '#review-current-event .current-event-actions',
+  clipSelector: '#panel-review .review-top select',
+} as const;
+
+interface Box {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  inViewport: boolean;
+}
 const SIZES = [
   { width: 1366, height: 768 },
   { width: 1400, height: 866 },
@@ -85,10 +107,8 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
         (node.getAttribute('aria-label') ?? node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
       const tierCount = (node: Element): number => tiers.filter((tier) => node.classList.contains(tier)).length;
       const panel = document.getElementById(`panel-${step}`);
-      const buttons = [...document.querySelectorAll('button')].filter(visible);
-      // The example cohort's panel is built in src/demo/, outside this chunk's
-      // files; its buttons are reported separately in the chunk record.
-      const ours = buttons.filter((node) => node.closest('.example-cohort, .example-dialog') === null);
+      // Every visible button, the example cohort's panel included now that it is tiered.
+      const ours = [...document.querySelectorAll('button')].filter(visible);
       const root = document.documentElement;
       return {
         horizontalScroll: root.scrollWidth > root.clientWidth,
@@ -129,6 +149,29 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
   };
 }
 
+/** The bounding box of each region in viewport pixels, and whether it is wholly on screen. */
+async function regionBoxes(page: Page): Promise<Record<keyof typeof REVIEW_REGIONS, Box | null>> {
+  return page.evaluate((regions) => {
+    const out: Record<string, Box | null> = {};
+    for (const [key, selector] of Object.entries(regions)) {
+      const node = document.querySelector(selector);
+      if (!node || !(node as HTMLElement).checkVisibility()) {
+        out[key] = null;
+        continue;
+      }
+      const rect = node.getBoundingClientRect();
+      out[key] = {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        left: Math.round(rect.left),
+        right: Math.round(rect.right),
+        inViewport: rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth,
+      };
+    }
+    return out as Record<keyof typeof regions, Box | null>;
+  }, REVIEW_REGIONS);
+}
+
 async function showStep(page: Page, step: Step): Promise<void> {
   await page.locator(`#tab-${step}`).click();
   await page.locator(`#panel-${step}`).waitFor({ state: 'visible' });
@@ -150,6 +193,7 @@ async function main(): Promise<void> {
     detached: true,
   });
   const results: Measurement[] = [];
+  const selections: { size: string; zoom: string; file: string; scrollY: number; boxes: Record<string, Box | null> }[] = [];
   const consoleErrors: string[] = [];
   try {
     await waitForServer(BASE_URL, 30_000);
@@ -186,6 +230,15 @@ async function main(): Promise<void> {
             await page.screenshot({ path: join(OUT_DIR, file) });
             results.push(await measure(page, step, size, zoomLabel, file));
           }
+
+          // Review with the first queued event selected from the keyboard, as a reviewer starts.
+          await page.locator('#panel-review .timeline-surface').focus();
+          await page.keyboard.press(']');
+          await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
+          await page.waitForTimeout(400);
+          const selectedFile = `review-selected-${size}-${zoomLabel}.png`;
+          await page.screenshot({ path: join(OUT_DIR, selectedFile) });
+          selections.push({ size, zoom: zoomLabel, file: selectedFile, scrollY: await page.evaluate(() => Math.round(window.scrollY)), boxes: await regionBoxes(page) });
           await context.close();
         }
       }
@@ -196,7 +249,14 @@ async function main(): Promise<void> {
     if (server.pid !== undefined) process.kill(-server.pid, 'SIGTERM');
   }
 
-  writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, consoleErrors }, null, 2)}\n`);
+  writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, selections, consoleErrors }, null, 2)}\n`);
+  for (const s of selections) {
+    const boxes = Object.entries(s.boxes)
+      .map(([key, box]) => (box === null ? `${key} —` : `${key} y ${box.top}–${box.bottom}${box.inViewport ? '' : ' OFF-SCREEN'}`))
+      .join(' · ');
+    const all = Object.values(s.boxes).every((box) => box?.inViewport === true);
+    console.log(`review selected ${s.size} ${s.zoom.padEnd(3)} scrollY ${s.scrollY} · all on screen: ${all ? 'yes' : 'NO '} · ${boxes}`);
+  }
   for (const r of results) {
     const primaries = r.primaries
       .map((p) => `${p.text}${p.disabled ? ' (disabled)' : ''}${p.inViewport ? '' : ` @${p.top}px`}`)

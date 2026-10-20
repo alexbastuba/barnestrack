@@ -273,14 +273,12 @@ export function createEventCard(
     // What selecting it is for. The card is one button, so it cannot hold the
     // controls; the tools beside the video act on the selected event, and this
     // names their keys.
+    const keys =
+      event.kind === 'escape_entry'
+        ? 'K keeps it, L reclassifies it as tracking loss, Delete rejects it. '
+        : 'H changes the hole, K keeps it, Delete removes it. ';
     children.push(
-      el('span', {
-        class: 'event-how',
-        text:
-          event.kind === 'escape_entry'
-            ? 'Select it, then: K keeps it, L reclassifies it as tracking loss, Delete rejects it. '
-            : 'Select it, then: H changes the hole, K keeps it, Delete removes it. ',
-      }),
+      el('span', { class: 'event-how', text: current.selected ? `Keys: ${keys}` : `Select it, then: ${keys}` }),
     );
 
     for (const flag of flagsForEvent(flags, event.id)) {

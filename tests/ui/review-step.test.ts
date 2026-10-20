@@ -430,7 +430,8 @@ describe('the review queue', () => {
     // In the stage, at the head of the column beside the video, above the tools; the stage
     // itself is still above the timeline.
     expect(bar.parentElement!.classList.contains('review-stage-side')).toBe(true);
-    expect(bar.nextElementSibling!.classList.contains('review-tools')).toBe(true);
+    expect(bar.nextElementSibling!.id).toBe('review-selected');
+    expect(bar.nextElementSibling!.nextElementSibling!.classList.contains('review-tools')).toBe(true);
     expect(bar.closest('.review-stage')!.nextElementSibling!.classList.contains('timeline')).toBe(true);
     expect(count()).toBe(describeQueue(queued().length));
     expect(queued().length).toBeGreaterThan(0);

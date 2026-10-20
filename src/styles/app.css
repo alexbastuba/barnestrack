@@ -1284,12 +1284,34 @@ label {
 @media (min-width: 1200px) {
   .review-stage {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 21rem;
+    grid-template-columns: minmax(0, 1fr) 24rem;
     gap: var(--s3);
     align-items: start;
   }
 
-  .review-stage .review-tools {
+  /*
+   * Chunk 15 (§5): the column beside the video is one window tall less the
+   * action bar, so the queue, the selected event's card with its evidence, and
+   * the tools are on screen with the frame; the tools take what is left and
+   * scroll inside it. Each tool is a button, so the scroll box is reachable
+   * from the keyboard by tabbing into it.
+   */
+  .review-stage-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    max-height: calc(100vh - 3.75rem);
+    min-height: 0;
+  }
+
+  .review-stage-side .review-current-event {
+    margin-top: 0;
+  }
+
+  .review-stage-side .review-tools {
+    flex: 1 1 auto;
+    min-height: 9rem;
+    overflow-y: auto;
     flex-direction: column;
     flex-wrap: nowrap;
     margin: 0;
@@ -1298,6 +1320,50 @@ label {
   .review-stage .tool-group {
     width: 100%;
   }
+}
+
+/* The selected event's card beside the video: the list's card, with its actions. */
+.review-selected .event-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.review-selected .event-card {
+  cursor: default;
+}
+
+.selected-empty {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--line-strong);
+}
+
+.selection-line {
+  margin: 0 0 var(--s1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s2);
+}
+
+.event-action-reason {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.event-item.is-selected > .event-card {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.badge-selected::before {
+  content: '▶ ';
 }
 
 .tool-group {
