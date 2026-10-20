@@ -13,11 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { firstTargetEvent } from '../../../src/analysis/metrics.js';
 import { PARAMETER_DEFINITIONS } from '../../../src/analysis/parameters.js';
 import type { CorrectionEntry } from '../../../src/contracts/session.js';
+import type { DerivedAnalysis } from '../../../src/analysis/derive.js';
 import {
   createMetricsCard,
   endingEscape,
   metricRows,
   withinTrial,
+  type MetricsCardProps,
 } from '../../../src/ui/components/metrics-card.js';
 import { fixture } from './fixture.js';
 
@@ -127,9 +129,55 @@ describe('the rows a trial has', () => {
     mount();
     const raw = valueControl('Path length (raw)').textContent;
     const smoothed = valueControl('Path length (smoothed)').textContent;
-    expect(raw).toBe(`${noEscape.analysis.metrics.pathLength_cm!.toFixed(2)} cm`);
-    expect(smoothed).toBe(`${noEscape.analysis.metrics.pathLengthSmoothed_cm!.toFixed(2)} cm`);
+    // A resolved trial has both lengths; null would be "—", which the next block covers.
+    const { pathLength_cm, pathLengthSmoothed_cm } = noEscape.analysis.metrics;
+    expect(pathLength_cm).not.toBeNull();
+    expect(pathLengthSmoothed_cm).not.toBeNull();
+    expect(raw).toBe(`${pathLength_cm?.toFixed(2)} cm`);
+    expect(smoothed).toBe(`${pathLengthSmoothed_cm?.toFixed(2)} cm`);
     expect(raw).not.toBe(smoothed);
+  });
+});
+
+describe('a value that does not exist (D66)', () => {
+  const props = (over: Partial<MetricsCardProps> = {}, metrics: Partial<DerivedAnalysis['metrics']> = {}, flags: DerivedAnalysis['reviewFlags'] = []): MetricsCardProps => ({
+    analysis: { ...noEscape.analysis, metrics: { ...noEscape.analysis.metrics, ...metrics }, reviewFlags: flags },
+    parameters: noEscape.parameters,
+    ...over,
+  });
+  const rowOf = (p: MetricsCardProps, name: string) => metricRows(p).find((spec) => spec.name === name)!;
+
+  it('prints a probe trial’s escape as "—" with why, never "no"', () => {
+    const p = props({ trialType: 'probe' }, { escaped: null, totalLatency_s: null });
+    expect(rowOf(p, 'Escaped').value).toBe('—');
+    expect(rowOf(p, 'Escaped').note).toContain('a probe trial has no escape box');
+    expect(rowOf(p, 'Total latency').note).toContain('a probe trial has no escape box');
+  });
+
+  it('gives every null count its reason, and an unresolved trial its flags', () => {
+    const p = props(
+      {},
+      { primaryErrors: null, totalErrors: null, trackedFraction: null, status: 'unresolved' },
+      [{ code: 'oversized_in_trial', message: 'Something oversized sat on the platform.' }],
+    );
+    for (const name of ['Primary errors', 'Total errors', 'Tracked fraction (trial)']) {
+      expect(rowOf(p, name).value, name).toBe('—');
+      expect(rowOf(p, name).note, name).toContain('there is no trial window');
+      expect(rowOf(p, name).note, name).toContain('Something oversized sat on the platform.');
+    }
+  });
+
+  it('prints a flag that has no frame without "@ frame" or "undefined"', () => {
+    const p = props({}, {}, [
+      { code: 'stale_auto_layer', message: 'The automatic track was made with other tracking parameters; re-track the video.' },
+    ]);
+    createMetricsCard(container, p, { onSeek: vi.fn(), onOverride: vi.fn(), onRevert: vi.fn() });
+    const text = container.textContent ?? '';
+    expect(text).toContain('re-track the video');
+    expect(text).not.toContain('@ frame');
+    expect(text).not.toContain('undefined');
+    // The Status value has no frame to seek to, so it is text, not a button.
+    expect(rowOf(p, 'Status').frame).toBeNull();
   });
 });
 

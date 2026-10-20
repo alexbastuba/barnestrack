@@ -2043,6 +2043,7 @@ export function createReviewStep(context: AppContext): Step {
       parameters: store.parameters,
       strategyOverrideId: strategyOverride(currentLayer() ?? NO_CORRECTIONS)?.id ?? null,
       noEscapeReason: noEscapeCorrection(currentLayer() ?? NO_CORRECTIONS)?.reason ?? null,
+      trialType: video.trialType,
     };
     if (metricsComponent) {
       metricsComponent.update(metricsProps);

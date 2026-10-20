@@ -25,7 +25,7 @@ import { PARAMETER_DEFINITIONS } from '../../analysis/parameters.js';
 import type { EventRecord } from '../../contracts/events.js';
 import type { Parameters } from '../../contracts/parameters.js';
 import type { TrialStatus } from '../../contracts/metrics.js';
-import type { SearchStrategy } from '../../contracts/session.js';
+import type { SearchStrategy, TrialType } from '../../contracts/session.js';
 import type { FrameIndex } from '../../contracts/track.js';
 import { button, disclosure, el, replaceChildren, uniqueId } from '../dom.js';
 import {
@@ -36,6 +36,7 @@ import {
   formatSeconds,
   formatSpeed,
   formatTimeAndFrame,
+  NOT_RECORDED,
 } from './format.js';
 import { positionToFrame, type Component, type StrategyCallbacks } from './types.js';
 
@@ -50,6 +51,39 @@ export interface MetricsCardProps {
    * reads `ok` because a person said so should say who said what.
    */
   noEscapeReason?: string | null;
+  /** The video's trial type (D68): a probe has no escape box, so its escape values are not applicable. */
+  trialType?: TrialType;
+}
+
+/**
+ * Why a value the card prints as `—` has no number (D66): one sentence for the
+ * metric's own null, read from the trial — a probe's missing escape box, a
+ * trial with no window, a target never reached — and the review flags' own
+ * messages when the trial has no window. Null when the value exists.
+ */
+export function unavailableReason(
+  name: string,
+  props: Pick<MetricsCardProps, 'analysis' | 'trialType'>,
+): string {
+  const { analysis } = props;
+  const escapeMetric = name === 'Escaped' || name === 'Total latency';
+  if (props.trialType === 'probe' && escapeMetric) {
+    return 'Not applicable: a probe trial has no escape box.';
+  }
+  if (analysis.metrics.status === 'unresolved' || analysis.trial.endReason === 'no_start') {
+    const flags = analysis.reviewFlags.map((flag) => flag.message).join(' ');
+    return `Not available: there is no trial window, because ${END_REASON_WORDS.no_start}.${flags ? ` ${flags}` : ''}`;
+  }
+  switch (name) {
+    case 'Primary latency':
+      return 'Not available: the target was never reached.';
+    case 'Total latency':
+      return 'Not available: no escape entry ended the trial.';
+    case 'Mean speed':
+      return 'Not available: no tracked time inside the trial window.';
+    default:
+      return 'Not available for this trial.';
+  }
 }
 
 const STRATEGIES: readonly SearchStrategy[] = ['spatial', 'serial', 'random'];
@@ -126,8 +160,19 @@ interface MetricSpec {
   note?: string;
 }
 
-/** Every row of the card, in the order a person reads a trial. */
+/**
+ * Every row of the card, in the order a person reads a trial. A value printed
+ * as "—" says why beside it (D66): the reason joins the row's note.
+ */
 export function metricRows(props: MetricsCardProps): MetricSpec[] {
+  return valueRows(props).map((spec) =>
+    spec.value === NOT_RECORDED
+      ? { ...spec, note: [unavailableReason(spec.name, props), spec.note].filter(Boolean).join(' ') }
+      : spec,
+  );
+}
+
+function valueRows(props: MetricsCardProps): MetricSpec[] {
   const { analysis, parameters } = props;
   const { metrics, trial, kinematics, cleanedTrack } = analysis;
 
@@ -227,7 +272,8 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
     },
     {
       name: 'Escaped',
-      value: metrics.escaped ? 'yes' : 'no',
+      // null on a probe trial (D66, D68): not a "no", which is a claim about an escape box.
+      value: metrics.escaped === null ? NOT_RECORDED : metrics.escaped ? 'yes' : 'no',
       frame: escape?.startFrame ?? null,
       definition:
         'Whether a persistent escape-box entry was detected. False when the trial was cut off instead.',
@@ -243,7 +289,7 @@ export function metricRows(props: MetricsCardProps): MetricSpec[] {
     },
     {
       name: 'Tracked fraction (trial)',
-      value: formatPercent(metrics.trackedFraction ?? Number.NaN),
+      value: metrics.trackedFraction === null ? NOT_RECORDED : formatPercent(metrics.trackedFraction),
       frame: startFrame,
       definition:
         'Fraction of the frames between trial start and trial end whose detection state is tracked. Judged over the trial window, not the whole clip.',

@@ -55,7 +55,8 @@ export function eventsToCheck(
   const flagged = new Set(flags.map((flag) => flag.eventId).filter((id) => id !== undefined));
   const queue: string[] = [];
   for (const event of events) {
-    // A corrected or confirmed event has had its human look; that is what makes the count fall.
+    // A person has looked at it: corrected (`source: corrected`) or kept as it stands
+    // (`confirmed`, which leaves `source: auto`, D65). Either makes the count fall.
     if (event.source === 'corrected' || event.confirmed) continue;
     if (flagged.has(event.id) || spanIsUncertain(stateRuns, event.startFrame, event.endFrame)) {
       queue.push(event.id);
