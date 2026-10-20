@@ -404,14 +404,20 @@ test.describe('the example cohort, driven through the loader module', () => {
     await expect(page.locator('.video-card')).toHaveCount(3);
 
     const failures: AxeViolation[] = [];
-    for (const step of ['Videos', 'Maze', 'Track']) {
+    for (const step of ['Videos', 'Maze', 'Track', 'Review']) {
       await page.getByRole('tab', { name: new RegExp(step) }).click();
       await expect(page.locator(`#panel-${step.toLowerCase()}`)).toBeVisible();
+      if (step === 'Review') {
+        // Scanned with an event selected, so the selected card, its actions and the table's
+        // `aria-current` row are in the scan as well as the empty state.
+        await expect(page.locator('#review-export')).toBeAttached();
+        await page.locator('#panel-review .timeline-surface').focus();
+        await page.keyboard.press(']');
+        await expect(page.locator('#review-selected .event-item')).toHaveCount(1);
+      }
       failures.push(...reportViolations(step, await scanForViolations(page)));
     }
 
-    // The Review step is a placeholder until chunk 6; scanning it here would
-    // report on markup that is about to be replaced wholesale.
     expect(failures, `serious/critical violations: ${JSON.stringify(failures, null, 2)}`).toEqual(
       [],
     );
@@ -429,7 +435,10 @@ const BUNDLE_ENTRIES = [
 ];
 
 /** The identifier columns `trials.csv` opens with (docs/data-contracts.md §7, D11). */
-const TRIAL_IDENTITY_COLUMNS = ['session_id', 'video_id', 'animal', 'day', 'trial_label', 'group'];
+const TRIAL_IDENTITY_COLUMNS = ['session_id', 'session_name', 'video_id', 'animal', 'day', 'trial_label', 'group'];
+
+/** Who the flow says is reviewing (D68); it lands on every correction made after it is set. */
+const REVIEWER = 'Smoke Reviewer';
 
 /** The one `.empty` the example cohort shows on purpose: test50 has no gap in its trial window. */
 const EXPECTED_VISIBLE_EMPTY = ['No gaps in the trial window: every frame was positioned.'];
@@ -527,6 +536,29 @@ test.describe('the whole demo flow through the shipped UI', () => {
     console.log(`shipped UI: diff badge "${await badge.textContent()}"`);
     const errorsAfter = Number(await primaryErrors.textContent());
 
+    // 4b. Name the reviewer, then select an event by clicking its card and keep it with the
+    // button on the selected card. The reviewer is set first: the store writes the name onto a
+    // correction when the correction is made, so a name set afterwards would not be on it.
+    const reviewerField = page.locator('#session-reviewer');
+    await reviewerField.fill(REVIEWER);
+    await reviewerField.press('Tab');
+    const card = page
+      .locator('#review-events li.event-item')
+      .filter({ has: page.locator('.event-kind', { hasText: /^(Investigation|Inferred escape entry) $/ }) })
+      .first();
+    const cardEvent = await card.getAttribute('data-event-id');
+    expect(cardEvent).not.toBeNull();
+    await card.locator('.event-card').click();
+    const selectionLine = page.locator('#review-selection-line');
+    await expect(selectionLine).toHaveText(/^Selected: /);
+    await expect(page.locator('#review-events-mirror tbody tr.is-selected')).toHaveAttribute('aria-current', 'true');
+    await expect(page.locator('#review-selected .event-item')).toHaveAttribute('data-event-id', cardEvent!);
+    const correctionsBeforeCard = await corrections.count();
+    await page.locator('#review-selected').getByRole('button', { name: 'Keep (K)' }).click();
+    await expect(corrections).toHaveCount(correctionsBeforeCard + 1);
+    await expect(corrections.last()).toContainText(`Event ${cardEvent} confirmed by the user`);
+    console.log(`shipped UI: kept ${cardEvent} from its card; selection now "${await selectionLine.textContent()}"`);
+
     // 5. The bundle the browser downloads, opened and read.
     const bundle = await downloadBundle(page);
     console.log(`shipped UI: ${bundle.zipName} holds ${JSON.stringify([...bundle.entries.keys()])}`);
@@ -546,21 +578,35 @@ test.describe('the whole demo flow through the shipped UI', () => {
     for (const version of column(trials, 'tool_version')) expect(version).toMatch(/^barnestrack v\d+\.\d+\.\d+/);
     // The number on screen is the number in the file.
     expect(column(trials, 'primary_errors')[0]).toBe(String(errorsAfter));
+    // The event kept from its card: confirmed, automatic, and the reviewer's (D64, D65, D68).
+    const events = csvRows(bundle.text('events.csv'));
+    const keptRow = events.find((row) => row[events[0]!.indexOf('event_id')] === cardEvent);
+    expect(keptRow, `no events.csv row for ${cardEvent}`).toBeDefined();
+    const cell = (name: string): string => keptRow![events[0]!.indexOf(name)]!;
+    expect(cell('confirmed')).toBe('true');
+    expect(cell('source')).toBe('auto');
+    expect(cell('reviewer')).toBe(REVIEWER);
+    console.log(`shipped UI: events.csv ${cardEvent}: confirmed=${cell('confirmed')}, reviewer=${cell('reviewer')}`);
     expect(networkRequests).toEqual([]);
 
     // 6. Reload once the autosave has landed (§1.2): the header's settled
     // signal, driven by the store's autosaveState. The correction is compared
     // as it reads now, after the retune: a parameter change can orphan an event
     // correction (docs/known-limitations.md), and the list says so.
-    const correctionBeforeReload = await corrections.last().textContent();
-    expect(correctionBeforeReload).toContain(`Event ${keptEvent} confirmed by the user`);
+    const keyboardKept = corrections.filter({ hasText: `Event ${keptEvent} confirmed by the user` });
+    await expect(keyboardKept).toHaveCount(1);
+    const correctionBeforeReload = await keyboardKept.textContent();
+    const selectionBeforeReload = await selectionLine.textContent();
     await expect(page.locator('.save-state.is-saved')).toBeVisible({ timeout: 30_000 });
     await page.reload();
     await expect(page.locator('.video-card')).toHaveCount(3, { timeout: 30_000 });
     await expect(page.locator('#session-name')).toHaveValue('Example cohort');
+    await expect(reviewerField).toHaveValue(REVIEWER);
     await page.getByRole('tab', { name: /Review/ }).click();
-    await expect(corrections).toHaveCount(correctionsBefore + 1);
-    await expect(corrections.last()).toHaveText(correctionBeforeReload ?? '');
+    await expect(corrections).toHaveCount(correctionsBefore + 2);
+    await expect(keyboardKept).toHaveText(correctionBeforeReload ?? '');
+    await expect(selectionLine).toHaveText(selectionBeforeReload ?? '');
+    console.log(`shipped UI: after reload, reviewer "${await reviewerField.inputValue()}", "${await selectionLine.textContent()}"`);
     await expect(qualityHash).toHaveText(`Parameters hash: ${shownHash}`);
   });
 });

@@ -87,8 +87,13 @@ describe('every interactive element is a native control', () => {
   it('uses no custom-role widget anywhere in the four panels', () => {
     mountAll();
     const native = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY']);
+    // The one focusable non-control allowed: a labelled scroll box (`scrollRegion`), which a
+    // keyboard user has to be able to reach to scroll a wide mirror table (axe's
+    // `scrollable-region-focusable`). It is a group, not a widget, and takes no keys of its own.
+    const isScrollRegion = (node: HTMLElement): boolean =>
+      node.tagName === 'DIV' && node.getAttribute('role') === 'group' && node.getAttribute('aria-label') !== null;
     for (const node of focusable(container)) {
-      expect(native.has(node.tagName), `${node.tagName} is not a native control`).toBe(true);
+      expect(native.has(node.tagName) || isScrollRegion(node), `${node.tagName} is not a native control`).toBe(true);
     }
   });
 

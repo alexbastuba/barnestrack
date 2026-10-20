@@ -1388,7 +1388,7 @@ export function createReviewStep(context: AppContext): Step {
   const status = el('p', { class: 'review-status', attrs: { 'aria-live': 'off' } });
 
   const legend = disclosure('Keyboard', [
-    el('div', { class: 'table-scroll' }, [
+    scrollRegion('Keyboard keys of this step', [
       el('table', { class: 'mirror-table key-legend' }, [
         el('caption', { text: 'Every action of this step from the keyboard. Alt with the arrows pans the frame; + − 0 on the frame zoom it.' }),
         el('thead', {}, [
@@ -1446,8 +1446,8 @@ export function createReviewStep(context: AppContext): Step {
   const framesMirror = el('section', { class: 'mirror' }, [
     el('h3', { text: 'Frames around the playhead' }),
     framesSummary,
-    el('div', { class: 'table-scroll' }, [
-      el('table', { class: 'mirror-table' }, [
+    scrollRegion('Frames around the playhead', [
+      el('table', { class: 'mirror-table has-num' }, [
         el('caption', { text: `The ${FRAME_TABLE_RADIUS} frames either side of the current frame: what the overlay draws, with the source of every point.` }),
         el('thead', {}, [
           el('tr', {}, [

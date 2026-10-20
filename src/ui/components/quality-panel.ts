@@ -25,7 +25,7 @@ import type { DetectionState } from '../../contracts/track.js';
 import type { SessionFile } from '../../contracts/session.js';
 import { qualityStripFigure } from '../../viz/quality-strip.js';
 import type { FigureData } from '../../viz/types.js';
-import { button, disclosure, el, replaceChildren, uniqueId } from '../dom.js';
+import { button, disclosure, el, replaceChildren, scrollRegion, uniqueId } from '../dom.js';
 import {
   formatCount,
   formatNumber,
@@ -225,7 +225,7 @@ export function createQualityPanel(
       el('section', { class: 'mirror' }, [
         el('h4', { text: 'What the strip is drawing' }),
         el('p', { class: 'mirror-summary', text: description.summary }),
-        el('div', { class: 'table-scroll' }, [
+        scrollRegion(description.title, [
           el('table', { class: 'mirror-table' }, [
             el('caption', { text: description.title }),
             el('thead', {}, [
@@ -279,7 +279,7 @@ export function createQualityPanel(
         class: 'metric-note',
         text: `How confident the tracker was about which end of the body is the nose, over the ${formatCount(total)} frames of the trial window. Events use the nose only above the cutoff.`,
       }),
-      el('div', { class: 'table-scroll' }, [
+      scrollRegion('Nose-heading confidence', [
         el('table', { class: 'mirror-table' }, [
           el('caption', { text: 'Nose-heading confidence' }),
           el('thead', {}, [
@@ -356,7 +356,7 @@ export function createQualityPanel(
         class: 'metric-note',
         text: 'Runs of frames with no position, clustered and located. Selecting one moves the video to where it starts.',
       }),
-      el('div', { class: 'table-scroll' }, [
+      scrollRegion('Gaps in the trial window', [
         el('table', { class: 'mirror-table' }, [
           el('caption', { text: 'Gaps in the trial window' }),
           el('thead', {}, [

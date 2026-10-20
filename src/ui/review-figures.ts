@@ -29,7 +29,7 @@ import {
 } from '../viz/index.js';
 import type { SessionFile } from '../contracts/session.js';
 import type { Component } from './components/index.js';
-import { button, disclosure, el, replaceChildren } from './dom.js';
+import { button, disclosure, el, replaceChildren, scrollRegion } from './dom.js';
 import { downloadBlob } from './download.js';
 
 /**
@@ -220,7 +220,7 @@ export function createReviewFigures(
     const canvas = el('canvas', { class: 'figure-canvas' });
     const caption = el('figcaption', { class: 'figure-caption' });
     const note = el('p', { class: 'hint figure-note' });
-    const table = el('div', { class: 'table-scroll' });
+    const table = scrollRegion(`${figure.title}: the data drawn`, []);
     const save = button(`Save PNG (${exportScale}×)`, () => {
       void savePng(figure);
     }, { class: 'btn-secondary' });
