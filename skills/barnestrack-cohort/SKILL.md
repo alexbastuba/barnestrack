@@ -118,15 +118,20 @@ Measures:
   this is what attributes an `ok` that rests on a person's word.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `review_flags` — the codes of every review flag the analysis raised on this trial, `;`-joined,
-  unique and alphabetical; blank when none. The vocabulary: `confirmation_contradicted`,
-  `correction_out_of_range`, `no_escape_contradicted`, `non_persistent_entry_noted`,
-  `orphaned_correction`, `oversized_in_trial`, `physically_unlikely_entry`, `stale_auto_layer`,
-  `tracking_failure_at_hole`. This is *why* a row reads `review`, so quote it when triaging — with
-  two exceptions. A `review` row with **blank** `review_flags` is the commonest case and has no
-  code: an acquisition trial that never escaped and was not confirmed as a non-escape
-  (`escaped = false`, `no_escape_confirmed = false`), which the two columns beside it already say.
-  And `non_persistent_entry_noted` is a note, not a problem (a reviewer confirmed a non-escape and
-  the tool had seen a short head-in-hole at the target), so a row can read `ok` with it.
+  unique and alphabetical; blank when none. The vocabulary: `auto_event_removed_by_correction`,
+  `confirmation_contradicted`, `correction_out_of_range`, `no_escape_contradicted`,
+  `non_persistent_entry_noted`, `orphaned_correction`, `oversized_in_trial`,
+  `physically_unlikely_entry`, `stale_auto_layer`, `tracking_failure_at_hole`. This is *why* a row
+  reads `review`, so quote it when triaging — with three exceptions. A `review` row with **blank**
+  `review_flags` is the commonest case and has no code: an acquisition trial that never escaped
+  and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which
+  the two columns beside it already say. `non_persistent_entry_noted` is a note, not a problem (a
+  reviewer confirmed a non-escape and the tool had seen a short head-in-hole at the target), so a
+  row can read `ok` with it. And `auto_event_removed_by_correction` is also a note: a reviewer's
+  point or range correction removed an automatic event (a "not visible" range over an
+  investigation, a nudge that merged two visits into one), which has no `events.csv` row and is
+  counted in `correction_count` exactly as a deletion is; a row can read `ok` with it, and the
+  flag is the only trace of that event in the export.
   `stale_auto_layer` matters most for comparisons: the track was produced under other
   tracking parameters than the ones `parameters_hash` names, so that row's hash does not describe
   how its track was made.
@@ -134,7 +139,10 @@ Measures:
   `tracked` state only, so it reads lower than "frames with a usable position", which is
   `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
   breakdown.
-- `correction_count` (count) — human corrections affecting this trial.
+- `correction_count` (count) — human corrections affecting this trial. An automatic event that a
+  point or range correction removed counts here exactly as a deletion does, beside the correction
+  itself, so one "not visible" range over a visit adds 2 (the row then carries
+  `auto_event_removed_by_correction`).
 
 Threshold columns, carried so the numbers can be reconciled later:
 `hole_investigation_radius_factor` (× hole radius), `hole_investigation_min_duration_s` (s),
@@ -182,8 +190,14 @@ session_id,session_name,video_id,trial_label,event_id,kind,hole_index,is_target,
   tool detects events once over the automatic track alone and once over the track with the
   reviewer's point and range corrections applied. `corrected` means the event is a human claim —
   it exists only in the second detection (a reviewer's "in the escape box from here" range, a
-  nudged point that produced it), or a reviewer edited or added it. `auto` means the automatic
-  detection found it too; a kept ("confirmed") event is `auto`.
+  nudged point that produced it), or a reviewer edited or added it, or the corrections changed
+  its *kind* (an investigation that an "in the escape box" range turned into an escape entry, a
+  loss that a nudge turned into an investigation). `auto` means the automatic detection found it
+  too; a kept ("confirmed") event is `auto`. A `corrected` row with filled `auto_*` columns is
+  either an event a reviewer edited or one whose kind the corrections changed; in the second case
+  its `evidence_summary` ends with "Was an automatic investigation at hole 7, frames 1100–1129,
+  before the corrections changed its kind." — the only place the automatic kind travels, since
+  the `auto_*` columns carry hole and frames only.
 - `evidence_corrected` — `true` when both detections found the event but a point or range
   correction inside its span changed what was measured (its frames, its distances, which point it
   was judged on). The row is still the tool's event, measured over frames a human touched; the
@@ -201,9 +215,9 @@ session_id,session_name,video_id,trial_label,event_id,kind,hole_index,is_target,
   was named. `is_target` is judged against the row's effective target hole (`target_hole` in
   `trials.csv`), which can differ between videos.
 - `auto_hole_index`, `auto_start_frame`, `auto_end_frame` — what the automatic pass had said.
-  Populated when `source = corrected` (a reviewer changed the event) or `evidence_corrected =
-  true` (a correction changed what was measured); blank otherwise, including on a plain confirmed
-  row. A row where these differ from the live columns is a visible disagreement between the tool
+  Populated when `source = corrected` (a reviewer changed the event, or the corrections changed
+  its kind) or `evidence_corrected = true` (a correction changed what was measured); blank
+  otherwise, including on a plain confirmed row and on a claim the automatic pass never saw. A row where these differ from the live columns is a visible disagreement between the tool
   and a reviewer, and is worth surfacing.
 
 ## `quality.csv`

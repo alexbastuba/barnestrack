@@ -508,7 +508,8 @@ session it is found (D39).
   which a confirmation no longer is, so a kept event reads as plain `auto` in the table — the event
   card and the queue count were re-pointed, so the card says confirmed and the count falls. The
   review canvas draws the map's target rather than the video's effective target (`:702`). The
-  metrics card prints `Escaped: no` for a probe trial's null (`src/ui/components/metrics-card.ts:230`),
+  metrics card prints `Escaped: no` for a probe trial's null (`src/ui/components/metrics-card.ts:230`)
+  and, since D71 (3), for an unresolved trial's null,
   and the change badge prints `null` for a null error count
   (`src/ui/components/describe-diff.ts:196`). No control reclassifies an escape entry as a
   tracking failure, and `physically_unlikely_entry` is still the only way such an entry reaches a
@@ -519,15 +520,6 @@ session it is found (D39).
   `ESCAPE_ENTRY_STATE_DEFINITIONS` (`src/analysis/parameters.ts`) is tested but shown nowhere yet.
   The smallest edits this chunk made inside the interface to keep it working are listed in the
   chunk report, with line numbers, for chunk 15 to own.
-- **A kind change between the two detections exports as `source = corrected`.** D65 matches an
-  automatic event to a corrected one by kind and hole. A point correction that turns an automatic
-  investigation at the target into an escape entry — or an entry into an investigation — finds no
-  partner on either side, so the corrected event reads `corrected` with the correction's id and no
-  shadow, and the automatic event is simply gone. The provenance is right in the narrow sense (no
-  automatic event of that kind existed) but the shadow columns lose the automatic hole and frames,
-  and the row looks like an assertion the person never made. Smallest fix in
-  `src/analysis/match-events.ts`: a second pass over the leftovers matching on hole and overlap
-  alone, recorded as `evidence_corrected` with the old kind in the evidence sentence.
 - **A range that splits one automatic visit leaves the second fragment `source = corrected`.** Each
   event is matched at most once, so when a "not visible here" range cuts an automatic investigation
   in two, the fragment with the larger overlap becomes the evidence-corrected automatic event and
@@ -535,15 +527,29 @@ session it is found (D39).
   fragment's provenance is a human assertion it is not. `tests/analysis/match-events.test.ts` pins
   the at-most-once rule, which is the chunk's instruction; relaxing it to one-to-many on the
   automatic side would need a shadow per fragment and a decision.
-- **An automatic event the corrected detection no longer finds has no row anywhere.** D65 names
-  three outcomes — only in the corrected detection, in both and equal, in both and different — and
-  not the fourth: only in the automatic one. A "not visible here" range laid over an automatic
-  investigation removes it from the corrected detection, and a point nudge that merges two
-  automatic visits into one leaves the smaller unmatched; in both cases the automatic event is in
-  no row of `events.csv`, carried by no shadow column, and named by no flag. Measured with
-  `matchEvents([auto 10–14, auto 16–25], [corrected 10–25], [p@15])`: one row, shadow `{16, 25}`,
-  and the visit at 10–14 gone. The XLSX readme now says so. Smallest fix: a flag naming the
-  vanished id, or a row with `source = auto` and a "removed" marker — either is a decision.
+- **A kind change that ends the trial leaves no trace of the automatic event.** D71's second
+  matching pass (chunk 16) gives a kind-change pair a shadow and a sentence, but the auto-only
+  detection runs over the *corrected* trial window (D65). An `in_escape_box` range laid from the
+  start of an automatic investigation at the target to the end of the video produces a persistent
+  entry that ends the trial at the range start, so the auto-only pass is clipped there and never
+  sees the investigation: the entry exports as a plain `corrected` claim with blank `auto_*`
+  columns, nothing is reported removed, and `correction_count` adds 1 for the range alone. Measured
+  on a scripted track (automatic investigation at hole 7 over frames 43–149, range 43–end): trial
+  end 43 (`escape`), entry `source = corrected`, shadow null, `removedAutoEvents = []`,
+  `correction_count = 1`. The numbers are right; the provenance understates what the range
+  replaced. Smallest fix: run the auto-only pass to its own trial end (`resolveTrialEnd` over the
+  automatic frames) and match over the union of the two windows — a change to D65's same-window
+  rule, so a decision.
+- **A nudge that moves an automatic investigation to a neighbouring hole reads as a removal plus a
+  claim, not a move.** Both matching passes require the same hole, so when nose corrections over a
+  visit place it at hole 4 instead of hole 3, the hole-3 automatic event is reported removed
+  (`auto_event_removed_by_correction`, counted) and the hole-4 event is a `corrected` claim with no
+  shadow; nothing says the two are the same visit. Measured on a scripted track (visit at hole 3
+  over frames 13–29, 17 nose corrections placing it at hole 4): one event, `investigation` at
+  hole 4, `corrected`, no shadow; removed `auto-investigation-h3-f13` (13–29);
+  `correction_count = 18`. The count and the flag are honest about what the corrections erased; a
+  third pass matching by span alone with the automatic hole in the shadow would read as a move,
+  and whether a hole change is a move or an erasure is a decision.
 - **An autosave record from a newer build is kept only until the next change.** `restore()` leaves
   a record whose schema this build cannot read where it is and starts empty, but the first change
   in the new session autosaves over it, because there is one autosave slot per browser (the entry
