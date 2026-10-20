@@ -39,6 +39,20 @@ export interface SeekCallbacks extends AnnounceCallback {
   onSeek(frame: FrameIndex): void;
 }
 
+/**
+ * What an event card can ask for. `onSelect` makes the event the step's one
+ * selection — the same one the timeline, the events table and `E` set — and
+ * seeks to its first frame; without it a card only seeks. The three actions are
+ * the step's own correction handlers, so a card, the toolbar and the keys
+ * write the same entry.
+ */
+export interface EventCallbacks extends SeekCallbacks {
+  onSelect?(eventId: string): void;
+  onKeep?(eventId: string): void;
+  onReclassify?(eventId: string): void;
+  onDelete?(eventId: string): void;
+}
+
 export interface StrategyCallbacks extends SeekCallbacks {
   /** A human overrules the classifier; the reason is stored with the correction (D23). */
   onOverride(strategy: SearchStrategy, reason: string): void;

@@ -4,29 +4,52 @@
  * "The line between 'investigated' and 'went in' is drawn from evidence the
  * user can inspect" — so the card shows the evidence sentence the detector
  * wrote, both distances it measured, which point it judged on (O16), and the
- * frames it spans, and clicking it goes to the first of those frames.
+ * frames it spans, and clicking it selects the event — the one selection the
+ * timeline, the events table and `E` also set — and goes to its first frame.
  *
  * The whole card is one `<button>`. That is deliberate: click, Enter and Space
  * then come from the platform rather than from a keydown handler that has to
  * remember which keys count, and the card is reachable by Tab because it is a
- * real control rather than a div with a role bolted on (D37).
+ * real control rather than a div with a role bolted on (D37). The actions an
+ * event takes (reclassify an inferred entry; in the selected-event panel also
+ * Keep and Delete) are buttons *beside* it, in the same list item, because a
+ * button cannot hold another.
  *
  * D26 marking: a corrected event is hatched *and* carries the word "user", and
  * every automatic value the correction replaced is written out beside the new
  * one — `auto: hole 12 → user: hole 13` — so nothing is overwritten silently.
+ * D67: an escape entry the detector produced is named an inference, and its
+ * evidence reads as one (`event-wording.ts`).
  */
 import type { EventKind, EventRecord } from '../../contracts/events.js';
 import type { ReviewFlag, ReviewFlagCode } from '../../analysis/types.js';
-import { el } from '../dom.js';
+import { button, el, uniqueId } from '../dom.js';
+import { evidenceWording, eventWording, eventWordingLower, reclassifyRefusal } from '../event-wording.js';
 import { formatCm, formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
-import type { Component, SeekCallbacks } from './types.js';
+import type { Component, EventCallbacks } from './types.js';
 
 export interface EventCardProps {
   event: EventRecord;
-  /** True when this event carries a `confirmed` correction — the user kept it as it stands. */
-  confirmed?: boolean;
   /** The whole analysis's flags; the card takes the ones naming its event. */
   flags: readonly ReviewFlag[];
+  /** True when a correction reclassified this (former) escape entry as tracking loss. */
+  reclassified?: boolean;
+  /** True when this is the step's selected event. */
+  selected?: boolean;
+  /**
+   * Which actions sit beside the card. `reclassify` (the list): the one action
+   * only an inferred entry has. `all` (the selected-event panel): Keep,
+   * Reclassify and Delete, each disabled with its reason on screen when it does
+   * not apply (D70).
+   */
+  actions?: 'reclassify' | 'all';
+}
+
+/** Why Keep is off for this event, or null when it can be kept. */
+export function keepRefusal(event: Pick<EventRecord, 'kind'>): string | null {
+  return event.kind === 'tracking_failure'
+    ? 'Keep is off for a tracking failure: there is no measurement to confirm. Delete it, or leave it as it is.'
+    : null;
 }
 
 const KIND_WORDS: Record<EventKind, string> = {
@@ -59,6 +82,10 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   confirmation_contradicted: 'contradicted confirmation',
   non_persistent_entry_noted: 'short entry noted',
 };
+
+const KEEP_LABEL = 'Keep (K)';
+const RECLASSIFY_LABEL = 'Not an entry — tracking loss (L)';
+const DELETE_LABEL = 'Delete event (Delete)';
 
 /** The review flags that belong to one event. */
 export function flagsForEvent(
@@ -113,36 +140,91 @@ export function eventSummary(event: EventRecord): string {
 export function createEventCard(
   container: HTMLElement,
   props: EventCardProps,
-  callbacks: SeekCallbacks,
+  callbacks: EventCallbacks,
+  /** `li` for a list (the default), `div` for a card standing on its own. */
+  tag: 'li' | 'div' = 'li',
 ): Component<EventCardProps> {
   let current = props;
 
   const card = el('button', { class: 'btn-quiet event-card' });
   card.type = 'button';
   card.addEventListener('click', () => {
+    if (callbacks.onSelect) {
+      // The step selects, seeks and says what was selected.
+      callbacks.onSelect(current.event.id);
+      return;
+    }
     callbacks.onSeek(current.event.startFrame);
     callbacks.onAnnounce?.(
-      `Moved to frame ${current.event.startFrame}, the start of this ${KIND_WORDS[
-        current.event.kind
-      ].toLowerCase()}.`,
+      `Moved to frame ${current.event.startFrame}, the start of this ${eventWordingLower(current.event, current.reclassified)}.`,
     );
   });
 
-  // On the <li>, not on the button: the button's className is reassigned on
+  // The actions beside the card. Built once and re-labelled on render, so a
+  // button the user is focused on survives a recompute (D37).
+  const actions = el('div', { class: 'event-actions', attrs: { role: 'group', 'aria-label': 'Decide this event' } });
+  const keepReason = el('p', { class: 'hint event-action-reason', id: uniqueId('event-keep-reason') });
+  const reclassifyReason = el('p', { class: 'hint event-action-reason', id: uniqueId('event-reclassify-reason') });
+  const keepButton = button(KEEP_LABEL, () => callbacks.onKeep?.(current.event.id), {
+    class: 'btn-secondary',
+    attrs: { 'aria-keyshortcuts': 'K', 'aria-describedby': keepReason.id },
+  });
+  const reclassifyButton = button(RECLASSIFY_LABEL, () => callbacks.onReclassify?.(current.event.id), {
+    class: 'btn-quiet',
+    attrs: { 'aria-keyshortcuts': 'L', 'aria-describedby': reclassifyReason.id },
+  });
+  const deleteButton = button(DELETE_LABEL, () => callbacks.onDelete?.(current.event.id), {
+    class: 'btn-quiet',
+    attrs: { 'aria-keyshortcuts': 'Delete' },
+  });
+
+  // On the item, not on the button: the button's className is reassigned on
   // every render, and this is what the review queue scrolls to.
-  const item = el('li', { class: 'event-item', attrs: { 'data-event-id': props.event.id } }, [card]);
+  const item = el(tag, { class: 'event-item', attrs: { 'data-event-id': props.event.id } }, [card, actions]);
   container.append(item);
+
+  function renderActions(event: EventRecord): void {
+    const mode = current.actions ?? 'reclassify';
+    const refusal = reclassifyRefusal(event);
+    const children: HTMLElement[] = [];
+    if (mode === 'all') {
+      const keepNo = keepRefusal(event);
+      keepButton.disabled = keepNo !== null || !callbacks.onKeep;
+      keepReason.textContent = keepNo ?? '';
+      keepReason.hidden = keepNo === null;
+      children.push(keepButton);
+    }
+    // Reclassifying is for an escape entry only; any other kind gets no button
+    // rather than a disabled one, because there is nothing to say about it.
+    if (event.kind === 'escape_entry' && callbacks.onReclassify) {
+      if (refusal === null || mode === 'all') {
+        reclassifyButton.disabled = refusal !== null;
+        reclassifyReason.textContent = refusal ?? '';
+        reclassifyReason.hidden = refusal === null;
+        children.push(reclassifyButton);
+      }
+    }
+    if (mode === 'all' && callbacks.onDelete) children.push(deleteButton);
+    if (mode === 'all') children.push(keepReason);
+    if (event.kind === 'escape_entry' && (refusal === null || mode === 'all')) children.push(reclassifyReason);
+    actions.replaceChildren(...children);
+    actions.hidden = children.length === 0;
+  }
 
   function render(): void {
     const { event, flags } = current;
     const corrected = event.source === 'corrected';
-    card.className = `btn-quiet event-card${corrected ? ' is-corrected' : ''}`;
+    card.className = `btn-quiet event-card${corrected ? ' is-corrected' : ''}${current.selected ? ' is-selected' : ''}`;
+    item.classList.toggle('is-selected', current.selected === true);
+    // `aria-current`, not `aria-selected`: the latter is not allowed on a button.
+    if (current.selected) card.setAttribute('aria-current', 'true');
+    else card.removeAttribute('aria-current');
 
     // The trailing spaces are not decoration: this text is the button's
     // accessible name, and without them a screen reader reads
     // "Investigationhole 0auto" as one word.
     const head = el('span', { class: 'event-card-head' }, [
-      el('span', { class: 'event-kind', text: `${KIND_WORDS[event.kind]} ` }),
+      el('span', { class: 'event-kind', text: `${eventWording(event, current.reclassified)} ` }),
       el('span', { class: 'event-hole', text: `${formatHole(event.holeIndex)} ` }),
       event.isTarget && el('span', { class: 'badge badge-ok badge-target', text: 'target' }),
       // The source is a word, not only a hatch: colour and pattern never carry
@@ -153,9 +235,10 @@ export function createEventCard(
       ' ',
       // A kept event is the user's, but it says the same thing the tool did.
       // The word is there for the same reason "user" is: never colour alone.
-      ...(current.confirmed === true
+      ...(event.confirmed
         ? [el('span', { class: 'badge badge-ok', text: 'confirmed' }), ' ']
         : []),
+      ...(current.selected ? [el('span', { class: 'badge badge-selected', text: 'selected' }), ' '] : []),
     ]);
 
     // Spans, not a <dl>: a button may contain phrasing content only, and its
@@ -180,18 +263,24 @@ export function createEventCard(
     const children: (Node | false)[] = [head, facts];
 
     if (event.evidence) {
-      children.push(el('span', { class: 'event-evidence', text: `${event.evidence} ` }));
+      children.push(el('span', { class: 'event-evidence', text: `${evidenceWording(event)} ` }));
     }
 
     for (const clause of shadowClauses(event)) {
       children.push(el('span', { class: 'event-shadow', text: clause }));
     }
 
-    // Where the hole is changed. The card is one button, so it cannot hold a
-    // control of its own; the correction toolbar is the one place corrections
-    // are made, and this says which key takes you there.
+    // What selecting it is for. The card is one button, so it cannot hold the
+    // controls; the tools beside the video act on the selected event, and this
+    // names their keys.
     children.push(
-      el('span', { class: 'event-how', text: 'Hole → H then a number. ' }),
+      el('span', {
+        class: 'event-how',
+        text:
+          event.kind === 'escape_entry'
+            ? 'Select it, then: K keeps it, L reclassifies it as tracking loss, Delete rejects it. '
+            : 'Select it, then: H changes the hole, K keeps it, Delete removes it. ',
+      }),
     );
 
     for (const flag of flagsForEvent(flags, event.id)) {
@@ -207,6 +296,7 @@ export function createEventCard(
     }
 
     card.replaceChildren(...children.filter((child): child is Node => child !== false));
+    renderActions(event);
   }
 
   render();

@@ -13,7 +13,8 @@ import type { DerivedAnalysis } from '../analysis/derive.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { CorrectionsLayer } from '../contracts/session.js';
 import type { DetectionState } from '../contracts/track.js';
-import { describeCorrection } from '../session/corrections.js';
+import { describeCorrection, isReclassification } from '../session/corrections.js';
+import { eventWording } from './event-wording.js';
 import { stateRuns, type StateRun } from '../viz/quality-strip.js';
 
 export interface EventBar {
@@ -25,6 +26,11 @@ export interface EventBar {
   endFrame: number;
   /** The text on the bar: the hole number, `T<n>` for the target, `entry`, or `?` for a failure. */
   label: string;
+  /**
+   * The event's full name (\`eventWording\`): an escape entry reads "Inferred escape
+   * entry", "Escape entry — confirmed" or "Escape entry — marked by you" (D67).
+   */
+  wording: string;
   corrected: boolean;
   /** An entry-shaped run at a non-target hole: flagged for review. */
   unlikely: boolean;
@@ -115,6 +121,9 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
 
   // The flag, not the prose: a corrected event's evidence is rewritten, its flag is not.
   const unlikelyIds = unlikelyEventIds(analysis);
+  const reclassified = new Set(
+    corrections.entries.filter(isReclassification).map((entry) => (entry.kind === 'event' ? entry.eventId : undefined)),
+  );
   const events: EventBar[] = analysis.events.map((ev) => ({
     id: ev.id,
     kind: ev.kind,
@@ -123,6 +132,7 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
     startFrame: ev.startFrame,
     endFrame: ev.endFrame,
     label: eventLabel(ev),
+    wording: eventWording(ev, reclassified.has(ev.id)),
     corrected: ev.source === 'corrected',
     unlikely: unlikelyIds.has(ev.id),
   }));

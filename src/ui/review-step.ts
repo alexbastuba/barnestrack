@@ -28,9 +28,10 @@
  */
 import type { DerivedAnalysis } from '../analysis/derive.js';
 import { nearestHoleIndex } from '../analysis/geometry.js';
+import { isPersistentEscape } from '../analysis/metrics.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
-import type { CorrectionsLayer, VideoDescriptor } from '../contracts/session.js';
+import { effectiveTargetHole, type CorrectionsLayer, type VideoDescriptor } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
@@ -46,15 +47,17 @@ import {
 import {
   addEvent,
   confirmEvent,
-  confirmedEventIds,
   deleteEvent,
   describeCorrection,
   editEvent,
+  eventCorrectionsFor,
+  isReclassification,
   markRange,
   noEscapeCorrection,
   orphanedCorrections,
   pointCorrectionAt,
   NO_CORRECTIONS,
+  reclassifyEvent,
   revertCorrection,
   revertEvent,
   revertNoEscape,
@@ -69,6 +72,7 @@ import {
 import type { VideoId } from '../session/stored.js';
 import { CanvasView } from './canvas-view.js';
 import {
+  createEventCard,
   createEventList,
   createMetricsCard,
   createParametersPanel,
@@ -79,8 +83,11 @@ import {
   formatClock,
   formatHole,
   formatSeconds,
+  keepRefusal,
   positionToFrame,
   type Component,
+  type EventCallbacks,
+  type EventCardProps,
   type EventListProps,
   type MetricsCardProps,
   type ParametersPanelProps,
@@ -88,7 +95,7 @@ import {
   type SeekCallbacks,
   type StrategyCallbacks,
 } from './components/index.js';
-import { button, disclosure, el, replaceChildren, uniqueId, type Child } from './dom.js';
+import { button, disclosure, el, replaceChildren, scrollRegion, uniqueId, type Child } from './dom.js';
 import {
   ACCENT,
   INK_SOFT,
@@ -98,7 +105,9 @@ import {
   drawLabel,
   drawNoseMarker,
 } from './overlay-draw.js';
+import { eventWording, eventWordingLower, evidenceWording, reclassifyRefusal } from './event-wording.js';
 import { formatFrameTime } from './review-format.js';
+import { forgetSelection, recallSelection, rememberSelection } from './selection-memory.js';
 import { createReviewExport, type ReviewExport } from './review-export.js';
 import {
   createReviewFigures,
@@ -142,12 +151,6 @@ const STATE_WORDS: Record<TrackFrame['detectionState'], string> = {
   not_detected: 'not detected',
   ambiguous: 'ambiguous',
   low_confidence: 'low confidence',
-};
-
-const KIND_WORDS: Record<EventRecord['kind'], string> = {
-  investigation: 'investigation',
-  escape_entry: 'escape entry',
-  tracking_failure: 'tracking failure',
 };
 
 export function createReviewStep(context: AppContext): Step {
@@ -214,15 +217,31 @@ export function createReviewStep(context: AppContext): Step {
     return video ? (store.analysisFor(video.id)?.corrections ?? null) : null;
   }
 
+  /** The ids of the escape entries a correction on this video reclassified as tracking loss (D67). */
+  function reclassified(): ReadonlySet<string> {
+    const ids = new Set<string>();
+    for (const entry of currentLayer()?.entries ?? []) {
+      if (entry.kind === 'event' && isReclassification(entry) && entry.eventId !== undefined) ids.add(entry.eventId);
+    }
+    return ids;
+  }
+
   /**
-   * The events this video's user has kept as they stand. Read from the
-   * corrections layer, where the `confirmed` flag lives — the derived event
-   * cannot carry it, and equal values alone would also match an event someone
-   * edited and edited back.
+   * Who made the correction(s) behind an event, when a reviewer was named
+   * (D68): the event's own entries first, then the point and range corrections
+   * inside its span. Null when nobody was named.
    */
-  function confirmed(): ReadonlySet<string> {
+  function reviewerFor(ev: EventRecord): string | null {
     const layer = currentLayer();
-    return layer ? confirmedEventIds(layer) : new Set<string>();
+    if (!layer) return null;
+    const own = eventCorrectionsFor(layer, ev.id);
+    const ids = new Set(ev.correctionIds);
+    const entries = [...own, ...layer.entries.filter((entry) => ids.has(entry.id))];
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const name = entries[i]!.reviewer;
+      if (name) return name;
+    }
+    return null;
   }
 
   function frameCount(): number {
@@ -302,14 +321,20 @@ export function createReviewStep(context: AppContext): Step {
 
   // ---- corrections: the one write path -----------------------------------------------
 
-  function commit(next: CorrectionsLayer, message: string): void {
+  /**
+   * Writes a corrections layer and says what was done. A correction says how
+   * to undo it in the same sentence (§1 of chunk 15): every one is reverted
+   * from the Corrections list. A revert passes `revertable: false`.
+   */
+  function commit(next: CorrectionsLayer, message: string, revertable = true): void {
     const video = currentVideo();
     if (!video) return;
     const started = performance.now();
     store.setCorrections(video.id, next); // notifies → refresh → re-derive → re-render
     const total = performance.now() - started;
     const timing = lastTiming ? ` Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${total.toFixed(0)} ms with the redraw).` : '';
-    context.announce(`${message}.${timing}`);
+    const undo = revertable ? ' — revert it with “Revert to automatic” in the Corrections list' : '';
+    context.announce(`${message}${undo}.${timing}`);
   }
 
   function layerOrNull(): CorrectionsLayer | null {
@@ -453,7 +478,52 @@ export function createReviewStep(context: AppContext): Step {
     return `${video.filename} — ${describeQueue(count)}`;
   }
 
-  /** Selects a queued event, seeks to it and brings its card into view. */
+  /**
+   * The one selection (§1 of chunk 15). The timeline, the events table, the
+   * event cards, `E` / Shift+`E` and the queue's `[` / `]` all come here, so
+   * every view of "the selected event" — the card, the table row, the bar on
+   * the timeline, the selection line by the toolbar — is the same event.
+   *
+   * Seeks to the event's first frame. Brings the video and the tools into view
+   * when they are off-screen (a card is clicked far below them); scrolling never
+   * moves focus. `announce` is false when the caller has just said something —
+   * the strip under the video is a live region and names the event itself.
+   */
+  function selectEvent(eventId: string | null, options: { announce?: string | null; seek?: boolean } = {}): void {
+    const ev = eventId === null ? null : (analysis?.events.find((candidate) => candidate.id === eventId) ?? null);
+    selectedEventId = ev?.id ?? null;
+    selectedEdge = null;
+    timeline.setSelection(selectedEventId, null);
+    const video = currentVideo();
+    if (video) {
+      if (ev) rememberSelection(store.current.sessionId, video.id, ev.id);
+      else forgetSelection(store.current.sessionId, video.id);
+    }
+    if (ev && options.seek !== false) seek(positionOfFrame(ev.startFrame), false);
+    renderSelection();
+    if (ev) bringStageIntoView();
+    if (options.announce) context.announce(options.announce);
+  }
+
+  /** Everything that draws the selection, redrawn together. */
+  function renderSelection(): void {
+    renderEventsTable();
+    renderQueue();
+    renderStatus();
+    renderSelectedPanel();
+    eventsComponent?.update(eventListProps());
+  }
+
+  /** Scrolls the stage to the top of the window when it is not on screen; focus stays where it is. */
+  function bringStageIntoView(): void {
+    const box = stage.getBoundingClientRect();
+    const viewport = window.innerHeight;
+    if (box.height === 0 || viewport === 0) return; // no layout (tests), nothing to bring
+    if (box.top >= 0 && box.top < viewport * 0.5) return;
+    stage.scrollIntoView({ block: 'start' });
+  }
+
+  /** Selects the next or previous queued event and says where it sits in the queue. */
   function goToQueued(direction: 1 | -1): void {
     const ids = queue();
     const next = stepQueue(ids, selectedEventId, direction);
@@ -461,32 +531,7 @@ export function createReviewStep(context: AppContext): Step {
       context.announce('Nothing to check on this video.');
       return;
     }
-    // Nothing is scrolled: the user is looking at the video, and the strip
-    // under it now says which event this is. Scrolling the event card into
-    // view took the page away from the frame the decision is made on.
-    selectQueued(next, true);
-  }
-
-  /**
-   * Selects a queued event by id, seeks to it and — unless the caller has
-   * already said something — announces where it sits in the queue.
-   *
-   * The announcement is the position alone. The strip is a live region and has
-   * just said which event this is; saying it again here in different words made
-   * one keypress two utterances for a screen-reader user. `keepSelected` passes
-   * `false` for the same reason: its own commit message has just been spoken.
-   */
-  function selectQueued(eventId: string, announce: boolean): void {
-    const ids = queue();
-    const ev = analysis?.events.find((candidate) => candidate.id === eventId);
-    if (!ev) return;
-    selectedEventId = ev.id;
-    selectedEdge = null;
-    timeline.setSelection(ev.id, null);
-    seek(positionOfFrame(ev.startFrame), false);
-    renderEventsTable();
-    renderQueue();
-    if (announce) context.announce(`${ids.indexOf(ev.id) + 1} of ${ids.length} to check.`);
+    selectEvent(next, { announce: `${ids.indexOf(next) + 1} of ${ids.length} to check.` });
   }
 
   /**
@@ -506,15 +551,25 @@ export function createReviewStep(context: AppContext): Step {
   /** The one line under the video: which event is selected, and what to do with it. */
   function describeCurrentEvent(ev: EventRecord): string {
     const parts = [
-      KIND_WORDS[ev.kind].charAt(0).toUpperCase() + KIND_WORDS[ev.kind].slice(1),
+      eventWording(ev, reclassified().has(ev.id)),
       formatHole(ev.holeIndex),
       `${formatClock(ev.startTime_s)}–${formatClock(ev.endTime_s)}`,
       formatSeconds(ev.durationSeconds),
     ];
     const reason = queueReason(ev);
     if (reason) parts.push(`flagged: ${reason}`);
-    if (ev.source === 'corrected' || confirmed().has(ev.id)) parts.push(confirmed().has(ev.id) ? 'user · confirmed, no change' : 'corrected by hand');
+    if (ev.confirmed) parts.push('confirmed by you, no change');
+    else if (ev.source === 'corrected') parts.push('corrected by hand');
     return parts.join(' · ');
+  }
+
+  /** `Selected: investigation · hole 7 · frames 1,100–1,129`, or what to do when nothing is. */
+  function selectionLineText(): string {
+    const ev = selectedEvent();
+    if (!ev) {
+      return 'Nothing selected — click an event card, a bar on the timeline or a row of the events table, or press E. The event tools act on the selected event.';
+    }
+    return `Selected: ${eventWordingLower(ev, reclassified().has(ev.id))} · ${formatHole(ev.holeIndex)} · frames ${ev.startFrame.toLocaleString()}–${ev.endFrame.toLocaleString()}`;
   }
 
   function renderQueue(): void {
@@ -524,15 +579,11 @@ export function createReviewStep(context: AppContext): Step {
     queueNext.disabled = count === 0;
 
     const ev = selectedEvent();
-    // Investigations only: see `keepSelected`.
-    keepButton.disabled = ev === null || analysis === null || ev.kind !== 'investigation';
-    keepButton.title =
-      ev !== null && ev.kind !== 'investigation'
-        ? `This ${KIND_WORDS[ev.kind]} cannot be kept: confirming it would recompute the distances it was judged on.`
-        : '';
     const line = ev
       ? describeCurrentEvent(ev)
       : `${describeQueue(count)} — press ] or click an event on the timeline`;
+    const selection = selectionLineText();
+    if (selection !== selectionLine.textContent) selectionLine.textContent = selection;
     // Only when it actually changed: the strip is a polite live region, and
     // `textContent =` replaces the text node even with an identical string, so
     // an unguarded write re-announces the whole line on every re-derive — and
@@ -555,7 +606,7 @@ export function createReviewStep(context: AppContext): Step {
     if (ev.holeIndex === holeIndex) return;
     commit(
       editEvent(layer, ev.id, { holeIndex, startFrame: ev.startFrame, endFrame: ev.endFrame }, newMeta()),
-      `Event moved from hole ${ev.holeIndex} to hole ${holeIndex}`,
+      `Hole changed from ${ev.holeIndex ?? 'none'} to ${holeIndex}`,
     );
   }
 
@@ -575,31 +626,33 @@ export function createReviewStep(context: AppContext): Step {
     );
   }
 
+  const SELECT_FIRST = 'Select an event first: click its card or its bar on the timeline, or press E.';
+
+  /** The event an action names, or the selection when it names none. */
+  function eventFor(eventId?: string): EventRecord | null {
+    if (eventId === undefined) return selectedEvent();
+    return analysis?.events.find((e) => e.id === eventId) ?? null;
+  }
+
   /**
-   * "Keep": the user has looked at this event and it is right. It is recorded
-   * as a correction whose values are the automatic ones — the only way to say
-   * "confirmed" over the D9 contract, which has no such flag — so the event
-   * becomes the user's, leaves the queue, and can be reverted like any other
-   * correction. The selection then advances to the next queued event, the same
-   * as `]`, so a run of good events is a run of single keystrokes.
+   * "Keep": the user has looked at this event and it is right (D64, D67). It is
+   * recorded as an `edit` carrying `confirmed: true` whose values are the
+   * automatic ones; the engine keeps the event's point, distances and evidence
+   * verbatim, so an escape entry can be kept as well as an investigation. The
+   * event leaves the queue, exports `confirmed = true`, and can be reverted like
+   * any correction. The selection then advances to the next queued event, the
+   * same as `]`, so a run of good events is a run of single keystrokes.
    */
-  function keepSelected(): void {
+  function keepSelected(eventId?: string): void {
     const layer = layerOrNull();
-    const ev = selectedEvent();
+    const ev = eventFor(eventId);
     if (!layer || !ev) {
-      context.announce('Select an event first (click a bar on the timeline, or press E).');
+      context.announce(SELECT_FIRST);
       return;
     }
-    if (ev.kind !== 'investigation') {
-      // The confirmation is an edit, and an edit is re-measured over its span.
-      // On an escape entry or a tracking failure — spans that are mostly
-      // unpositioned — that re-measurement does not reproduce the automatic
-      // `point_used` and distances, so "confirmed, no change" would be a lie in
-      // `events.csv`. Refused until the engine can carry those through
-      // (docs/known-limitations.md).
-      context.announce(
-        `Only an investigation can be kept as it is. Keeping this ${KIND_WORDS[ev.kind]} would recompute the point and the distances it was judged on, so the exported numbers would change under a note saying they had not.`,
-      );
+    const refusal = keepRefusal(ev);
+    if (refusal !== null) {
+      context.announce(refusal);
       return;
     }
     // Taken *before* the commit: afterwards this event is no longer in the
@@ -607,31 +660,64 @@ export function createReviewStep(context: AppContext): Step {
     const following = stepQueue(queue(), ev.id, 1);
     commit(
       confirmEvent(layer, ev.id, { holeIndex: ev.holeIndex, startFrame: ev.startFrame, endFrame: ev.endFrame }, newMeta()),
-      `Event ${ev.id} kept as it is: confirmed by the user, no change`,
+      `${eventWording(ev)} ${formatHole(ev.holeIndex)} kept as it is: confirmed by you, no change`,
     );
     if (following === null || following === ev.id) {
-      selectedEventId = null;
-      selectedEdge = null;
-      timeline.setSelection(null, null);
-      renderEventsTable();
-      renderQueue();
-      context.announce('Kept. Nothing left to check on this video.');
+      selectEvent(null, { announce: 'Kept. Nothing left to check on this video.' });
       return;
     }
-    selectQueued(following, false);
+    selectEvent(following);
   }
 
-  function deleteSelected(): void {
+  /**
+   * "Not an entry — the tracker lost the animal" (D67): an `edit` with
+   * `newKind: 'tracking_failure'`. Only an escape entry the detector produced
+   * can be reclassified; `reclassifyEvent` writes the edit whatever the kind,
+   * so the gate is here, and a refusal writes nothing.
+   */
+  function reclassifySelected(eventId?: string): void {
     const layer = layerOrNull();
-    const ev = selectedEvent();
+    if (!layer) return;
+    const ev = eventFor(eventId);
+    const refusal = reclassifyRefusal(ev);
+    if (refusal !== null || ev === null) {
+      context.announce(refusal ?? SELECT_FIRST);
+      return;
+    }
+    commit(
+      reclassifyEvent(layer, ev.id, newMeta()),
+      `Escape entry at ${formatHole(ev.holeIndex)} reclassified as tracking loss: the frames stay a gap, and latency and errors are recomputed without it`,
+    );
+    // The event keeps its id; the selection stays on it, now a tracking loss.
+    selectEvent(ev.id, { seek: false });
+  }
+
+  function deleteSelected(eventId?: string): void {
+    const layer = layerOrNull();
+    const ev = eventFor(eventId);
     if (!layer || !ev) {
-      context.announce('Select an event first (click a bar on the timeline, or press E).');
+      context.announce(SELECT_FIRST);
       return;
     }
     selectedEventId = null;
     selectedEdge = null;
-    commit(deleteEvent(layer, ev.id, newMeta()), `Event ${ev.id} deleted`);
+    const video = currentVideo();
+    if (video) forgetSelection(store.current.sessionId, video.id);
+    commit(deleteEvent(layer, ev.id, newMeta()), `${eventWording(ev, reclassified().has(ev.id))} ${formatHole(ev.holeIndex)} deleted`);
   }
+
+  /** The handlers an event card calls: the same ones as the toolbar and the keys. */
+  const eventCallbacks: EventCallbacks = {
+    onSeek: (frame) => seek(positionOfFrame(frame), true),
+    onAnnounce: (message) => context.announce(message),
+    onSelect: (id) => {
+      const ev = analysis?.events.find((e) => e.id === id);
+      selectEvent(id, { announce: ev ? `${selectionLineText()}.` : null });
+    },
+    onKeep: (id) => keepSelected(id),
+    onReclassify: (id) => reclassifySelected(id),
+    onDelete: (id) => deleteSelected(id),
+  };
 
   function trialStartHere(): void {
     const layer = layerOrNull();
@@ -697,9 +783,12 @@ export function createReviewStep(context: AppContext): Step {
       ctx.stroke();
       ctx.setLineDash([]);
       const holeRadius = Math.max(map.holes.holeRadius_px * view.zoom, 3);
+      // This video's own target when it overrides the map's (D68).
+      const video = currentVideo();
+      const target = video ? effectiveTargetHole(video, map) : map.target.holeIndex;
       for (const hole of holeCentres(map)) {
         drawHole(ctx, at(hole), holeRadius, hole.holeIndex, {
-          isTarget: hole.holeIndex === map.target.holeIndex,
+          isTarget: hole.holeIndex === target,
           selected: current?.holeIndex === hole.holeIndex,
           sized: map.holes.holeRadius_px > 0,
           emphasised: current?.holeIndex === hole.holeIndex,
@@ -714,7 +803,7 @@ export function createReviewStep(context: AppContext): Step {
       if (!frame.centroid.valid) lines.push('centroid: not positioned');
       if (!frame.nose.valid) lines.push('nose: not available');
       if (analysis?.trial.startFrame === playhead) lines.push('trial start');
-      if (current) lines.push(`${KIND_WORDS[current.kind]} ${current.label}${current.corrected ? ' · user' : ''}`);
+      if (current) lines.push(`${current.wording.toLowerCase()} ${current.label}${current.corrected ? ' · user' : ''}`);
       lines.forEach((line, i) => drawLabel(ctx, line, 8, 8 + i * 18, i === 0));
     }
     if (tool !== 'off' && hoverPoint) drawCrosshair(ctx, at(hoverPoint), `place the ${tool} here`);
@@ -784,14 +873,8 @@ export function createReviewStep(context: AppContext): Step {
 
   const timeline = new Timeline({
     onSeek: (frame) => seek(frame, false),
-    onSelectEvent: (id) => {
-      selectedEventId = id;
-      selectedEdge = null;
-      timeline.setSelection(id, null);
-      renderEventsTable();
-      renderQueue();
-      renderStatus();
-    },
+    // A click on a bar seeks to the frame under the pointer itself; the selection is the same one.
+    onSelectEvent: (id) => selectEvent(id, { seek: false }),
     onRetime: (eventId, edge, frame) => {
       selectedEventId = eventId;
       retimeSelected(edge, frame);
@@ -823,7 +906,8 @@ export function createReviewStep(context: AppContext): Step {
   });
   escapeBoxButton.setAttribute('aria-describedby', escapeBoxHint.id);
   const addEventButton = button('Add investigation from here… (A)', () => addEventHere(), { class: 'btn-secondary' });
-  const deleteEventButton = button('Delete event (Delete)', () => deleteSelected(), { class: 'btn-secondary' });
+  // Keep, Reclassify and Delete sit on the selected event's card (`selectedPanel`), next to the
+  // evidence they are decided on; the toolbar keeps the tools that work on frames and spans.
   const holeSelect = el('select', { id: uniqueId('review-hole'), attrs: { 'aria-label': 'Hole of the selected event' } });
   holeSelect.addEventListener('change', () => relabelSelected(Number(holeSelect.value)));
   const edgeStartButton = button('Start edge (S)', () => selectEdge('start'), { class: 'btn-quiet', attrs: { 'aria-pressed': 'false' } });
@@ -914,18 +998,22 @@ export function createReviewStep(context: AppContext): Step {
   function renderNoEscape(): void {
     const layer = currentLayer();
     const entry = layer ? noEscapeCorrection(layer) : null;
-    const escaped = analysis?.metrics.escaped === true;
-    // Any escape entry, not only one that ended the trial: an entry too short to be persistent is
-    // still an entry the tool found at the escape hole, and the engine flags it the same way.
-    const firstEntry = (analysis?.events ?? [])
-      .filter((ev) => ev.kind === 'escape_entry')
-      .reduce<EventRecord | null>((a, b) => (a === null || b.startFrame < a.startFrame ? b : a), null);
-    const contradicted = entry !== null && firstEntry !== null;
+    const probe = currentVideo()?.trialType === 'probe';
+    // The same test the engine applies (derive.ts, D67's amendment of D63): an entry that ended
+    // the trial, or any persistent entry, leaves nothing to confirm; entries that are all
+    // non-persistent — the head went in and came back out — can stand beside a confirmation.
+    const entries = (analysis?.events ?? []).filter((ev) => ev.kind === 'escape_entry');
+    const firstEntry = entries.reduce<EventRecord | null>((a, b) => (a === null || b.startFrame < a.startFrame ? b : a), null);
+    const track = analysis?.cleanedTrack ?? [];
+    const lastFrameIndex = track[track.length - 1]?.frameIndex ?? -1;
+    const endedByEscape = analysis?.trial.endReason === 'escape';
+    const persistent = entries.find((ev) => isPersistentEscape(ev, lastFrameIndex, store.parameters)) ?? null;
+    const blockingEntry = endedByEscape || persistent !== null;
 
     noEscapeBox.checked = entry !== null;
     // Disabled only when there is nothing to confirm — never while a confirmation stands, or the
     // user could not untick their own correction (D25: every correction is revertable).
-    noEscapeBox.disabled = analysis === null || (firstEntry !== null && entry === null);
+    noEscapeBox.disabled = analysis === null || (entry === null && (blockingEntry || probe));
     noEscapeReason.disabled = noEscapeBox.disabled;
     // Only write back a reason there is one for. Blanking the field on every render threw away a
     // reason typed but not yet ticked as soon as anything else re-rendered — clicking the timeline
@@ -933,33 +1021,45 @@ export function createReviewStep(context: AppContext): Step {
     if (entry !== null && document.activeElement !== noEscapeReason) noEscapeReason.value = entry.reason;
 
     const endFrame = analysis ? positionToFrame(analysis.cleanedTrack, analysis.trial.endFrame) : null;
-    const when =
-      escaped && analysis && endFrame !== null
+    const blockingAt =
+      endedByEscape && analysis && endFrame !== null
         ? formatFrameTime(endFrame, analysis.trial.endTime_s)
-        : firstEntry
-          ? formatFrameTime(firstEntry.startFrame, firstEntry.startTime_s)
-          : 'a frame of this trial';
-    const shortOfEnding = escaped ? '' : ' (too short to end the trial, or outside it)';
+        : persistent
+          ? formatFrameTime(persistent.startFrame, persistent.startTime_s)
+          : '';
+    const shortAt = firstEntry ? formatFrameTime(firstEntry.startFrame, firstEntry.startTime_s) : '';
+    const by = entry?.reviewer ? ` Confirmed by ${entry.reviewer}.` : '';
     noEscapeHint.textContent =
       analysis === null
         ? 'Analyse the video first.'
-        : contradicted
-          ? `Contradicted: an escape entry at ${when}${shortOfEnding} stands against this confirmation, so the trial is still for review. Untick this, or revert what produced the entry.`
-          : firstEntry !== null
-            ? `Nothing to confirm: this trial has an escape entry at ${when}${shortOfEnding}.${escaped ? '' : ' If that entry is not real, delete it first and then confirm.'}`
-            : 'Ticking this says the animal genuinely never went in, which is what lets the trial read ok.';
+        : probe && entry === null
+          ? 'Nothing to confirm: this is a probe trial, which has no escape box.'
+          : blockingEntry
+            ? entry !== null
+              ? `Contradicted: the escape entry at ${blockingAt} ${endedByEscape ? 'ended the trial' : 'is persistent'}, so it stands against this confirmation and the trial is still for review. Untick this, or reject or reclassify the entry.${by}`
+              : `Nothing to confirm: the escape entry at ${blockingAt} ${endedByEscape ? 'ended the trial' : 'is persistent'}. If it is not real, reject it (Delete) or reclassify it as tracking loss (L) first.`
+            : firstEntry !== null
+              ? `The escape entry at ${shortAt} was too short to end the trial, so it stays${entry !== null ? '' : ' if you confirm'}: the trial carries the note “short entry noted” (non_persistent_entry_noted in the export) and can still read ok.${by}`
+              : `Ticking this says the animal genuinely never went in, which is what lets the trial read ok.${by}`;
   }
 
   const playButton = button('Play / pause (Space)', () => togglePlay(), { class: 'btn-quiet' });
 
+  /*
+   * The selection line, at the head of the tools that act on it (§1 of chunk 15): which event is
+   * selected, or — when none is — in one sentence what to do. Not a live region: the strip under
+   * the video already speaks the selection, and this repeats it beside the controls.
+   */
+  const selectionLine = el('p', { id: 'review-selection-line', class: 'selection-line' });
+
   // A group, not a toolbar: the arrows step frames here, they do not move between the buttons.
-  const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools' } }, [
+  const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools', 'aria-describedby': 'review-selection-line' } }, [
+    selectionLine,
     el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
     el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton, escapeBoxHint]),
     el('div', { class: 'tool-group' }, [
       el('span', { text: 'Event' }),
       addEventButton,
-      deleteEventButton,
       el('div', { class: 'field' }, [el('label', { text: 'Hole (H)', attrs: { for: holeSelect.id } }), holeSelect]),
       edgeStartButton,
       edgeEndButton,
@@ -1056,13 +1156,9 @@ export function createReviewStep(context: AppContext): Step {
           context.announce(action === 'next-event' ? 'No event after this frame.' : 'No event before this frame.');
           return;
         }
-        selectedEventId = ev.id;
-        selectedEdge = null;
-        timeline.setSelection(ev.id, null);
-        seek(ev.startFrame, false);
-        context.announce(`${KIND_WORDS[ev.kind]} ${ev.label}${ev.corrected ? ' (user)' : ''}, frames ${ev.startFrame}–${ev.endFrame}, selected.`);
-        renderEventsTable();
-        renderQueue();
+        selectEvent(ev.id, {
+          announce: `${ev.wording} ${ev.label}${ev.corrected ? ' (user)' : ''}, frames ${ev.startFrame}–${ev.endFrame}, selected.`,
+        });
         break;
       }
       case 'focus-frame-field':
@@ -1133,9 +1229,12 @@ export function createReviewStep(context: AppContext): Step {
       case 'keep-event':
         keepSelected();
         break;
+      case 'reclassify-event':
+        reclassifySelected();
+        break;
       case 'relabel-event':
         if (!selectedEvent()) {
-          context.announce('Select an event first (click a bar on the timeline, or press E).');
+          context.announce(SELECT_FIRST);
           return;
         }
         holeSelect.focus();
@@ -1220,15 +1319,11 @@ export function createReviewStep(context: AppContext): Step {
     class: 'btn-quiet queue-step',
     attrs: { 'aria-keyshortcuts': ']' },
   });
-  const keepButton = button('Keep (K)', () => keepSelected(), {
-    class: 'btn-secondary queue-step',
-    attrs: { 'aria-keyshortcuts': 'K' },
-  });
   const currentEventLine = el('p', { class: 'current-event-line' });
-  // The keys are the ones already bound in `REVIEW_KEYS`; this adds none.
+  // The keys are the ones bound in `REVIEW_KEYS`.
   const currentEventHint = el('p', {
     class: 'current-event-hint hint',
-    text: 'Relabel: H then the hole number · Delete: ⌫ · Keep as it is: K',
+    text: 'Keep as it is: K · Relabel: H then the hole number · Delete: ⌫ · An inferred escape entry that was tracking loss: L',
     attrs: { hidden: true },
   });
   const queueBar = el(
@@ -1241,9 +1336,54 @@ export function createReviewStep(context: AppContext): Step {
     [
       currentEventLine,
       currentEventHint,
-      el('div', { class: 'current-event-actions' }, [queueCount, keepButton, queuePrevious, queueNext]),
+      el('div', { class: 'current-event-actions' }, [queueCount, queuePrevious, queueNext]),
     ],
   );
+
+  /*
+   * The selected event's card, beside the video (§1, §5 of chunk 15): the same card component the
+   * events list uses, with its Keep / Reclassify / Delete buttons — the same handlers the keys
+   * call — and each refusal's reason on screen. Rebuilt only when the selection changes, updated
+   * otherwise, so a focused button survives a recompute.
+   */
+  const selectedPanel = el('section', {
+    id: 'review-selected',
+    class: 'review-selected',
+    attrs: { 'aria-label': 'Selected event' },
+  });
+  const selectedEmpty = el('p', { class: 'hint selected-empty' });
+  let selectedCard: { id: string; component: Component<EventCardProps> } | null = null;
+
+  function selectedCardProps(ev: EventRecord): EventCardProps {
+    return {
+      event: ev,
+      flags: analysis?.reviewFlags ?? [],
+      reclassified: reclassified().has(ev.id),
+      selected: true,
+      actions: 'all',
+    };
+  }
+
+  function renderSelectedPanel(): void {
+    const ev = selectedEvent();
+    if (ev === null) {
+      selectedCard?.component.destroy();
+      selectedCard = null;
+      selectedEmpty.textContent = selectionLineText();
+      if (!selectedPanel.contains(selectedEmpty)) selectedPanel.replaceChildren(selectedEmpty);
+      return;
+    }
+    if (selectedCard?.id === ev.id) {
+      selectedCard.component.update(selectedCardProps(ev));
+      return;
+    }
+    selectedCard?.component.destroy();
+    selectedPanel.replaceChildren();
+    selectedCard = {
+      id: ev.id,
+      component: createEventCard(selectedPanel, selectedCardProps(ev), { ...eventCallbacks, onSelect: undefined, onSeek: (frame) => seek(positionOfFrame(frame), true) }, 'div'),
+    };
+  }
   const status = el('p', { class: 'review-status', attrs: { 'aria-live': 'off' } });
 
   const legend = disclosure('Keyboard', [
@@ -1338,22 +1478,36 @@ export function createReviewStep(context: AppContext): Step {
     correctionsList,
   ]);
 
-  body.append(
-    el('div', { class: 'review-top' }, [
-      el('div', { class: 'field' }, [el('label', { text: 'Video', attrs: { for: videoSelect.id } }), videoSelect]),
-      timing,
+  /*
+   * The stage (§5 of chunk 15, D70's laptop check): everything a decision about one event needs,
+   * on one screen at 1366 × 768. Left: the clip selector, the frame, the scrubber and the selected
+   * event's card with its evidence and its three actions. Right: the queue (how much is left,
+   * previous / next) and the correction tools under the selection line. Below 1200 px the right
+   * column drops under the left (app.css). The timeline stays outside, full width, on its own row.
+   */
+  const stage = el('div', { class: 'review-stage' }, [
+    el('div', { class: 'review-stage-main' }, [
+      el('div', { class: 'review-top' }, [
+        el('div', { class: 'field' }, [el('label', { text: 'Video', attrs: { for: videoSelect.id } }), videoSelect]),
+        timing,
+      ]),
+      canvasView.element,
+      scrubber.element,
+      selectedPanel,
     ]),
+    el('div', { class: 'review-stage-side' }, [queueBar, toolbar]),
+  ]);
+
+  body.append(
     note,
     status,
-    scrubber.element,
-    // Video and toolbar side by side on a wide screen, stacked below 1200 px
-    // (app.css). The timeline stays outside, full width, on its own row.
-    el('div', { class: 'review-stage' }, [canvasView.element, toolbar]),
-    queueBar,
+    stage,
     timeline.element,
     legend,
     el('div', { class: 'review-panels' }, [parametersPanel, metricsPanel, qualityPanel, eventsPanel]),
-    figuresHost,
+    // Secondary: the figures are for the cohort, not for deciding an event, so they wait behind a
+    // labelled disclosure rather than pushing everything else down (§5 of chunk 15).
+    disclosure('Figures', [figuresHost]),
     exportHost,
     framesMirror,
     eventsMirror,
@@ -1415,6 +1569,27 @@ export function createReviewStep(context: AppContext): Step {
     );
   }
 
+  /**
+   * After a reload, puts back the event that was selected on this video (`selection-memory.ts`),
+   * once per video and session. An id whose event no longer exists is dropped without a word.
+   */
+  const restoreTried = new Set<string>();
+  function restoreSelection(video: VideoDescriptor | null): void {
+    if (!video || !analysis || selectedEventId !== null) return;
+    const key = `${store.epoch}:${video.id}`;
+    if (restoreTried.has(key)) return;
+    restoreTried.add(key);
+    const id = recallSelection(store.current.sessionId, video.id);
+    if (id === null) return;
+    const ev = analysis.events.find((candidate) => candidate.id === id);
+    if (!ev) {
+      forgetSelection(store.current.sessionId, video.id);
+      return;
+    }
+    selectedEventId = ev.id;
+    playhead = positionOfFrame(ev.startFrame);
+  }
+
   function render(): void {
     if (deriving || sweeping) return;
     if (store.epoch !== lastEpoch) {
@@ -1432,6 +1607,7 @@ export function createReviewStep(context: AppContext): Step {
     const video = currentVideo();
     ensureAnalysis();
     sweepMissingAnalyses();
+    restoreSelection(video);
     // After the derive, not before: the option labels carry this video's queue
     // count, and reading it first would show the count from before the edit.
     syncSelect(
@@ -1465,7 +1641,7 @@ export function createReviewStep(context: AppContext): Step {
       : '';
 
     const blocked = video ? analysisBlockedReason(store, video.id) : 'no video';
-    for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, deleteEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
+    for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
       control.disabled = analysis === null;
     }
     timing.textContent = analysis && lastTiming
@@ -1492,6 +1668,7 @@ export function createReviewStep(context: AppContext): Step {
     renderFrameTable();
     renderCorrections();
     renderQueue();
+    renderSelectedPanel();
     renderStatus();
     canvasView.requestDraw();
   }
@@ -1502,9 +1679,26 @@ export function createReviewStep(context: AppContext): Step {
     if (painting) parts.push(painting.kind === 'not_visible' ? `marking not visible from frame ${painting.startFrame}: press V at the last frame` : `adding an investigation from frame ${painting.startFrame}: press A at the last frame`);
     if (playing) parts.push('playing');
     const ev = selectedEvent();
-    if (ev) parts.push(`selected: ${KIND_WORDS[ev.kind]} ${ev.holeIndex ?? ''} frames ${ev.startFrame}–${ev.endFrame}${selectedEdge ? ` (${selectedEdge} edge)` : ''}`);
+    if (ev) parts.push(`selected: ${eventWordingLower(ev, reclassified().has(ev.id))} ${ev.holeIndex ?? ''} frames ${ev.startFrame}–${ev.endFrame}${selectedEdge ? ` (${selectedEdge} edge)` : ''}`);
     if (hoverText) parts.push(hoverText);
     status.textContent = parts.join(' · ');
+  }
+
+  /**
+   * The Source cell (D26, D65): keyed on what the event *is* — confirmed, the person's own,
+   * evidence a person touched, or automatic — with the automatic values beside a changed one, and
+   * whose call it was when a reviewer was named (D68).
+   */
+  function sourceText(ev: EventRecord): string {
+    const name = reviewerFor(ev);
+    const by = name ? ` · by ${name}` : '';
+    const shadow = ev.autoShadow
+      ? ` (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
+      : '';
+    if (ev.confirmed) return `auto · confirmed, no change${by}`;
+    if (ev.source === 'corrected') return `user${shadow}${by}`;
+    if (ev.evidenceCorrected) return `auto · evidence corrected${shadow}${by}`;
+    return 'auto';
   }
 
   function renderEventsTable(): void {
@@ -1515,50 +1709,40 @@ export function createReviewStep(context: AppContext): Step {
     const counts = { investigation: 0, escape_entry: 0, tracking_failure: 0 };
     for (const ev of analysis.events) counts[ev.kind]++;
     const unlikely = unlikelyEventIds(analysis);
+    const reclassifiedIds = reclassified();
     const tbody = el('tbody');
     for (const ev of analysis.events) {
       const selected = ev.id === selectedEventId;
+      const wording = eventWording(ev, reclassifiedIds.has(ev.id));
       const row = el('tr', { class: `${ev.source === 'corrected' ? 'is-corrected ' : ''}${ev.isTarget ? 'is-target ' : ''}${selected ? 'is-selected' : ''}`.trim() }, [
         el('th', { attrs: { scope: 'row' } }, [
-          button(`${KIND_WORDS[ev.kind]}`, () => {
-            selectedEventId = ev.id;
-            selectedEdge = null;
-            timeline.setSelection(ev.id, null);
-            seek(ev.startFrame, true);
-            renderEventsTable();
-            renderQueue();
+          button(wording, () => {
+            selectEvent(ev.id, { announce: null });
             timeline.surface.focus(); // the table was rebuilt under this button
-          }, { class: 'btn-quiet metric-value', attrs: { 'aria-label': `Seek to ${KIND_WORDS[ev.kind]} at frame ${ev.startFrame} and select it` } }),
+          }, { class: 'btn-quiet metric-value', attrs: { 'aria-label': `Seek to the ${wording.toLowerCase()} at frame ${ev.startFrame} and select it` } }),
         ]),
-        el('td', { text: ev.holeIndex === null ? '—' : String(ev.holeIndex) }),
+        el('td', { class: 'num', text: ev.holeIndex === null ? '—' : String(ev.holeIndex) }),
         el('td', { text: ev.isTarget ? 'target' : '' }),
-        el('td', { text: `${ev.startFrame}–${ev.endFrame}` }),
-        el('td', { text: ev.startTime_s.toFixed(2) }),
-        el('td', { text: ev.durationSeconds.toFixed(2) }),
+        el('td', { class: 'num', text: `${ev.startFrame}–${ev.endFrame}` }),
+        el('td', { class: 'num', text: ev.startTime_s.toFixed(2) }),
+        el('td', { class: 'num', text: ev.durationSeconds.toFixed(2) }),
         el('td', { text: ev.pointUsed }),
-        el('td', { text: ev.minNoseDistance_cm === null ? '—' : ev.minNoseDistance_cm.toFixed(1) }),
-        el('td', { text: Number.isFinite(ev.minCentroidDistance_cm) ? ev.minCentroidDistance_cm.toFixed(1) : '—' }),
-        el('td', {
-          text:
-            ev.source === 'corrected'
-              ? confirmed().has(ev.id)
-                ? 'user · confirmed, no change'
-                : ev.autoShadow
-                  ? `user (auto: hole ${ev.autoShadow.holeIndex ?? '—'}, frames ${ev.autoShadow.startFrame}–${ev.autoShadow.endFrame})`
-                  : 'user'
-              : 'auto',
-        }),
+        el('td', { class: 'num', text: ev.minNoseDistance_cm === null ? '—' : ev.minNoseDistance_cm.toFixed(1) }),
+        el('td', { class: 'num', text: Number.isFinite(ev.minCentroidDistance_cm) ? ev.minCentroidDistance_cm.toFixed(1) : '—' }),
+        el('td', { text: sourceText(ev) }),
         el('td', { text: unlikely.has(ev.id) ? 'physically unlikely — review' : '' }),
         el('td', {}, [
-          disclosure('Evidence', [el('p', { text: ev.evidence })]),
+          disclosure('Evidence', [el('p', { text: evidenceWording(ev) })]),
         ]),
       ]);
+      // `aria-current`, not `aria-selected`: a plain table row may not carry the latter.
+      if (selected) row.setAttribute('aria-current', 'true');
       tbody.append(row);
     }
     replaceChildren(eventsMirrorBody, [
       el('p', { class: 'mirror-summary', text: `${counts.investigation} investigation${counts.investigation === 1 ? '' : 's'} · ${counts.escape_entry} escape entr${counts.escape_entry === 1 ? 'y' : 'ies'} · ${counts.tracking_failure} tracking failure${counts.tracking_failure === 1 ? '' : 's'}. A hatched row was corrected by hand; its automatic values stay in the Source column.` }),
-      el('div', { class: 'table-scroll' }, [
-        el('table', { class: 'mirror-table' }, [
+      scrollRegion('Events table', [
+        el('table', { class: 'mirror-table has-num' }, [
           el('caption', { text: 'Every event the timeline draws. The first cell seeks to the event and selects it.' }),
           el('thead', {}, [
             el('tr', {}, [
@@ -1614,7 +1798,7 @@ export function createReviewStep(context: AppContext): Step {
           el('td', { text: frame.nose.valid ? frame.nose.y.toFixed(1) : '—' }),
           el('td', { text: frame.nose.valid ? frame.noseHeadingConfidence.toFixed(2) : '—' }),
           el('td', { text: frame.nose.source }),
-          el('td', { text: ev ? `${KIND_WORDS[ev.kind]} ${ev.label}${ev.corrected ? ' (user)' : ''}` : '' }),
+          el('td', { text: ev ? `${ev.wording.toLowerCase()} ${ev.label}${ev.corrected ? ' (user)' : ''}` : '' }),
           el('td', { text: marks.map((m) => describeCorrection(m)).join('; ') }),
         ]),
       );
@@ -1811,6 +1995,15 @@ export function createReviewStep(context: AppContext): Step {
     });
   }
 
+  function eventListProps(): EventListProps {
+    return {
+      events: analysis?.events ?? [],
+      flags: analysis?.reviewFlags ?? [],
+      selectedId: selectedEventId,
+      reclassified: reclassified(),
+    };
+  }
+
   function renderPanels(): void {
     const video = currentVideo();
     renderNoEscape();
@@ -1858,12 +2051,11 @@ export function createReviewStep(context: AppContext): Step {
       metricsComponent = createMetricsCard(metricsPanel, metricsProps, strategyCallbacks);
     }
 
-    const eventsProps: EventListProps = { events: analysis.events, flags: analysis.reviewFlags, confirmed: confirmed() };
     if (eventsComponent) {
-      eventsComponent.update(eventsProps);
+      eventsComponent.update(eventListProps());
     } else {
       replaceChildren(eventsPanel, []);
-      eventsComponent = createEventList(eventsPanel, eventsProps, seekCallbacks);
+      eventsComponent = createEventList(eventsPanel, eventListProps(), eventCallbacks);
     }
 
     const qualityProps: QualityPanelProps = { session: store.current, videoId: video.id, analysis };

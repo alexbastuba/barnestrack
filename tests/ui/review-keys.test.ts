@@ -28,7 +28,7 @@ describe('REVIEW_KEYS', () => {
       'prev-flag', 'next-flag', 'prev-event', 'next-event', 'focus-frame-field', 'play-pause',
       'zoom-in', 'zoom-out', 'zoom-fit', 'tool-nose', 'tool-centroid', 'cancel',
       'nudge-left', 'nudge-right', 'nudge-up', 'nudge-down', 'mark-invalid',
-      'paint-not-visible', 'mark-escape-box', 'add-event', 'delete-event',
+      'paint-not-visible', 'mark-escape-box', 'add-event', 'delete-event', 'keep-event', 'reclassify-event',
       'edge-start', 'edge-end', 'retime-back', 'retime-forward', 'relabel-event', 'trial-start-here',
     ];
     for (const action of expected) expect(actions.has(action), action).toBe(true);
@@ -47,6 +47,12 @@ describe('REVIEW_KEYS', () => {
         }
       }
     }
+  });
+
+  it('reclassifies an inferred escape entry with L, and the legend says so (D67)', () => {
+    expect(resolveKey(press('l'), idle)).toBe('reclassify-event');
+    expect(resolveKey(press('L'), idle)).toBe('reclassify-event');
+    expect(keyLegend().find((row) => row.keys === 'L')!.description).toContain('tracking loss');
   });
 
   it('prints one legend row per binding with a description', () => {
