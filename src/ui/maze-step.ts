@@ -14,9 +14,22 @@ import {
   MAZE_MAP_SCHEMA_VERSION,
   type MazeMapFile,
   type PlatformCircle,
+  type SimilarityTransform,
 } from '../contracts/mazeMap.js';
 import type { VideoDescriptor } from '../contracts/session.js';
 import { fitCircle } from '../maze/circle-fit.js';
+import {
+  applyHandleDrag,
+  HANDLE_KINDS,
+  HANDLE_NAMES,
+  handlePositions,
+  hitTestHandle,
+  nudgeHandle,
+  RING_RATIO_MAX,
+  RING_RATIO_MIN,
+  type HandleGeometry,
+  type HandleKind,
+} from '../maze/handles.js';
 import {
   DEFAULT_HOLE_COUNT,
   DEFAULT_HOLE_DIAMETER_CM,
@@ -50,11 +63,34 @@ import { Scrubber } from './scrubber.js';
 import { button, el, replaceChildren, scrollRegion, uniqueId } from './dom.js';
 import { createNextStepButton, mazeMissing, mazeSetCount } from './next-step.js';
 import { downloadText, pickFiles } from './download.js';
+import { drawHandle, HANDLE_HIT_PX } from './maze-handles.js';
 import { drawHole, drawLabel } from './overlay-draw.js';
 import type { AppContext, Step } from './step.js';
 
 type Mode = 'idle' | 'rim' | 'align' | 'target' | 'adjust';
-type Selection = { kind: 'platform' } | { kind: 'hole'; holeIndex: number } | null;
+/** What the arrow keys move: one of the maze's handles, or one hole. */
+type Selection = { kind: 'handle'; handle: HandleKind } | { kind: 'hole'; holeIndex: number } | null;
+
+/**
+ * A drag in progress (D69). The geometry is previewed here and nothing reaches
+ * the store until the release: every store write re-derives the cohort, which
+ * is too slow to do per pointer move, and a cancelled gesture then has nothing
+ * to undo. `from` is the press point and `base` the geometry under it, so each
+ * move is computed from the start rather than accumulated.
+ */
+interface HandleDrag {
+  handle: HandleKind;
+  from: Point;
+  base: HandleGeometry;
+  preview: HandleGeometry;
+  /** True once the pointer has left the dead zone; only a moved drag commits and counts. */
+  moved: boolean;
+  /** The pending redraw, so a fast pointer costs one render per frame. */
+  frame: number;
+}
+
+/** The handle buttons' order: the whole maze first, then the two edges from the outside in. */
+const HANDLE_BUTTON_ORDER: readonly HandleKind[] = ['centre', 'platformRim', 'ringRim'];
 
 const RIM_POINTS_NEEDED = 3;
 /** How near a click must be to a hole, in screen-independent pixels, to select it. */
@@ -72,7 +108,7 @@ const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 
 const MODE_PROMPT: Record<Mode, string> = {
-  idle: 'Pick an action below, or use the numeric fields.',
+  idle: 'Drag a handle on the image, pick an action below, or use the numeric fields.',
   rim: 'Click 3 points on the platform edge.',
   align: 'Click one hole to align the ring.',
   target: 'Click the target hole, or type its number.',
@@ -87,6 +123,8 @@ export function createMazeStep(context: AppContext): Step {
   let rimPoints: Point[] = [];
   let selection: Selection = null;
   let hoverPoint: Point | null = null;
+  let hoverHandle: HandleKind | null = null;
+  let drag: HandleDrag | null = null;
   let seekToken = 0;
   let typedHoleDiameterCm = DEFAULT_HOLE_DIAMETER_CM;
   /**
@@ -119,11 +157,27 @@ export function createMazeStep(context: AppContext): Step {
     return store.current.mazeMap !== null;
   }
 
-  /** The shared map expressed in the current video's pixels. */
+  /**
+   * The shared map expressed in the current video's pixels. While a handle is
+   * being dragged this is the previewed geometry, built by the same maths the
+   * release will commit, so what is drawn, tabulated and shown in the fields
+   * is exactly what will land.
+   */
   function videoMap(): MazeMapFile | null {
     const map = sharedMap();
     const video = currentVideo();
     if (!map || !video) return null;
+    if (drag?.moved) {
+      if (drag.handle === 'ringRim') {
+        return transformMap(
+          { ...map, holes: { ...map.holes, ringRatio: drag.preview.ringRatio } },
+          video.mazeTransform,
+          video.referenceResolution,
+        );
+      }
+      const placed = placementFor(video, map, drag.preview.platform);
+      if (placed) return transformMap(map, placed, video.referenceResolution);
+    }
     return transformMap(map, video.mazeTransform, video.referenceResolution);
   }
 
@@ -204,19 +258,31 @@ export function createMazeStep(context: AppContext): Step {
       );
       return;
     }
-    const placed = transformFromCircles(existing.platform, circle);
+    const placed = placementFor(video, existing, circle);
     if (!placed) return;
-    // A circle carries no orientation, so re-fitting it would drop the ring
-    // alignment this video already has; spin it back about the new centre.
-    store.setMazeTransform(
-      video.id,
-      composeTransform(
-        rotationAbout(video.mazeTransform.rotationDeg, { x: circle.cx, y: circle.cy }),
-        placed,
-      ),
-    );
+    store.setMazeTransform(video.id, placed);
     context.announce(
       `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
+    );
+  }
+
+  /**
+   * This video's transform once the shared map's platform lands on `circle`
+   * (in this video's pixels). A circle carries no orientation, so re-fitting
+   * it would drop the ring alignment this video already has; the fit is spun
+   * back about the new centre. Used by the typed fields, the rim clicks and
+   * the handles alike, and by the drag preview, so all of them agree.
+   */
+  function placementFor(
+    video: VideoDescriptor,
+    shared: MazeMapFile,
+    circle: PlatformCircle,
+  ): SimilarityTransform | null {
+    const placed = transformFromCircles(shared.platform, circle);
+    if (!placed) return null;
+    return composeTransform(
+      rotationAbout(video.mazeTransform.rotationDeg, { x: circle.cx, y: circle.cy }),
+      placed,
     );
   }
 
@@ -274,17 +340,111 @@ export function createMazeStep(context: AppContext): Step {
       render();
       return;
     }
-    // Idle: a click selects whatever it landed on, for the arrow keys.
+    // Idle: a click selects whatever it landed on, for the arrow keys. A press
+    // on a handle never gets here — `onDragStart` claims it first.
     const found = nearestHole(map, videoPoint);
     const pickRadius = Math.max(map.holes.holeRadius_px, HOLE_PICK_SLACK_PX) * HOLE_PICK_FACTOR;
     if (found && found.distance_px <= pickRadius) {
       selection = { kind: 'hole', holeIndex: found.hole.holeIndex };
       context.announce(`Hole ${found.hole.holeIndex} selected. Arrow keys nudge it; hold Shift for 10 pixels.`);
     } else {
-      selection = { kind: 'platform' };
-      context.announce('Platform selected. Arrow keys nudge the circle; hold Shift for 10 pixels.');
+      selectHandle('centre');
     }
     render();
+  }
+
+  // ---- handles (D69) --------------------------------------------------------
+
+  /** The handle under `point`, if any; handles only answer while no click action is armed. */
+  function handleAt(point: Point): HandleKind | null {
+    const map = videoMap();
+    if (!map || mode !== 'idle') return null;
+    return hitTestHandle(
+      point,
+      handlePositions(map.platform, map.holes),
+      // A screen-constant target: the tolerance is in CSS pixels whatever the zoom (D15).
+      HANDLE_HIT_PX / canvasView.currentView.zoom,
+    );
+  }
+
+  function selectionMessage(handle: HandleKind): string {
+    const how = `${HANDLE_NAMES[handle]} selected — drag it, or use the arrow keys; hold Shift for 10 pixels.`;
+    return handle === 'ringRim' ? `${how} The ring ratio applies to every video in this session.` : how;
+  }
+
+  function selectHandle(handle: HandleKind): void {
+    selection = { kind: 'handle', handle };
+    context.announce(selectionMessage(handle));
+  }
+
+  /** The label drawn beside a handle; the ring's says what else it changes when it has the user's attention. */
+  function handleLabel(handle: HandleKind, emphasised: boolean): string {
+    const name = HANDLE_NAMES[handle].toLowerCase();
+    return handle === 'ringRim' && emphasised ? `${name} — applies to every video in this session` : name;
+  }
+
+  function onDragStart(point: Point): boolean {
+    const map = videoMap();
+    const handle = handleAt(point);
+    if (!map || !handle) return false;
+    selectHandle(handle);
+    const base = { platform: map.platform, ringRatio: map.holes.ringRatio };
+    drag = { handle, from: point, base, preview: base, moved: false, frame: 0 };
+    render();
+    return true;
+  }
+
+  function onDrag(point: Point): void {
+    if (!drag) return;
+    drag.moved = true;
+    drag.preview = applyHandleDrag(drag.handle, drag.from, point, drag.base.platform, drag.base);
+    if (drag.frame === 0) {
+      drag.frame = requestAnimationFrame(() => {
+        if (drag) drag.frame = 0;
+        render();
+      });
+    }
+  }
+
+  function onDragEnd(point: Point): void {
+    if (!drag) return;
+    const ended = drag;
+    if (ended.frame !== 0) cancelAnimationFrame(ended.frame);
+    drag = null;
+    if (ended.moved) {
+      commitHandle(
+        ended.handle,
+        applyHandleDrag(ended.handle, ended.from, point, ended.base.platform, ended.base),
+      );
+      // One drag is one placement on the image, however many moves it took (D50).
+      countClick();
+    }
+    render();
+  }
+
+  /** The browser took the pointer away: nothing was released, so nothing lands. */
+  function onDragCancel(): void {
+    if (!drag) return;
+    if (drag.frame !== 0) cancelAnimationFrame(drag.frame);
+    drag = null;
+    render();
+  }
+
+  /**
+   * The one place a handle's result reaches the session, and it is the same
+   * place the typed fields go (D49): the centre and the platform edge place the
+   * platform in *this video's* transform through `setPlatformInVideo`; the ring
+   * edge writes the shared map's `ringRatio`, which every video reads.
+   */
+  function commitHandle(handle: HandleKind, result: HandleGeometry): void {
+    if (handle === 'ringRim') {
+      updateMap((m) => ({ ...m, holes: { ...m.holes, ringRatio: result.ringRatio } }));
+      context.announce(
+        `Ring radius ÷ platform radius is now ${result.ringRatio.toFixed(3)}; it applies to every video in this session.`,
+      );
+      return;
+    }
+    setPlatformInVideo(result.platform);
   }
 
   /**
@@ -371,9 +531,9 @@ export function createMazeStep(context: AppContext): Step {
 
   function nudge(dx: number, dy: number): void {
     const map = videoMap();
-    if (!selection || !map) return;
-    if (selection.kind === 'platform') {
-      setPlatformInVideo({ cx: map.platform.cx + dx, cy: map.platform.cy + dy, r: map.platform.r });
+    if (!selection || !map || drag) return;
+    if (selection.kind === 'handle') {
+      commitHandle(selection.handle, nudgeHandle(selection.handle, dx, dy, map.platform, map.holes));
       render();
       return;
     }
@@ -450,6 +610,7 @@ export function createMazeStep(context: AppContext): Step {
       );
     }
     selection = null;
+    drag = null;
     mode = 'idle';
     rimPoints = [];
     // An imported map carries the target its author chose.
@@ -499,16 +660,17 @@ export function createMazeStep(context: AppContext): Step {
     if (map) {
       const centre = at({ x: map.platform.cx, y: map.platform.cy });
       const radius = map.platform.r * view.zoom;
+      const selectedHandle = selection?.kind === 'handle' ? selection.handle : null;
 
       ctx.strokeStyle = '#0a4d8c';
-      ctx.lineWidth = selection?.kind === 'platform' ? 4 : 2;
+      ctx.lineWidth = selectedHandle === 'centre' || selectedHandle === 'platformRim' ? 4 : 2;
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.arc(centre.x, centre.y, radius, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.strokeStyle = '#4a5159';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = selectedHandle === 'ringRim' ? 2 : 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
       ctx.arc(centre.x, centre.y, ringRadius(map.platform, map.holes) * view.zoom, 0, Math.PI * 2);
@@ -524,15 +686,21 @@ export function createMazeStep(context: AppContext): Step {
           labelSuffix: hole.nudged ? '*' : '',
         });
       }
+
+      // The handles go on last, over the holes they may sit near (D69).
+      const positions = handlePositions(map.platform, map.holes);
+      for (const kind of HANDLE_KINDS) {
+        const isSelected = selectedHandle === kind;
+        const isHovered = hoverHandle === kind;
+        drawHandle(ctx, at(positions[kind]), kind, {
+          selected: isSelected,
+          hovered: isHovered,
+          label: handleLabel(kind, isSelected || isHovered),
+        });
+      }
     }
 
-    drawLabel(
-      ctx,
-      `Maze step: ${currentVideo() ? store.mazeClickCount(currentVideo()!.id) : 0} clicks on the image`,
-      8,
-      8,
-      true,
-    );
+    drawLabel(ctx, clickText(), 8, 8, true);
     if (hoverPoint && mode !== 'idle') {
       drawLabel(ctx, MODE_PROMPT[mode], 8, 30, true);
     }
@@ -541,16 +709,41 @@ export function createMazeStep(context: AppContext): Step {
   // ---- controls -------------------------------------------------------------
 
   const canvasView = new CanvasView({
-    label: 'Video frame with the maze overlay. The table below repeats everything drawn here.',
+    label:
+      'Video frame with the maze overlay. Drag the centre, platform-edge or ring-edge handle to place the maze. The table below repeats everything drawn here.',
     paint,
     onPick,
+    onDragStart,
+    onDrag,
+    onDragEnd,
+    onDragCancel,
     onHover: (p) => {
       hoverPoint = p;
+      const over = p && !drag ? handleAt(p) : null;
+      if (over !== hoverHandle) {
+        hoverHandle = over;
+        canvasView.viewport.classList.toggle('is-over-handle', over !== null);
+        canvasView.requestDraw();
+      }
     },
     announce: context.announce,
   });
 
+  /** "N clicks on the image": the badge and the overlay say the same thing (D50). */
+  function clickText(): string {
+    const video = currentVideo();
+    const clicks = video ? store.mazeClickCount(video.id) : 0;
+    return `${clicks} click${clicks === 1 ? '' : 's'} on the image`;
+  }
+
   canvasView.viewport.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && selection && !drag) {
+      event.preventDefault();
+      selection = null;
+      context.announce('Nothing selected.');
+      render();
+      return;
+    }
     if (event.altKey || !event.key.startsWith('Arrow') || !selection) return;
     const step = event.shiftKey ? NUDGE_PX_LARGE : NUDGE_PX;
     const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
@@ -709,6 +902,7 @@ export function createMazeStep(context: AppContext): Step {
     mode = 'idle';
     rimPoints = [];
     selection = null;
+    drag = null;
     const video = currentVideo();
     const attachment = video ? store.attachmentFor(video.id) : undefined;
     scrubber.setIndex(attachment?.index ?? null);
@@ -739,12 +933,23 @@ export function createMazeStep(context: AppContext): Step {
     (v) => resizePlatform({ r: v }),
   );
 
-  const selectPlatform = button('Select the platform for the arrow keys', () => {
-    selection = { kind: 'platform' };
-    canvasView.viewport.focus({ preventScroll: true });
-    context.announce('Platform selected. Arrow keys nudge it; hold Shift for 10 pixels.');
-    render();
-  }, { class: 'btn-quiet' });
+  // The keyboard's way to a handle (D37): press one, and the frame has focus
+  // with that handle under the arrow keys, as the old "select the platform"
+  // button did for the whole circle.
+  const handleButtons = HANDLE_BUTTON_ORDER.map((kind) => {
+    const control = button(HANDLE_NAMES[kind], () => {
+      selectHandle(kind);
+      canvasView.viewport.focus({ preventScroll: true });
+      render();
+    }, { class: 'btn-quiet' });
+    control.dataset['handle'] = kind;
+    return control;
+  });
+  const handleGroup = el(
+    'div',
+    { class: 'handle-group', attrs: { role: 'group', 'aria-label': 'Select a handle for the arrow keys' } },
+    [el('span', { text: 'Arrow keys move' }), ...handleButtons],
+  );
 
   const holeCountField = numberField('Holes', { min: '3', max: '60', hint: 'Default 20.' }, (v) => {
     const n = Math.round(v);
@@ -772,8 +977,14 @@ export function createMazeStep(context: AppContext): Step {
   const ringRatioField = numberField(
     'Ring radius ÷ platform radius',
     // 0.005: a 0.01 step moved the ring further than the tolerance a user is
-    // trying to close when the holes are nearly on it.
-    { step: '0.005', min: '0.1', max: '1', hint: 'Default 0.89.' },
+    // trying to close when the holes are nearly on it. The bounds are the ring
+    // handle's too.
+    {
+      step: '0.005',
+      min: String(RING_RATIO_MIN),
+      max: String(RING_RATIO_MAX),
+      hint: 'Default 0.89. Applies to every video in this session.',
+    },
     (v) => updateMap((m) => ({ ...m, holes: { ...m.holes, ringRatio: v } })),
   );
   const holeDiameterField = numberField(
@@ -869,7 +1080,8 @@ export function createMazeStep(context: AppContext): Step {
    */
   const mazeProgress = el('p', { class: 'maze-progress', attrs: { role: 'status' } });
   const nextStep = createNextStepButton(context, 'track', 'Track');
-  const clickBadge = el('p', { class: 'click-badge', attrs: { 'aria-live': 'off' } });
+  // A status chip, not a button: it reports, it is not pressed (D70).
+  const clickBadge = el('p', { class: 'status-chip', attrs: { 'aria-live': 'off' } });
   const mirrorBody = el('tbody');
   const mirrorSummary = el('p', { class: 'mirror-summary' });
 
@@ -877,14 +1089,14 @@ export function createMazeStep(context: AppContext): Step {
     fieldset('Platform', [
       rimButton,
       el('div', { class: 'field-row' }, [cxField.wrap, cyField.wrap, rField.wrap]),
-      el('div', { class: 'field-row' }, [selectPlatform, nudgePad('Nudge the platform or the selected hole')]),
+      el('div', { class: 'field-row' }, [handleGroup, nudgePad('Nudge the selected handle or hole')]),
     ]),
     fieldset('Hole ring', [
       el('div', { class: 'field-row' }, [holeCountField.wrap, ringRatioField.wrap, holeDiameterField.wrap]),
       el('div', { class: 'field-row' }, [alignButton, phaseField.wrap]),
-      el('div', { class: 'field-row' }, [targetButton, targetField.wrap]),
       el('div', { class: 'field-row' }, [nudgeHoleField.wrap, resetNudges]),
     ]),
+    fieldset('Target', [el('div', { class: 'field-row' }, [targetButton, targetField.wrap])]),
     fieldset('Calibration', [el('div', { class: 'field-row' }, [diameterField.wrap]), scaleReadout]),
     fieldset('Reuse this map', [
       el('div', { class: 'field-row' }, [
@@ -969,6 +1181,7 @@ export function createMazeStep(context: AppContext): Step {
       lastAttached = false;
       selectedVideoId = null;
       selection = null;
+      drag = null;
       mode = 'idle';
       rimPoints = [];
       // A map that came with the session has a target somebody chose (D49).
@@ -1020,9 +1233,14 @@ export function createMazeStep(context: AppContext): Step {
       nudgeHoleField.input,
       diameterField.input,
       resetNudges,
-      selectPlatform,
+      ...handleButtons,
     ]) {
       control.disabled = shared === null;
+    }
+    for (const control of handleButtons) {
+      const isPressed = selection?.kind === 'handle' && selection.handle === control.dataset['handle'];
+      control.classList.toggle('is-active', isPressed);
+      control.setAttribute('aria-pressed', isPressed ? 'true' : 'false');
     }
     applyButton.disabled = shared === null || applySelect.options.length === 0;
     alignButton.disabled = shared === null;
@@ -1038,7 +1256,7 @@ export function createMazeStep(context: AppContext): Step {
         : `${video.filename} is not attached, so no frame can be shown. Drop the file again on the Videos step; the numeric fields below still work.${targetHere}`
       : 'Load a video on the Videos step first.';
 
-    clickBadge.textContent = `Maze step: ${video ? store.mazeClickCount(video.id) : 0} clicks on the image`;
+    clickBadge.textContent = clickText();
 
     setNumber(cxField.input, map?.platform.cx, 1);
     setNumber(cyField.input, map?.platform.cy, 1);
@@ -1130,15 +1348,18 @@ export function createMazeStep(context: AppContext): Step {
     id: 'maze',
     label: 'Maze',
     what:
-      'Mark the platform, generate the hole ring, name the target hole and enter the platform ' +
-      'diameter. The map belongs to the whole session, so hole 7 means the same hole in every ' +
-      'video; a second video only needs to say where that maze sits in its own frame.',
+      'Place the platform by dragging its handles, by clicking three rim points or by typing the ' +
+      'numbers; generate the hole ring, name the target hole and enter the platform diameter. The ' +
+      'map belongs to the whole session, so hole 7 means the same hole in every video; a second ' +
+      'video only needs to say where that maze sits in its own frame.',
     definitions: () => [
       el('dl', { class: 'definition-list' }, [
         el('dt', { text: 'Platform circle' }),
         el('dd', {
           text:
-            'A least-squares circle through the rim points you click — three is enough — or typed ' +
+            'Dragged into place by its handles — the centre moves the whole maze, the platform ' +
+            'edge resizes it and the ring edge sets the hole ring’s radius for every video — or a ' +
+            'least-squares circle through the rim points you click (three is enough), or typed ' +
             'centre and radius. Stored in native video pixels, so zoom and pan never change it.',
         }),
         el('dt', { text: 'Hole ring' }),
@@ -1172,10 +1393,12 @@ export function createMazeStep(context: AppContext): Step {
         el('dt', { text: 'Keyboard' }),
         el('dd', {
           text:
-            'Every mouse action has a typed equivalent: centre and radius fields instead of rim clicks, ' +
-            'the ring-angle field instead of the alignment click, the target-hole number instead of the ' +
-            'target click. Tab to the frame, then arrow keys nudge the current selection by 1 px (10 px ' +
-            'with Shift); + and − zoom, 0 fits, Alt with the arrow keys pans. The scroll wheel zooms ' +
+            'Every mouse action has a typed equivalent: centre and radius fields instead of rim clicks ' +
+            'or handle drags, the ring-angle field instead of the alignment click, the target-hole ' +
+            'number instead of the target click. The Centre, Platform edge and Ring edge buttons put ' +
+            'that handle under the arrow keys. Tab to the frame, then arrow keys nudge the current ' +
+            'selection by 1 px (10 px with Shift) and Escape clears it; + and − zoom, 0 fits, Alt ' +
+            'with the arrow keys pans. The scroll wheel zooms ' +
             'only with Ctrl or ⌘, so a plain scroll still moves the page. On the scrubber: arrow ' +
             'keys move 1 frame, Shift with them 10 frames, Home and End jump to the ends.',
         }),

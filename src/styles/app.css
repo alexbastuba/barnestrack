@@ -778,17 +778,6 @@ label {
   gap: var(--s3);
 }
 
-.click-badge {
-  margin: 0;
-  padding: var(--s1) var(--s3);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .mode-status {
   margin: var(--s2) 0;
   font-weight: 600;
@@ -1021,6 +1010,49 @@ label {
   color: var(--danger);
   font-weight: 600;
 }
+
+/* ---- Maze stage (D69) ----------------------------------------------------- */
+
+/*
+ * The click count is a reading, not a control: a quiet chip in the body's
+ * colours, so it cannot be mistaken for the button it sat next to (D70).
+ */
+.status-chip {
+  display: inline-block;
+  margin: 0;
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-soft);
+  color: var(--ink-soft);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The three handle buttons: which of them the arrow keys move. */
+.handle-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.handle-group > span:first-child {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  margin-right: var(--s1);
+}
+
+/* The cursor says a handle is under it, and that one is being held. */
+.maze-step .viewport.is-over-handle {
+  cursor: grab;
+}
+
+.maze-step .viewport.is-dragging {
+  cursor: grabbing;
+}
+
+/* ---- end Maze stage (D69) ------------------------------------------------- */
 
 /* ---- track step ------------------------------------------------------------- */
 
