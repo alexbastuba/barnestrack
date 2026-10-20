@@ -36,6 +36,11 @@ and in `examples/outputs/`.
 - `quality.csv`: new `session_name`.
 - Review flags: `confirmation_contradicted` (hard) and `non_persistent_entry_noted` (soft).
 
+**Changed after 0.2.0 without a version bump (D71, additive on D63's precedent).** `autoShadow`
+may carry `kind`; the two detections are matched in two passes (§5), so a kind change is a human
+claim with the automatic event as its shadow; an automatic event the corrected detection no longer
+finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`.
+
 ## Conventions used throughout
 
 - **Never a bare `(x, y)`.** Every position estimate is a named point —
@@ -309,25 +314,38 @@ so hole numbering stays consistent across a cohort.
 | `evidenceCorrected`    | boolean                                 | —       | D65: both detections found the event but a point or range correction inside its span changed what it measured; the auto-only values are in `autoShadow`. |
 | `correctionIds`        | string[]                                | —       | D65: ids of the point and range corrections inside the event's span (the union of its span and its shadow's span). Event corrections are not listed; `source` records them. |
 | `confirmed`            | boolean                                 | —       | D64, D67: a person kept the event as it stands; the values are the automatic ones and the event is excluded from `correctionCount`. |
-| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when an event correction changes them or when `evidenceCorrected` (the auto-only values). A plain confirmation carries none; a confirmation on an evidence-corrected event keeps the one it had. |
+| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when an event correction changes them, when `evidenceCorrected` (the auto-only values), or when the kind changed between the two detections (D71); `kind` is present only when the automatic kind differs from the event's (a kind-change match, a D67 reclassification). A plain confirmation carries none; a confirmation on an evidence-corrected event keeps the one it had. |
 
-**Provenance by two detections (D65).** `derive()` runs event detection twice under the same
+**Provenance by two detections (D65, D71).** `derive()` runs event detection twice under the same
 parameters and over the same trial window (the corrected analysis's start and end): once over the
 automatic frames alone, once over `auto ⊕ corrections` (point and range corrections applied to the
-frames). The two lists are matched by kind and hole on overlapping spans, largest overlap first,
-each event matched at most once (ids are not stable across corrections, since they carry the start
-frame). An event only the corrected detection found is a human claim (`source: corrected`,
-`correctionIds` = the corrections inside its span, no shadow); one both found with identical values
-is untouched (`auto`, `evidenceCorrected: false`, `correctionIds: []`); one both found with any
-measured value different keeps `source: auto` with `evidenceCorrected: true`, the corrections inside
-the union of its span and the auto-only span as `correctionIds`, and the auto-only hole and frames as
-`autoShadow`. Event corrections (`kind: event`) apply after the match: an edit sets
-`source: corrected` as before; a `confirmed: true` edit sets `confirmed: true` on the automatic
-event without re-measuring anything. Two consequences worth knowing: a `not_visible` range that
-splits one automatic visit leaves the second fragment `source: corrected` (the first fragment takes
-the match), and a correction that changes an event's *kind* between the two detections (a loss that
-becomes an investigation) exports as `source: corrected`, because kinds are never matched. With no
-point or range correction in force the two detections are identical and the second pass is skipped.
+frames). The two lists are matched in two passes, each largest overlap first and each event matched
+at most once (ids are not stable across corrections, since they carry the start frame): first by
+kind and hole on overlapping spans, then — over what either side has left — by hole alone. An event
+only the corrected detection found is a human claim (`source: corrected`, `correctionIds` = the
+corrections inside its span, no shadow); one both found with identical values is untouched (`auto`,
+`evidenceCorrected: false`, `correctionIds: []`); one both found with any measured value different
+keeps `source: auto` with `evidenceCorrected: true`, the corrections inside the union of its span
+and the auto-only span as `correctionIds`, and the auto-only hole and frames as `autoShadow`. A pair
+the second pass makes always differs in kind (a range that turned an investigation into an escape
+entry, a point that turned a loss into an investigation): the event is a human claim —
+`source: corrected`, `evidenceCorrected: false`, `correctionIds` over the union of the two spans,
+`autoShadow` = the automatic hole, frames **and kind** — and its evidence sentence ends "Was an
+automatic investigation at hole 7, frames 1100–1129, before the corrections changed its kind.",
+since the CSV shadow columns carry hole and frames only. So an `events.csv` row with
+`source = corrected` and filled `auto_*` columns is either an event edit or a kind change, and the
+sentence says which. An automatic event with no counterpart after both passes was *removed by a
+correction* (a `not_visible` range over an investigation, a nudge that merged two visits into one):
+it has no row; the trial carries one soft flag `auto_event_removed_by_correction` per removed event
+(`frameIndex` = its start frame, `eventId` = its automatic id, the message naming the corrections
+inside its span); it is counted in `correctionCount` exactly as an event `delete` is; and the
+in-memory analysis result (`DerivedAnalysis.removedAutoEvents`, never persisted — the derived layer
+stays a cache, D55) lists it with those correction ids as its `correctionIds`. Event corrections
+(`kind: event`) apply after the match: an edit sets `source: corrected` as before; a
+`confirmed: true` edit sets `confirmed: true` on the automatic event without re-measuring anything.
+One consequence worth knowing: a `not_visible` range that splits one automatic visit leaves the
+second fragment `source: corrected` (the first fragment takes the match). With no point or range
+correction in force the two detections are identical and the second pass is skipped.
 
 ## 6. Parameters
 
@@ -560,7 +578,7 @@ the top of this document says exactly what changed.
 | `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
 | `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
 | `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |
-| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code |
+| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code. `auto_event_removed_by_correction` (D71) and `non_persistent_entry_noted` (D67) are soft: they never set `review` on their own |
 | `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |

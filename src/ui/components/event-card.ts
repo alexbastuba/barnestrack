@@ -58,6 +58,7 @@ const FLAG_LABELS: Record<ReviewFlagCode, string> = {
   no_escape_contradicted: 'contradicted non-escape',
   confirmation_contradicted: 'contradicted confirmation',
   non_persistent_entry_noted: 'short entry noted',
+  auto_event_removed_by_correction: 'automatic event removed',
 };
 
 /** The review flags that belong to one event. */

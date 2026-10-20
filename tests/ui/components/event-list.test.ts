@@ -260,6 +260,7 @@ describe('a review flag on an event', () => {
       no_escape_contradicted: true,
       confirmation_contradicted: true,
       non_persistent_entry_noted: true,
+      auto_event_removed_by_correction: true,
     };
     const codes = Object.keys(every) as ReviewFlagCode[];
     for (const code of codes) {

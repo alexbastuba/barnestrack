@@ -97,8 +97,8 @@ function overlapFrames(a: EventRecord, b: EventRecord): number {
   return Math.min(a.endFrame, b.endFrame) - Math.max(a.startFrame, b.startFrame) + 1;
 }
 
-/** How the evidence sentence names an automatic kind. */
-const KIND_LABEL: Record<EventKind, string> = {
+/** How a sentence names an event kind. */
+export const EVENT_KIND_LABEL: Record<EventKind, string> = {
   investigation: 'investigation',
   escape_entry: 'escape entry',
   tracking_failure: 'tracking failure',
@@ -225,7 +225,7 @@ export function matchEvents(
         shadow.holeIndex === null ? 'away from any hole' : `at hole ${shadow.holeIndex}`;
       return {
         ...ev,
-        evidence: `${ev.evidence} Was an automatic ${KIND_LABEL[shadow.kind]} ${where}, frames ${shadow.startFrame}–${shadow.endFrame}, before the corrections changed its kind.`,
+        evidence: `${ev.evidence} Was an automatic ${EVENT_KIND_LABEL[shadow.kind]} ${where}, frames ${shadow.startFrame}–${shadow.endFrame}, before the corrections changed its kind.`,
         source: 'corrected',
         evidenceCorrected: false,
         correctionIds: correctionIdsInSpan(

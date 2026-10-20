@@ -17,14 +17,22 @@ export type ReviewFlagCode =
   /** A confirmed event no longer exists under the current parameters — removed, or its start frame moved (D67). */
   | 'confirmation_contradicted'
   /** Soft: a confirmed non-escape stands beside an entry too short to end the trial; noted, not contradicted (D67). */
-  | 'non_persistent_entry_noted';
+  | 'non_persistent_entry_noted'
+  /**
+   * Soft: a point or range correction removed the evidence of an automatic
+   * event, so the corrected detection no longer finds it. It has no row, is
+   * counted in `correctionCount` as an event delete is, and the in-memory
+   * analysis lists it; one flag per removed event, at its start frame (D71).
+   */
+  | 'auto_event_removed_by_correction';
 
 /**
- * Flags that note something without sending the trial to review (D67): the
- * trial's status ignores them, the export still carries them.
+ * Flags that note something without sending the trial to review (D67, D71):
+ * the trial's status ignores them, the export still carries them.
  */
 export const SOFT_REVIEW_FLAG_CODES: ReadonlySet<ReviewFlagCode> = new Set<ReviewFlagCode>([
   'non_persistent_entry_noted',
+  'auto_event_removed_by_correction',
 ]);
 
 export function isSoftReviewFlag(flag: Pick<ReviewFlag, 'code'>): boolean {

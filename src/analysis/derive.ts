@@ -31,7 +31,7 @@ import {
 } from './events.js';
 import { mazeGeometry, type MazeGeometry } from './geometry.js';
 import { computeKinematics, type KinematicsSummary } from './kinematics.js';
-import { frameCorrectionSpans, matchEvents } from './match-events.js';
+import { EVENT_KIND_LABEL, frameCorrectionSpans, matchEvents } from './match-events.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
   ANALYSIS_MODEL,
@@ -82,6 +82,14 @@ export interface DerivedAnalysis extends DerivedLayer {
   kinematics: KinematicsSummary;
   strategy: StrategyResult;
   reviewFlags: ReviewFlag[];
+  /**
+   * D71: automatic events the corrected detection no longer finds — a point or
+   * range correction removed their evidence. They have no row, are counted in
+   * `metrics.correctionCount` exactly as an event delete is, and each raises
+   * `auto_event_removed_by_correction`; kept here for the Review step, never
+   * persisted. Each carries the corrections inside its span as `correctionIds`.
+   */
+  removedAutoEvents: EventRecord[];
   correctionsApplied: { point: number; range: number; event: number };
 }
 
@@ -142,13 +150,20 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       escapeBox,
     };
   }
+  // D71: the automatic events the last detection pass no longer finds — the pass that stands
+  let removedAutoEvents: EventRecord[] = [];
   const withProvenance = (detected: AutoEvents): EventRecord[] => {
-    if (ctxAuto === null || detected.endFrame === null) return detected.events;
+    if (ctxAuto === null || detected.endFrame === null) {
+      removedAutoEvents = [];
+      return detected.events;
+    }
     const autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
       endFrame: detected.endFrame,
       endReason: detected.endReason,
     });
-    return matchEvents(autoOnly.events, detected.events, spans).events;
+    const matched = matchEvents(autoOnly.events, detected.events, spans);
+    removedAutoEvents = matched.removedAutoEvents;
+    return matched.events;
   };
 
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);
@@ -221,6 +236,25 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     if (live === undefined) return false;
     return !(f.code === 'physically_unlikely_entry' && live.kind === 'tracking_failure');
   });
+  // D71: an automatic event the corrected detection no longer finds leaves a trace — no row, one
+  // soft flag per event at its start frame, and a count beside the deletes — so evidence a
+  // correction erased is never silently gone.
+  for (const ev of removedAutoEvents) {
+    const where = ev.holeIndex === null ? 'away from any hole' : `at hole ${ev.holeIndex}`;
+    const ids = ev.correctionIds;
+    const once =
+      ids.length === 0
+        ? 'the corrections in force are applied'
+        : ids.length === 1
+          ? `correction ${ids[0]} is applied`
+          : `corrections ${ids.join(', ')} are applied`;
+    reviewFlags.push({
+      code: 'auto_event_removed_by_correction',
+      eventId: ev.id,
+      frameIndex: ev.startFrame,
+      message: `The automatic ${EVENT_KIND_LABEL[ev.kind]} ${where}, frames ${ev.startFrame}–${ev.endFrame} (${ev.startTime_s.toFixed(2)}–${ev.endTime_s.toFixed(2)} s), is not found once ${once}: the correction removed its evidence. It has no row in events.csv and is counted as a correction.`,
+    });
+  }
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
   // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
   // stamped on this analysis would then name a configuration that never ran, so say so.
@@ -337,9 +371,11 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     // tool was right, so counting it as a correction would report a hand edit
     // that never happened — a queue of thirty good events walked with K would
     // export `correction_count = 30` (D11, D26).
-    correctionCount: corrections.entries.filter(
-      (entry) => !(entry.kind === 'event' && entry.confirmed === true),
-    ).length,
+    correctionCount:
+      corrections.entries.filter((entry) => !(entry.kind === 'event' && entry.confirmed === true))
+        .length +
+      // D71: an automatic event a correction removed is counted exactly as an event delete is
+      removedAutoEvents.length,
     parameters,
   });
   const quality = qualityReport({
@@ -368,6 +404,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     kinematics,
     strategy,
     reviewFlags,
+    removedAutoEvents,
     correctionsApplied: {
       point: corrected.pointCorrections,
       range: corrected.rangeCorrections,
