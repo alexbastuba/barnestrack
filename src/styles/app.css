@@ -1052,6 +1052,74 @@ label {
   cursor: grabbing;
 }
 
+/*
+ * The stage. Below 1200 px its three parts stack in source order — the video
+ * selector with the click chip, the frame, then the controls — which is how
+ * the step was laid out before. From 1200 px the frame takes the left column
+ * and the controls a fixed right column that scrolls within the viewport, so
+ * the frame and every control are on screen together (the Review step's
+ * `.review-stage` is the same pattern); the selector keeps its place at the
+ * top of that column. The mirror table stays below both.
+ */
+.maze-stage {
+  display: grid;
+  grid-template-areas:
+    'top'
+    'view'
+    'controls';
+  gap: var(--s3);
+}
+
+.maze-stage-top {
+  grid-area: top;
+  min-width: 0;
+}
+
+.maze-stage-view {
+  grid-area: view;
+  min-width: 0;
+}
+
+.maze-stage > .maze-controls {
+  grid-area: controls;
+  min-width: 0;
+}
+
+@media (min-width: 1200px) {
+  .maze-stage {
+    /*
+     * What the controls column leaves free at the bottom of the viewport: the
+     * page gutter and the step's action bar (D72), whose height is added here
+     * when it lands.
+     */
+    --maze-reserve: 6rem;
+    grid-template-columns: minmax(0, 1fr) 23rem;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'view top'
+      'view controls';
+    gap: var(--s3) var(--s4);
+    align-items: start;
+  }
+
+  .maze-stage > .maze-controls {
+    grid-template-columns: 1fr;
+    max-height: calc(100vh - var(--maze-reserve));
+    overflow-y: auto;
+    padding-right: var(--s1);
+  }
+
+  /* The frame no longer shares the viewport's height with the controls, so it may use more of it. */
+  .maze-stage .viewport {
+    max-height: calc(100vh - var(--maze-reserve) - 6rem);
+  }
+
+  /* Three number fields on one row of a 23rem column. */
+  .maze-stage .number-input {
+    width: 6rem;
+  }
+}
+
 /* ---- end Maze stage (D69) ------------------------------------------------- */
 
 /* ---- track step ------------------------------------------------------------- */

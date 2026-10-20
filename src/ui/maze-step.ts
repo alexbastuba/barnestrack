@@ -1145,19 +1145,25 @@ export function createMazeStep(context: AppContext): Step {
     ]),
   ]);
 
+  // The stage (D69): the selector and the chip, the frame, the controls. In
+  // source order they stack; from 1200 px the stylesheet puts the frame in a
+  // left column and the other two, selector first, in a scrolling right
+  // column, so the frame and every control are on screen together.
   body.append(
-    el('div', { class: 'maze-top' }, [
-      el('div', { class: 'field' }, [
-        el('label', { text: 'Video', attrs: { for: 'maze-video' } }),
-        videoSelect,
+    el('div', { class: 'maze-stage' }, [
+      el('div', { class: 'maze-stage-top' }, [
+        el('div', { class: 'maze-top' }, [
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Video', attrs: { for: 'maze-video' } }),
+            videoSelect,
+          ]),
+          clickBadge,
+        ]),
+        mazeProgress,
       ]),
-      clickBadge,
+      el('div', { class: 'maze-stage-view' }, [modeStatus, scrubber.element, canvasView.element]),
+      controls,
     ]),
-    mazeProgress,
-    modeStatus,
-    scrubber.element,
-    canvasView.element,
-    controls,
     mirror,
     nextStep.element,
   );
