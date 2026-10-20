@@ -483,24 +483,65 @@ label {
 }
 
 /*
- * The way on from a step: bottom-right of the panel, the primary action only
- * when the step is actually finished, with the reason it is not beside it.
+ * The step's action bar (D72): stuck to the bottom of the window while the
+ * step is shown, so its one primary is always on screen. Sticky inside the
+ * step, not fixed: it stops at the end of the step's content and never sits
+ * over a dialog (the dialogs are in the top layer). Paper behind it so the
+ * content scrolling under it never shows through; a 1 px rule above it, flat
+ * like every panel (D70). The last thing in the step, so last in tab order.
  */
 .next-step {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--s3);
+  gap: var(--s2) var(--s3);
   margin-top: var(--s5);
-  padding-top: var(--s3);
-  border-top: 1px solid var(--line);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--line-strong);
+  background: var(--paper);
 }
 
 .next-step-hint {
   margin: 0;
   flex: 1 1 16rem;
   text-align: right;
+}
+
+.action-bar-secondary,
+.action-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.action-bar-status {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * At 200 % zoom (683 × 384 CSS px on a 1366 × 768 screen) the bar collapses to
+ * its primary, so it does not take a third of the window. A disabled primary
+ * keeps the line that says why (D70), which `has-reason` marks.
+ */
+@media (max-width: 760px), (max-height: 500px) {
+  .next-step {
+    margin-top: var(--s3);
+    padding: var(--s1) 0;
+  }
+
+  .next-step .action-bar-secondary,
+  .next-step:not(.has-reason) .action-bar-status {
+    display: none;
+  }
+
+  .next-step .action-bar-actions > :disabled:not(:only-child) {
+    display: none;
+  }
 }
 
 /* ---- panels --------------------------------------------------------------- */

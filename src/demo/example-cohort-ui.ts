@@ -94,7 +94,9 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   });
   confirmRow.hidden = true;
 
-  const loadButton = button(LOAD_BUTTON_LABEL, () => openConsent(), { class: 'example-load' });
+  // Tiers (D70): every button here is secondary but the dialog's confirm, which is the dialog's
+  // primary; `primary` stays beside `btn-primary` there because the tests click `.primary`.
+  const loadButton = button(LOAD_BUTTON_LABEL, () => openConsent(), { class: 'btn-secondary example-load' });
 
   /*
    * The one network request in the product, asked for before it is made (D2).
@@ -111,13 +113,13 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   const consentConfirm = button('Load the example and fetch the clips', () => {
     closeConsent();
     void onLoad(true);
-  }, { class: 'primary' });
+  }, { class: 'primary btn-primary' });
   // D33 keeps the results reachable with no network at all: the bundle is
   // local, and this is the button that delivers what the line above promises.
   const consentResultsOnly = button('Load the results only', () => {
     closeConsent();
     void onLoad(false);
-  }, { class: 'example-results-only' });
+  }, { class: 'btn-secondary example-results-only' });
   consentDialog.append(
     el('h3', { id: consentTitleId, text: 'Load the example cohort?' }),
     el('p', { text: FETCH_BUTTON_HINT }),
@@ -133,7 +135,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
       text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" downloads nothing from the internet; without the files there are no frames to correct.`,
     }),
     el('div', { class: 'example-dialog-actions' }, [
-      button('Cancel', () => closeConsent(), {}),
+      button('Cancel', () => closeConsent(), { class: 'btn-secondary' }),
       consentResultsOnly,
       consentConfirm,
     ]),
@@ -207,8 +209,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
 
       confirmRow.replaceChildren(
         el('span', { class: 'confirm-text', text: CONFIRM_TEXT }),
-        button(CONFIRM_ACCEPT_LABEL, () => finish(true), { class: 'danger' }),
-        button(CONFIRM_CANCEL_LABEL, () => finish(false)),
+        button(CONFIRM_ACCEPT_LABEL, () => finish(true), { class: 'btn-secondary danger' }),
+        button(CONFIRM_CANCEL_LABEL, () => finish(false), { class: 'btn-quiet' }),
       );
       confirmRow.hidden = false;
       loadButton.hidden = true;

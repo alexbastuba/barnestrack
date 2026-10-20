@@ -101,7 +101,15 @@ export function createVideosStep(context: AppContext): Step {
   notLoaded.hidden = true;
   const rejectionList = notLoaded.querySelector('ul') as HTMLUListElement;
 
+  /*
+   * D72: the intake is the step's primary until a video is in, then Next step is. Both live in
+   * the action bar; only one of them is filled at a time (D70: one primary per view).
+   */
   const nextStep = createNextStepButton(context, 'maze', 'Maze');
+  const intakeButton = button('Choose videos to load…', () => fileInput.click(), {
+    class: 'btn-primary intake-button',
+  });
+  nextStep.bar.place([], [intakeButton, nextStep.control]);
   body.append(pickers, listEmpty, list, notesBox, notLoaded, nextStep.element);
 
   // ---- drag and drop --------------------------------------------------------
@@ -221,7 +229,10 @@ export function createVideosStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
-    nextStep.update(videosMissing(store));
+    const missing = videosMissing(store);
+    nextStep.update(missing);
+    intakeButton.className = `${missing === null ? 'btn-secondary' : 'btn-primary'} intake-button`;
+    intakeButton.textContent = missing === null ? 'Add more videos…' : 'Choose videos to load…';
     if (store.epoch !== lastEpoch) {
       // Reset, load or restore replaced the session; "Not loaded" and the
       // duplicate notes described the one before it.

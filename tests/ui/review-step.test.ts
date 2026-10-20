@@ -66,6 +66,16 @@ function panel(step: Step, id: string): HTMLElement {
   return step.body.querySelector<HTMLElement>(`#${id}`)!;
 }
 
+/** The one Export bundle button, in the step's action bar (D72), never a second one by the manifest. */
+function exportButton(step: Step): HTMLButtonElement {
+  const buttons = [...step.body.querySelectorAll<HTMLButtonElement>('button')].filter(
+    (b) => b.textContent === 'Export bundle (.zip)',
+  );
+  expect(buttons).toHaveLength(1);
+  expect(buttons[0]!.closest('.action-bar')).not.toBeNull();
+  return buttons[0]!;
+}
+
 /**
  * Types a value into one of the mounted panel's own rows and lets the debounce
  * fire — the path a user takes, so `onParametersChange` and everything the step
@@ -179,7 +189,7 @@ describe('the step re-derives what the store invalidated', () => {
 
     expect(store.videos.map((v) => store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
     expect(step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
-    expect(step.body.querySelector<HTMLButtonElement>('#review-export button')!.disabled).toBe(false);
+    expect(exportButton(step).disabled).toBe(false);
     expect(step.body.querySelector<HTMLElement>('#review-export .figure-missing')!.hidden).toBe(true);
   });
 
@@ -190,7 +200,7 @@ describe('the step re-derives what the store invalidated', () => {
     harness.store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 3 });
 
     expect(harness.store.videos.map((v) => harness.store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
-    expect(panel(harness.step, 'review-export').querySelector<HTMLButtonElement>('button')!.disabled).toBe(false);
+    expect(exportButton(harness.step).disabled).toBe(false);
     expect(harness.step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
   });
 });

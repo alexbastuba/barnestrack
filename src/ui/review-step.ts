@@ -108,6 +108,7 @@ import {
 import { eventWording, eventWordingLower, evidenceWording, reclassifyRefusal } from './event-wording.js';
 import { formatFrameTime } from './review-format.js';
 import { forgetSelection, recallSelection, rememberSelection } from './selection-memory.js';
+import { createActionBar } from './next-step.js';
 import { createReviewExport, type ReviewExport } from './review-export.js';
 import {
   createReviewFigures,
@@ -1436,6 +1437,9 @@ export function createReviewStep(context: AppContext): Step {
   /** Where the figures and the export mount; each section itself is its module's. */
   const figuresHost = el('div', { class: 'review-figures-host' });
   const exportHost = el('div', { class: 'review-export-host' });
+  /** The step's action bar (D72): Export bundle and why it is disabled, when it is. */
+  const actionBar = createActionBar('Review & Export: export');
+  let exportReason: HTMLElement | null = null;
 
   const framesBody = el('tbody');
   const framesSummary = el('p', { class: 'mirror-summary' });
@@ -1512,6 +1516,7 @@ export function createReviewStep(context: AppContext): Step {
     framesMirror,
     eventsMirror,
     correctionsMirror,
+    actionBar.element,
   );
 
   // ---- rendering --------------------------------------------------------------------------
@@ -1977,12 +1982,24 @@ export function createReviewStep(context: AppContext): Step {
     });
   }
 
+  /** Marks the bar while the export button is disabled, so its reason stays visible at 200 %. */
+  function markExportReason(): void {
+    if (exportReason) actionBar.markReason(!exportReason.hidden);
+  }
+
   function renderExport(): void {
     if (exporter) {
       exporter.update();
+      markExportReason();
       return;
     }
     exporter = createReviewExport(exportHost, store, context.toolVersion, {
+      // D72: the step's primary, Export bundle, lives in its action bar with its reason.
+      placeActions: (exportButton, reason) => {
+        exportReason = reason;
+        actionBar.status.replaceChildren(reason);
+        actionBar.place([], [exportButton]);
+      },
       onAnnounce: context.announce,
       runQuietly: <T,>(work: () => T): T => {
         sweeping = true;
@@ -1993,6 +2010,7 @@ export function createReviewStep(context: AppContext): Step {
         }
       },
     });
+    markExportReason();
   }
 
   function eventListProps(): EventListProps {

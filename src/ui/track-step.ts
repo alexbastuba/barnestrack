@@ -115,28 +115,37 @@ export function createTrackStep(context: AppContext): Step {
     context.announce('Cancelling the tracking queue.');
   }, { class: 'btn-secondary' });
 
-  const queueState = el('p', { class: 'queue-state', attrs: { 'aria-live': 'off' } });
+  /*
+   * D72: the action bar holds the queue line, Track all untracked (the primary while anything is
+   * left to track), Cancel all while a pass runs, and Next step, which becomes the primary once
+   * nothing is left. One filled button at a time (D70).
+   */
+  const nextStep = createNextStepButton(context, 'review', 'Review & Export');
+  const queueState = nextStep.bar.status;
+  queueState.classList.add('queue-state');
+  queueState.setAttribute('aria-live', 'off');
+  nextStep.bar.place([cancelAllButton], [trackAllButton, nextStep.control]);
 
   function refreshQueueControls(): void {
     const untracked = runner.untracked().length;
     trackAllButton.disabled = untracked === 0;
-    if (!runner.busy && document.activeElement === cancelAllButton) trackAllButton.focus();
+    // Nothing left to track: Next step takes the primary, and Track all steps aside.
+    trackAllButton.hidden = untracked === 0 && !runner.busy;
+    if (!runner.busy && document.activeElement === cancelAllButton) {
+      if (trackAllButton.hidden) nextStep.focus();
+      else trackAllButton.focus();
+    }
     cancelAllButton.hidden = !runner.busy;
     const tracked = store.videos.filter((v) => store.analysisFor(v.id) !== undefined).length;
+    queueState.hidden = false;
     queueState.textContent =
       `${tracked} of ${store.videos.length} video${store.videos.length === 1 ? '' : 's'} tracked` +
       (untracked > 0 ? ` · ${untracked} ready to track` : '') +
-      (runner.busy ? ' · a pass is running; the other steps stay usable' : '');
+      (runner.busy ? ' · a pass is running; the other steps stay usable' : '') +
+      (nextStep.control.disabled && untracked === 0 && !runner.busy ? ` · ${trackMissing(store) ?? ''}` : '');
   }
 
-  const controls = el('div', { class: 'track-controls' }, [
-    trackAllButton,
-    cancelAllButton,
-    queueState,
-  ]);
-
-  const nextStep = createNextStepButton(context, 'review', 'Review & Export');
-  replaceChildren(body, [controls, parameterPanel.element, cards, nextStep.element]);
+  replaceChildren(body, [parameterPanel.element, cards, nextStep.element]);
 
   // ---- rendering ---------------------------------------------------------------
 

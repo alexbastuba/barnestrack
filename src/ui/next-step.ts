@@ -1,5 +1,5 @@
 /**
- * The way forward from a step (D37).
+ * The way forward from a step (D37), in the step's sticky action bar (D72).
  *
  * The stepper's tabs have always been the only way to move between steps,
  * which asks the user to know that step 2 comes after step 1 and to notice
@@ -71,14 +71,69 @@ export function trackMissing(store: SessionStore): string | null {
   return null;
 }
 
+/**
+ * The step's action bar (D72): a strip stuck to the bottom of the window
+ * while its step is shown, holding the step's one primary action, the line
+ * that says where the step stands, and the step's secondary navigation where
+ * there is one. It is the last thing in the step, so it comes last in tab
+ * order; it is `position: sticky` inside the step (app.css), so it never
+ * covers a dialog and stops at the end of the step's own content.
+ *
+ * At 200 % zoom the bar collapses to the primary alone — except that a
+ * disabled primary keeps its reason beside it (D70: a disabled button says
+ * why), which `has-reason` marks for the stylesheet.
+ */
+export interface ActionBar {
+  element: HTMLElement;
+  /** The one-line status the step writes into, or puts its own reason line in. */
+  status: HTMLElement;
+  /** Puts the step's controls in the bar: secondary navigation first, then the actions. */
+  place(secondary: readonly HTMLElement[], actions: readonly HTMLElement[]): void;
+  /** True while the primary is disabled and the status is its reason. */
+  markReason(isReason: boolean): void;
+}
+
+export function createActionBar(label: string): ActionBar {
+  const status = el('div', { class: 'hint next-step-hint action-bar-status' });
+  const secondarySlot = el('div', { class: 'action-bar-secondary' });
+  const actionSlot = el('div', { class: 'action-bar-actions' });
+  const element = el('div', { class: 'next-step action-bar', attrs: { role: 'group', 'aria-label': label } }, [
+    status,
+    secondarySlot,
+    actionSlot,
+  ]);
+  return {
+    element,
+    status,
+    place(secondary, actions) {
+      secondarySlot.replaceChildren(...secondary);
+      secondarySlot.hidden = secondary.length === 0;
+      actionSlot.replaceChildren(...actions);
+    },
+    markReason(isReason) {
+      element.classList.toggle('has-reason', isReason);
+    },
+  };
+}
+
 export interface NextStepButton {
   element: HTMLElement;
   /** `reason` is why the step is not finished, or null when it is. */
   update(reason: string | null): void;
   /** Puts focus on the button, when it is one focus can rest on. */
   focus(): void;
+  /** The bar the button sits in, for a step with more than the one action. */
+  bar: ActionBar;
+  /** The Next-step button itself. */
+  control: HTMLButtonElement;
 }
 
+/**
+ * The Next-step button in its step's action bar. A step whose only action is
+ * going on (the Maze step) gets the bar from this alone; a step with an action
+ * of its own (Videos, Track) adds it to `bar` and keeps one primary between
+ * the two through `update`'s `primary` flag.
+ */
 export function createNextStepButton(
   context: AppContext,
   target: StepId,
@@ -87,11 +142,14 @@ export function createNextStepButton(
   const control = button(`Next step → ${label}`, () => context.showStep(target), {
     class: 'next-step-button',
   });
-  const hint = el('p', { class: 'hint next-step-hint' });
-  const element = el('div', { class: 'next-step' }, [hint, control]);
+  const bar = createActionBar(`${label}: the way on`);
+  bar.place([], [control]);
+  const hint = bar.status;
 
   return {
-    element,
+    element: bar.element,
+    bar,
+    control,
     update(reason: string | null): void {
       const done = reason === null;
       control.disabled = !done;
@@ -100,6 +158,7 @@ export function createNextStepButton(
       control.className = done ? 'next-step-button primary btn-primary' : 'next-step-button btn-secondary';
       hint.textContent = done ? '' : reason;
       hint.hidden = done;
+      bar.markReason(!done);
     },
     focus(): void {
       // Focusing a disabled button is a no-op that drops focus to <body>, which
