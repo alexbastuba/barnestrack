@@ -294,7 +294,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   strategySource:
     'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—).',
   escaped:
-    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box (yes/no).',
+    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box, and for an unresolved trial, which has no window to say anything over; no is asserted only for a resolved trial with no entry (yes/no).',
   noEscapeConfirmed:
     'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry that ended the trial found afterwards contradicts the confirmation and the entry wins, while a shorter one is noted beside it; blank for a probe trial (yes/no).',
   status:

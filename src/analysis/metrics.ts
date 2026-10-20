@@ -69,10 +69,12 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   // D68: a probe trial has no escape box, so nothing about escaping is a measurement of it
   const probe = (input.trialType ?? 'acquisition') === 'probe';
 
-  const escaped: boolean | null = probe ? null : bounds.endReason === 'escape';
+  // D71: `false` is a claim only a resolved acquisition trial can make. With no window there is
+  // nothing to say, as on a probe, so the value is null and the exported cell is blank.
+  const escaped: boolean | null = probe || noTrial ? null : bounds.endReason === 'escape';
   const totalLatency = probe
     ? null
-    : escaped && !noTrial
+    : escaped === true && !noTrial
       ? bounds.endTime_s - bounds.startTime_s
       : parameters.trialCensoring.censorToCutoff && !noTrial
         ? parameters.trialCutoff_s
@@ -111,11 +113,13 @@ export function computeMetrics(input: MetricsInput): TrialMetrics {
   // from a missed entry. D63 lets a human say which it was, and a confirmed non-escape reads `ok`
   // unless something else was flagged — including the contradiction flag `derive()` raises when an
   // escape entry turns up beside the confirmation, so the entry wins without a special case here.
-  // D67: a soft flag notes something without sending the trial to review
+  // D67: a soft flag notes something without sending the trial to review.
+  // D71: a null `escaped` reads here as "not escaped and not confirmable" without asserting it
+  // (unreachable on an unresolved trial, which is `unresolved` above).
   const hardFlags = flags.filter((flag) => !isSoftReviewFlag(flag));
   const status: TrialMetrics['status'] = noTrial
     ? 'unresolved'
-    : hardFlags.length > 0 || (!probe && !escaped && !noEscapeConfirmed)
+    : hardFlags.length > 0 || (!probe && escaped !== true && !noEscapeConfirmed)
       ? 'review'
       : 'ok';
 

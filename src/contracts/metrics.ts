@@ -29,7 +29,11 @@ export interface TrialMetrics {
   targetQuadrantTime_s: number | null;
   strategy: SearchStrategy;
   strategySource: 'auto' | 'corrected';
-  /** null for a probe trial, which has no escape box (D68); never false there (D66). */
+  /**
+   * null for a probe trial, which has no escape box (D68), and for an unresolved
+   * acquisition trial, which has no window to say (D71); false is asserted only
+   * for a resolved acquisition trial with no escape entry (D66).
+   */
   escaped: boolean | null;
   /**
    * A human has recorded "the animal never entered the escape box" (D63). It

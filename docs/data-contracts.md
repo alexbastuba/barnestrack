@@ -39,7 +39,9 @@ and in `examples/outputs/`.
 **Changed after 0.2.0 without a version bump (D71, additive on D63's precedent).** `autoShadow`
 may carry `kind`; the two detections are matched in two passes (§5), so a kind change is a human
 claim with the automatic event as its shadow; an automatic event the corrected detection no longer
-finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`.
+finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`;
+`escaped` is `null` on an unresolved acquisition row as well as on every probe row, and `false`
+is asserted only for a resolved acquisition trial with no escape entry.
 
 ## Conventions used throughout
 
@@ -436,7 +438,8 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   trial start), `primaryLatency_s` (target never reached), `totalLatency_s` (no escape),
   `meanSpeed_cmPerS` (no tracked time), and — whenever the trial is `unresolved`, i.e. has no
   window — `primaryErrors`, `totalErrors`, `pathLength_cm`, `pathLengthSmoothed_cm`,
-  `targetQuadrantTime_s` and `trackedFraction` as well. A resolved trial keeps its numbers, zeros
+  `targetQuadrantTime_s`, `trackedFraction` and `escaped` (D71: `false` is a claim only a resolved
+  trial can make; a probe trial's `escaped` is null by definition, D68) as well. A resolved trial keeps its numbers, zeros
   included: `totalErrors = 0` is a measurement. `SearchStrategy` has `unclassified` for the same
   reason: no trial window, or a window with no investigation and no target visit, is nothing to
   classify over, and the reasoning says which; an override on such a trial is still honoured. On
@@ -574,7 +577,7 @@ the top of this document says exactly what changed.
 | `mean_speed_cm_per_s` | cm/s (nullable: no tracked time or no trial window) | O9 |
 | `target_quadrant_time_s` | s (nullable: no trial window, D66) | O6 |
 | `strategy`, `strategy_source` | — | `spatial \| serial \| random \| unclassified` (D58, D66); `auto \| corrected` |
-| `escaped` | bool (blank on a probe trial, D68) | O4 |
+| `escaped` | bool (blank on a probe trial, D68, and on an `unresolved` row, D71; `false` only for a resolved acquisition trial with no escape entry) | O4 |
 | `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
 | `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
 | `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |

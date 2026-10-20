@@ -98,7 +98,10 @@ Measures:
   strategy cross-tabulation; count it separately and say how many.
 - `strategy_source` — `auto` or `corrected`. An override on an `unclassified` trial is honoured
   and reads `corrected`.
-- `escaped` — `true` or `false`.
+- `escaped` — `true`, `false` or blank. Blank on a probe trial (no escape box) and on an
+  `unresolved` row (no trial window to say anything over); `false` is asserted only for a resolved
+  acquisition trial with no escape entry. Never pool a blank with `false`: one is a
+  non-measurement, the other a measured non-escape.
 - `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
   never entered the escape box, which is what lets a trial with no entry read `ok`; blank on a
   probe trial. It says the confirmation is on file, not that it still holds: if the tool later
@@ -271,8 +274,8 @@ number.
    could be detected. Nothing about it involves review, and a correction cannot produce it. On such
    a row every measure taken over the trial window is blank — `trial_start_s`, both latencies,
    `primary_errors`, `total_errors`, `path_length_cm`, `path_length_smoothed_cm`,
-   `mean_speed_cm_per_s`, `target_quadrant_time_s` and `tracked_fraction` — and `strategy` reads
-   `unclassified`. Nothing on it is a number that could be averaged in by mistake, but a reader
+   `mean_speed_cm_per_s`, `target_quadrant_time_s`, `tracked_fraction` and `escaped` — and
+   `strategy` reads `unclassified`. Nothing on it is a number that could be averaged in by mistake, but a reader
    who drops blanks silently still shrinks n without saying so. Exclude `unresolved` rows from
    every aggregate, and say that you did.
 

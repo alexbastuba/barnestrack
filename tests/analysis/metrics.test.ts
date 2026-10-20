@@ -142,7 +142,7 @@ describe('computeMetrics (O2, O3, O4, O5)', () => {
     expect(r.metrics.trialStart_s).toBeNull();
     expect(r.metrics.primaryLatency_s).toBeNull();
     expect(r.metrics.totalLatency_s).toBeNull();
-    expect(r.metrics.escaped).toBe(false);
+    expect(r.metrics.escaped).toBeNull(); // D71: false is a claim an unresolved trial cannot make
     expect(r.metrics.primaryErrors).toBeNull();
     expect(r.metrics.totalErrors).toBeNull();
     expect(r.metrics.pathLength_cm).toBeNull();

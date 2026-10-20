@@ -1513,3 +1513,36 @@ describe('D71 (2): a kind change is a human claim; a removed automatic event lea
     expect(trialRowFor(input, removed)['review_flags']).toBe('auto_event_removed_by_correction');
   });
 });
+
+/*
+ * D71 (3): `escaped` is null when nothing can be said — on a probe trial, which has no escape
+ * box, and on an unresolved trial, which has no window — and `false` only for a resolved
+ * acquisition trial with no escape entry. The cell is blank for null.
+ */
+describe('D71 (3): escaped is null when nothing can be said', () => {
+  it('writes escaped blank on an unresolved row and a probe row, and false only on a resolved trial with no entry', () => {
+    // unresolved: nothing was ever tracked, so there is no trial window
+    const { input: unresolved } = inputFor([
+      { kind: 'empty', seconds: 1 },
+      { kind: 'ambiguous', seconds: 1 },
+    ]);
+    const u = derive(unresolved);
+    expect(u.metrics.status).toBe('unresolved');
+    expect(u.metrics.escaped).toBeNull();
+    expect(trialRowFor(unresolved, u)).toMatchObject({ status: 'unresolved', escaped: '', total_latency_s: '' });
+
+    // resolved with no entry: the one case in which false is asserted
+    const script: Segment[] = [...visitHoles([3, 7]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: resolved } = inputFor(script);
+    const r = derive(resolved);
+    expect(r.metrics.status).toBe('review');
+    expect(r.metrics.escaped).toBe(false);
+    expect(trialRowFor(resolved, r)).toMatchObject({ status: 'review', escaped: 'false', no_escape_confirmed: 'false' });
+
+    // a probe trial has no escape box: nothing about escaping is a measurement of it (D68)
+    const probeInput: DeriveInput = { ...resolved, trialType: 'probe' };
+    const p = derive(probeInput);
+    expect(p.metrics.escaped).toBeNull();
+    expect(trialRowFor(probeInput, p)).toMatchObject({ trial_type: 'probe', escaped: '', status: 'ok' });
+  });
+});
