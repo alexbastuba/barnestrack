@@ -18,8 +18,9 @@ import {
 } from '../../src/ui/components/index.js';
 import type { EventRecord } from '../../src/contracts/events.js';
 import type { SessionFile } from '../../src/contracts/session.js';
-import { analyseAllVideos } from '../../src/session/analyse.js';
-import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange, setPoint } from '../../src/session/corrections.js';
+import { isPersistentEscape } from '../../src/analysis/metrics.js';
+import { analyseAllVideos, analyseVideo } from '../../src/session/analyse.js';
+import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange, setPoint, setTrialStart } from '../../src/session/corrections.js';
 import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
 import { eventRows } from '../../src/export/rows.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
@@ -1133,6 +1134,38 @@ describe('confirming that a trial had no escape', () => {
     const derived = harness.store.analysisFor(videoId)!.derived!;
     expect(derived.reviewFlags.map((flag) => flag.code)).toContain('non_persistent_entry_noted');
     expect(derived.events.some((e) => e.kind === 'escape_entry')).toBe(true); // the entry stays
+  });
+
+  it('is disabled beside a persistent entry that did not end the trial, and says so', () => {
+    const videoId = showTest53();
+    // The second half of the engine's rule (derive.ts): a persistent entry outside the trial window.
+    // The detector drops an entry that starts outside it (a lowered cutoff loses test53's own
+    // entry), so, as derive.test.ts does, the entry is edited to start before the trial start —
+    // moved to frame 300, since test53's starts at 0. The entry still runs to the end of the clip,
+    // so it is persistent, and it cannot end a trial it starts before.
+    const before = analyseVideo(harness.store, videoId)!.analysis;
+    expect(before.trial.endReason).toBe('escape');
+    const auto = before.events.find((e) => e.kind === 'escape_entry')!;
+    const meta = (id: string) => ({ id, timestamp: '2026-10-21T12:00:00.000Z' });
+    let layer = harness.store.analysisFor(videoId)!.corrections;
+    layer = setTrialStart(layer, 300, meta('late-start'));
+    layer = editEvent(layer, auto.id, { startFrame: 250 }, meta('early-entry'));
+    harness.store.setCorrections(videoId, layer);
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    const derived = harness.store.analysisFor(videoId)!.derived!;
+    const entry = derived.events.find((e) => e.kind === 'escape_entry');
+    expect(entry, 'the entry outside the trial window is still detected').toBeDefined();
+    expect(entry!.startFrame).toBe(250);
+    expect(derived.reviewFlags.map((flag) => flag.code)).toContain('correction_out_of_range');
+    expect(analyseVideo(harness.store, videoId)!.analysis.trial.endReason).not.toBe('escape');
+    const lastFrameIndex = derived.cleanedTrack[derived.cleanedTrack.length - 1]!.frameIndex;
+    expect(isPersistentEscape(entry!, lastFrameIndex, harness.store.parameters)).toBe(true);
+
+    expect(box().disabled).toBe(true);
+    expect(hint()).toContain('is persistent');
+    expect(hint()).not.toContain('ended the trial');
+    expect(hint()).toContain(`frame ${entry!.startFrame}`);
   });
 
   it('goes back to review when the confirmation is unticked', () => {
