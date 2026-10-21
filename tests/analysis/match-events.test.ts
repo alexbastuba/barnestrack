@@ -266,7 +266,7 @@ describe('matchEvents (D71): a kind change is a human claim; a vanished automati
       startFrame: 10,
       endFrame: 14,
       source: 'auto',
-      correctionIds: [], // the nudge at 15 is outside 10–14
+      correctionIds: ['p'], // the nudge at 15 is outside 10–14 but inside the 10–25 that absorbed it
     });
     expect(removedAutoEvents[0]!.autoShadow).toBeUndefined();
   });

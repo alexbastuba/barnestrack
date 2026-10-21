@@ -164,8 +164,9 @@ export interface MatchedEvents {
   /**
    * Automatic events with no counterpart in the corrected detection, by start
    * frame: a correction removed their evidence (D71). Each carries the ids of
-   * the point and range corrections inside its span as `correctionIds`, so a
-   * reader can see what erased it; `source` stays `auto`.
+   * the point and range corrections inside its span, and inside any corrected
+   * event that overlaps it, as `correctionIds`, so a reader can see what erased
+   * it; `source` stays `auto`.
    */
   removedAutoEvents: EventRecord[];
 }
@@ -271,12 +272,19 @@ export function matchEvents(
   const removedAutoEvents = autoOnly
     .map((ev, ai) => ({ ev, ai }))
     .filter(({ ai }) => !usedAuto.has(ai))
-    .map(
-      ({ ev }): EventRecord => ({
-        ...ev,
-        correctionIds: correctionIdsInSpan(spans, ev.startFrame, ev.endFrame),
-      }),
-    )
+    .map(({ ev }): EventRecord => {
+      // the corrections inside its span and inside any corrected event that overlaps it: the
+      // nudge that merged two visits sits between them, outside the visit it erased
+      let start = ev.startFrame;
+      let end = ev.endFrame;
+      for (const other of corrected) {
+        if (overlapFrames(other, ev) > 0) {
+          start = Math.min(start, other.startFrame);
+          end = Math.max(end, other.endFrame);
+        }
+      }
+      return { ...ev, correctionIds: correctionIdsInSpan(spans, start, end) };
+    })
     .sort((x, y) => x.startFrame - y.startFrame);
 
   return { events, removedAutoEvents };

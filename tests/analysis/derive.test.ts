@@ -1456,7 +1456,12 @@ describe('D71 (2): a kind change is a human claim; a removed automatic event lea
     expect(flags).toHaveLength(1);
     expect(flags[0]).toMatchObject({ eventId: removed.id, frameIndex: removed.startFrame });
     expect(flags[0]!.message).toContain(`frames ${removed.startFrame}–${removed.endFrame}`);
-    expect(flags[0]!.message).toContain('no row in events.csv');
+    expect(flags[0]!.message).toContain('once correction p is applied');
+    // the merged event starts where the first visit did, so when the first is the removed one
+    // the merged row carries its id and the flag says so instead of "no row"
+    expect(flags[0]!.message).toContain(
+      removed.id === merged[0]!.id ? 'Its id now belongs to the event' : 'no row in events.csv',
+    );
     // counted exactly as a delete would be: one for the nudge, one for the removal
     expect(d.metrics.correctionCount).toBe(2);
     // informational: the status is what it was without the correction
@@ -1619,6 +1624,99 @@ describe('D71 (2): a removal is counted once, and an edit keeps the automatic ki
     const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
     expect(flag.message).toContain('Event correction e names it, so its values stand as a pinned row');
     expect(flag.message).not.toContain('no row');
+    expect(d.metrics.correctionCount).toBe(2);
+  });
+
+  it('always counts a removal whose id a merged event now carries, whatever the user then does to the merged event', () => {
+    // two visits to hole 3, the second longer, merged by a nose nudge between them: the merged
+    // event starts where the first visit did and so carries its id, while the longer second visit
+    // is the one matched — the first is removed under the very id the live row carries
+    const twoVisits: Segment[] = [
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.3 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.3 },
+      { kind: 'dwell', hole: 3, seconds: 1 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ];
+    const { input: plain } = inputFor(twoVisits);
+    const [first, second] = derive(plain).events.filter(
+      (e) => e.kind === 'investigation' && e.holeIndex === 3,
+    );
+    const mid = Math.floor((first!.endFrame + second!.startFrame) / 2);
+    const nudge: CorrectionEntry = {
+      id: 'p',
+      kind: 'point',
+      timestamp: at(1),
+      source: 'user',
+      frameIndex: mid,
+      point: 'nose',
+      value: { x: g.holeX[3]!, y: g.holeY[3]!, confidence: 1, valid: true },
+    };
+    const merged = derive(inputFor(twoVisits, { corrections: [nudge] }).input);
+    const live = merged.events.find((e) => e.kind === 'investigation' && e.holeIndex === 3)!;
+    expect(live.id).toBe(first!.id);
+    expect(merged.removedAutoEvents.map((e) => e.id)).toEqual([first!.id]);
+    // the nudge sits inside the event that absorbed the visit, so it is named
+    expect(merged.removedAutoEvents[0]!.correctionIds).toEqual(['p']);
+    const flag = merged.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain(
+      `Its id now belongs to the event at frames ${live.startFrame}–${live.endFrame}`,
+    );
+    expect(flag.message).not.toContain('no row');
+    expect(merged.metrics.correctionCount).toBe(2);
+
+    // an edit of the merged event addresses the merged event, not the removed one: the nudge,
+    // the edit and the removal
+    const edited = derive(
+      inputFor(twoVisits, {
+        corrections: [
+          nudge,
+          {
+            id: 'e',
+            kind: 'event',
+            timestamp: at(2),
+            source: 'user',
+            action: 'edit',
+            eventId: live.id,
+            holeIndex: 3,
+            startFrame: live.startFrame,
+            endFrame: live.endFrame - 2,
+          },
+        ],
+      }).input,
+    );
+    expect(edited.events.find((e) => e.id === live.id)!.endFrame).toBe(live.endFrame - 2);
+    expect(edited.metrics.correctionCount).toBe(3);
+    // a delete of the merged event: the same three
+    const deleted = derive(
+      inputFor(twoVisits, {
+        corrections: [
+          nudge,
+          { id: 'd', kind: 'event', timestamp: at(2), source: 'user', action: 'delete', eventId: live.id },
+        ],
+      }).input,
+    );
+    expect(deleted.events.some((e) => e.id === live.id)).toBe(false);
+    expect(deleted.metrics.correctionCount).toBe(3);
+  });
+
+  it('says that an edit which no longer applies counts for the event, without calling it a delete', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    // an edit naming only a hole has no span once its event is gone: ignored as orphaned
+    const { input } = inputFor(script, {
+      corrections: [
+        { id: 'e', kind: 'event', timestamp: at(1), source: 'user', action: 'edit', eventId: visit5.id, holeIndex: 4 },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    expect(d.events.some((e) => e.id === visit5.id)).toBe(false);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction e names it but no longer applies and is reported as orphaned');
+    expect(flag.message).not.toContain('deleted');
+    expect(d.reviewFlags.some((f) => f.code === 'orphaned_correction')).toBe(true);
     expect(d.metrics.correctionCount).toBe(2);
   });
 

@@ -340,12 +340,17 @@ sentence says which. An automatic event with no counterpart after both passes wa
 correction* (a `not_visible` range over an investigation, a nudge that merged two visits into one):
 it has no row; the trial carries one soft flag `auto_event_removed_by_correction` per removed event
 (`frameIndex` = its start frame, `eventId` = its automatic id, the message naming the corrections
-inside its span); it is counted in `correctionCount` exactly as an event `delete` is — once: when a
-delete, an edit or a reclassification already names that id, the correction counts for it and the
-removal is not counted again, and the flag says so (an edit then keeps a pinned row with that id,
-so "no row" holds only for an event nothing names); and the in-memory analysis result
-(`DerivedAnalysis.removedAutoEvents`, never persisted — the derived layer stays a cache, D55) lists
-it with those correction ids as its `correctionIds`. Event corrections (`kind: event`) apply after
+inside its span and inside any corrected event that overlaps it — the nudge that merged two visits
+sits between them); it is counted in `correctionCount` exactly as an event `delete` is — once: when
+a delete, an edit or a reclassification already names that id, the correction counts for it and the
+removal is not counted again, and the flag says which it was (an edit that applied keeps a pinned
+row with that id; a delete, or an edit that no longer applies and is reported as orphaned, leaves
+no row). Automatic ids encode the start frame, so a merged event that starts where the removed
+visit did carries its id: that row is a different event, a correction naming the id addresses it,
+the removal is always counted, and the flag says the id now belongs to the event that absorbed it.
+The in-memory analysis result (`DerivedAnalysis.removedAutoEvents`, never persisted — the derived
+layer stays a cache, D55) lists each removed event with those correction ids as its
+`correctionIds`. Event corrections (`kind: event`) apply after
 the match: an edit sets `source: corrected` as before, and an edit of a kind-change event rebuilds
 the evidence and appends the kind sentence again, so the automatic kind survives the edit; a
 `confirmed: true` edit sets `confirmed: true` on the automatic event without re-measuring anything.

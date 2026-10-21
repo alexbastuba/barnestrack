@@ -130,9 +130,11 @@ Measures:
   reviewer confirmed a non-escape and the tool had seen a short head-in-hole at the target), so a
   row can read `ok` with it. And `auto_event_removed_by_correction` is also a note: a reviewer's
   point or range correction removed an automatic event (a "not visible" range over an
-  investigation, a nudge that merged two visits into one), which has no `events.csv` row and is
-  counted in `correction_count` exactly as a deletion is; a row can read `ok` with it, and the
-  flag is the only trace of that event in the export.
+  investigation, a nudge that merged two visits into one), which has no `events.csv` row of its
+  own and is counted in `correction_count` exactly as a deletion is; a row can read `ok` with it,
+  and the flag is the only trace of that event in the export. (After a merge the surviving row
+  can carry the removed visit's `event_id`, because automatic ids encode the start frame; it is
+  still a different event.)
   `stale_auto_layer` matters most for comparisons: the track was produced under other
   tracking parameters than the ones `parameters_hash` names, so that row's hash does not describe
   how its track was made.

@@ -153,9 +153,13 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       escapeBox,
     };
   }
-  // D71: the automatic events the last detection pass no longer finds — the pass that stands
+  // D71: the automatic events the last detection pass no longer finds — the pass that stands —
+  // and that pass's own events by id, because an automatic id encodes the start frame and a
+  // merged event can carry the id of the visit it absorbed
   let removedAutoEvents: EventRecord[] = [];
+  let detectedById = new Map<string, EventRecord>();
   const withProvenance = (detected: AutoEvents): EventRecord[] => {
+    detectedById = new Map(detected.events.map((ev) => [ev.id, ev]));
     if (ctxAuto === null || detected.endFrame === null) {
       removedAutoEvents = [];
       return detected.events;
@@ -243,12 +247,14 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   // soft flag per event at its start frame, and a count beside the deletes — so evidence a
   // correction erased is never silently gone. An event correction that names the same id (a
   // delete, an edit, a reclassification; never a confirmation, which is not counted) already
-  // counts the human act on that event, so the removal is not counted a second time; an edit
-  // keeps a pinned row with that id, and the flag says which it is.
-  const namedBy = (id: string): string[] =>
-    corrections.entries
-      .filter((entry) => entry.kind === 'event' && entry.confirmed !== true && entry.eventId === id)
-      .map((entry) => entry.id);
+  // counts the human act on that event, so the removal is not counted a second time, and the
+  // flag says which case it is. One exception: an automatic id encodes the start frame, so a
+  // merged event that starts where the removed visit did carries its id — that row is a
+  // different event, any correction naming the id addresses it, and the removal always counts.
+  const namingCorrections = (id: string) =>
+    corrections.entries.flatMap((entry) =>
+      entry.kind === 'event' && entry.confirmed !== true && entry.eventId === id ? [entry] : [],
+    );
   let uncountedRemovals = 0;
   for (const ev of removedAutoEvents) {
     const where = ev.holeIndex === null ? 'away from any hole' : `at hole ${ev.holeIndex}`;
@@ -263,16 +269,26 @@ export function derive(input: DeriveInput): DerivedAnalysis {
         : ids.length === 1
           ? `correction ${ids[0]} is applied: the correction removed its evidence`
           : `corrections ${named} are applied: the corrections removed its evidence`;
-    const naming = namedBy(ev.id);
+    const carrier = detectedById.get(ev.id);
+    const naming = carrier === undefined ? namingCorrections(ev.id) : [];
+    const one = naming.length === 1;
+    const who = one
+      ? `Event correction ${naming[0]!.id}`
+      : `Event corrections ${naming.map((c) => c.id).join(', ')}`;
     let standing: string;
-    if (naming.length === 0) {
+    if (carrier !== undefined) {
+      standing = `Its id now belongs to the event at frames ${carrier.startFrame}–${carrier.endFrame}, which absorbed it and is a different event, so that row is not this one; the removal is counted as a correction.`;
+    } else if (naming.length === 0) {
       standing = 'It has no row in events.csv and is counted as a correction.';
     } else if (liveEvents.has(ev.id)) {
       uncountedRemovals++;
-      standing = `Event correction ${naming.join(', ')} names it, so its values stand as a pinned row with that id; the removal is not counted again.`;
+      standing = `${who} ${one ? 'names' : 'name'} it, so its values stand as a pinned row with that id; the removal is not counted again.`;
+    } else if (naming.some((c) => c.action === 'delete')) {
+      uncountedRemovals++;
+      standing = `${who} already deleted it and ${one ? 'counts' : 'count'} for it; the removal is not counted again.`;
     } else {
       uncountedRemovals++;
-      standing = `Event correction ${naming.join(', ')} already deleted it and counts for it; the removal is not counted again.`;
+      standing = `${who} ${one ? 'names' : 'name'} it but no longer ${one ? 'applies and is' : 'apply and are'} reported as orphaned; ${one ? 'it counts' : 'they count'} for it, so the removal is not counted again.`;
     }
     reviewFlags.push({
       code: 'auto_event_removed_by_correction',
