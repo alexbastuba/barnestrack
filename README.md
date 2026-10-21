@@ -36,9 +36,24 @@ The work is four steps, and the page says the same thing at the top of each one:
    and everything is recomputed from both." A timeline of the trial with every correction on it, the
    evidence behind each event, a metrics card and a quality summary. Every threshold that
    decides a number is editable there, each with its definition, and a badge says what a change
-   moved; the figures and the export bundle are on the same step. An investigation that is right as it
-   stands is kept with one key (K): it stays the tool's event, marked confirmed, with the same hole
-   and frames the tool found, and leaves the list of events to check.
+   moved; the figures and the export bundle are on the same step. On a laptop screen the video, the
+   selected event's card with its evidence, the correction tools and the queue of events to check
+   sit together, and the step's main action — here Export bundle — stays in a bar at the foot of
+   the window, as each step's does.
+   - *One selection.* Clicking an event's card, its bar on the timeline or its row in the events
+     table, or pressing E, selects the same event and moves the video to its first frame; a line
+     above the tools names it ("Selected: investigation · hole 7 · frames 1,100–1,129"), and every
+     correction says how to revert it.
+   - *Escape entries are inferences.* An entry the tool found from a loss of detection at the target
+     reads "Inferred escape entry", with its evidence. You can keep it (K) if you watched it go in,
+     reject it (Delete), or reclassify it as tracking loss (L) if the animal was only lost there;
+     one you marked yourself reads "Escape entry — marked by you". An event that is right as it
+     stands is kept with K: it stays the tool's event, marked confirmed, and leaves the list to check.
+   - *Who reviewed it.* Type a reviewer name once in the header; every correction made after that
+     carries it, and the events table and the exports say whose call each one was.
+   - *Probe trials and moved targets.* Each video card says whether the trial was an acquisition
+     or a probe (no escape box, so no escape latency and no "escaped"), and can name a target hole
+     for that video alone when the platform was rotated; blank uses the map's target.
 
 Three things shape everything else:
 
