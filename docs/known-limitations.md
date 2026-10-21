@@ -403,7 +403,10 @@ session it is found (D39).
   `scripts/screenshots.ts`). The timeline, a full-width row under the stage, is not: retiming an
   edge by dragging means scrolling down to it. `S` / `D` with Shift + ← / → retime from the stage
   without it. The tools scroll inside their column when they do not fit, so the Trial group is
-  usually scrolled to rather than seen.
+  usually scrolled to rather than seen. A long card — an escape entry's evidence with its flag — scrolls
+  inside its own box at 1366 × 768 (328 of 523 px shown, the actions pinned at its foot), so the
+  end of its evidence sentence is scrolled to; the queue strip above it repeats the flag's message
+  in full, which is where that height goes.
 - **"N events to check" queues nearly every event.** `eventsToCheck` in `src/ui/review-queue.ts`
   puts an event in the queue when a review flag names it *or* any frame of its span is
   `low_confidence`, `ambiguous` or `not_detected`. D48 makes `partial_at_rim` / `small_blob` the

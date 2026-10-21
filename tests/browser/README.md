@@ -451,18 +451,23 @@ replace confirmation" once and it passed alone and on both reruns — recorded a
 re-pointed at the new announcement ("Hole changed from 1 to 2 — revert it with …").
 
 **`scripts/screenshots.ts`** now writes to `notes/screens/chunk-15/`, checks tiers on every
-visible button (the example panel included, now tiered), and adds a Review shot after `]`
-selects the first queued event, with the bounding boxes of six regions. Measured on the example
-cohort (no video attached), CSS pixels from the top of the window:
+visible button (the example panel included, now tiered), and adds two Review shots: after `]`
+selects the first queued event (an investigation on test50), and after clicking the first escape
+entry's card (test51's marked entry, the longest card there is). For each it reports the box of
+seven regions and how many pixels of it are shown once scroll boxes and the window clip it.
+Measured on the example cohort (no video attached), CSS pixels from the top of the window, after
+the reviewer's fixes:
 
-| size, zoom | primary y (all steps) | video | card | evidence | toolbar | queue nav | clip selector |
+| shot | video | card (shown) | evidence (shown) | actions | toolbar (shown) | queue nav | clip selector |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1366 × 768, 100 % | 728 (on screen) | 101–561 | 213–525 | 354–471 | 569–713 | 80–153 | 23–53 |
-| 1400 × 866, 100 % | 824–826 (on screen) | 101–620 | 213–525 | 354–471 | 569–806 | 80–153 | 23–53 |
-| 1366 × 768, 200 % | 722–753 (below a 384 px window) | 120–350 | 691–894 | 784–862 | 938–1423 | 606–639 | 23–53 |
+| 1366 × 768, investigation | 101–561 | 170–482 (all) | 311–428 (all) | 486–526 | 534–708 (174 px) | 80–153 | 23–53 |
+| 1366 × 768, escape entry | 101–561 | 260–783 (328 px, scrolls in its box) | 439–615 (part; scrolls) | 504–588 | 596–708 (112 px) | 170–243 | 23–53 |
+| 1400 × 866, investigation | 101–620 | 170–482 (all) | 311–428 (all) | 486–526 | 534–806 (272 px) | 80–153 | 23–53 |
+| 1400 × 866, escape entry | 101–620 | 260–783 (426 px, scrolls) | 439–615 (all) | 602–686 | 694–806 (112 px) | 170–243 | 23–53 |
 
-At 100 % every region is inside the window at both sizes; at 200 % only the video and the clip
-selector are (`docs/known-limitations.md`, "At 200 % zoom the action bar is not on the first
-screen"). No horizontal scroll, no untiered or multi-tier button and no contrast failure at any of
+Every step's primary is at y = 728 (1366 × 768) and 824–826 (1400 × 866) at 100 %, inside the
+window; at 200 % it is at 722–753 of a 384 / 433 px window, and only the video and the clip
+selector of the Review shot are on screen (`docs/known-limitations.md`, "At 200 % zoom the action
+bar is not on the first screen"). No horizontal scroll, no untiered or multi-tier button and no contrast failure at any of
 the 20 measurements. The Maze step measured is BASE's: chunk 14's two-column stage was not merged
 into this branch.
