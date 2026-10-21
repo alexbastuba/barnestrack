@@ -1322,6 +1322,8 @@ label {
     flex: 0 1 auto;
     min-height: 6rem;
     overflow-y: auto;
+    /* Room for the 2 px focus ring drawn 2 px outside the card and its buttons (D70). */
+    padding: var(--s1);
   }
 
   .review-stage-side .review-selected .event-actions {

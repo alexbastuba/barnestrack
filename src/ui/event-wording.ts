@@ -19,15 +19,26 @@ const KIND_WORDS: Record<EventKind, string> = {
 
 export const INFERRED_ENTRY = 'Inferred escape entry';
 export const MARKED_ENTRY = 'Escape entry — marked by you';
+/** An inferred entry a person retimed: still the tool's inference, with their edit on it. */
+export const EDITED_ENTRY = 'Escape entry — edited by you';
 export const CONFIRMED_ENTRY = 'Escape entry — confirmed';
 export const RECLASSIFIED_LOSS = 'Tracking loss — reclassified by you';
 
-type Wordable = Pick<EventRecord, 'kind' | 'source' | 'confirmed'>;
+type Wordable = Pick<EventRecord, 'kind' | 'source' | 'confirmed'> & Partial<Pick<EventRecord, 'autoShadow'>>;
+
+/**
+ * A corrected entry with an automatic version beside it (`autoShadow`) is an inferred entry a
+ * person edited; one without is the person's own, from an "in the escape box" range (D57, D65).
+ */
+function isEditedEntry(event: Wordable): boolean {
+  return event.kind === 'escape_entry' && event.source === 'corrected' && event.autoShadow != null;
+}
 
 /** The event's name, capitalised: `Inferred escape entry`, `Investigation`, … */
 export function eventWording(event: Wordable, reclassified = false): string {
   if (event.kind === 'escape_entry') {
     if (event.confirmed) return CONFIRMED_ENTRY;
+    if (isEditedEntry(event)) return EDITED_ENTRY;
     if (event.source === 'corrected') return MARKED_ENTRY;
     return INFERRED_ENTRY;
   }
@@ -66,6 +77,9 @@ export function reclassifyRefusal(event: Wordable | null): string | null {
   if (event === null) return 'Select an escape entry first (click its card or its bar on the timeline).';
   if (event.kind !== 'escape_entry') {
     return `Only an escape entry the tracker inferred can be reclassified as tracking loss; this is ${eventWordingLower(event)}.`;
+  }
+  if (isEditedEntry(event)) {
+    return 'This escape entry carries your edit: revert the edit with “Revert to automatic” in the Corrections list, then reclassify it.';
   }
   if (event.source !== 'auto') {
     return 'This escape entry was marked by you: revert the range that made it instead of reclassifying it.';

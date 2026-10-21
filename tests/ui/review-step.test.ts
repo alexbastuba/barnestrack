@@ -787,7 +787,7 @@ describe('one selection, from every route (§1)', () => {
     expect(keep.disabled).toBe(true);
     press(harness.step, 'k');
     expect(harness.store.analysisFor(video.id)!.corrections.entries).toBe(before);
-    expect(harness.said.at(-1)).toContain('already carries your correction');
+    expect(harness.said.at(-1)).toContain('this event carries your edit. Revert the edit');
   });
 
   it('a revert does not tell the user to revert it', () => {

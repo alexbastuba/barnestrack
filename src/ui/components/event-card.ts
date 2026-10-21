@@ -52,12 +52,19 @@ export interface EventCardProps {
  * entry (D57, which by D67 needs no confirmation) — or it would replace that
  * correction with the automatic values without a word.
  */
-export function keepRefusal(event: Pick<EventRecord, 'kind' | 'source'>): string | null {
+export function keepRefusal(
+  event: Pick<EventRecord, 'kind' | 'source' | 'confirmed'> & Partial<Pick<EventRecord, 'autoShadow'>>,
+): string | null {
   if (event.kind === 'tracking_failure') {
     return 'Keep is off for a tracking failure: there is no measurement to confirm. Delete it, or leave it as it is.';
   }
+  if (event.confirmed) return 'Already kept: you confirmed this event as it stands.';
   if (event.source === 'corrected') {
-    return 'Keep is off: this event already carries your correction. Revert the correction to keep the automatic event instead.';
+    // An edited automatic event has its automatic version beside it; a marked entry or an added
+    // event has none, and reverting it would remove it.
+    return event.autoShadow != null
+      ? 'Keep is off: this event carries your edit. Revert the edit to keep the automatic event instead.'
+      : 'Nothing to keep: this event is your own, so there is nothing of the tool’s to confirm.';
   }
   return null;
 }

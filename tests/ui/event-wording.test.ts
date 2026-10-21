@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { keepRefusal } from '../../src/ui/components/event-card.js';
 import {
   CONFIRMED_ENTRY,
+  EDITED_ENTRY,
   INFERRED_ENTRY,
   MARKED_ENTRY,
   RECLASSIFIED_LOSS,
@@ -24,6 +26,23 @@ describe('what an event is called (D67)', () => {
     expect(CONFIRMED_ENTRY).toBe('Escape entry — confirmed');
     expect(eventWording({ kind: 'tracking_failure', source: 'corrected', confirmed: false }, true)).toBe(RECLASSIFIED_LOSS);
     expect(RECLASSIFIED_LOSS).toBe('Tracking loss — reclassified by you');
+  });
+
+  it('tells an inferred entry a person edited from one a person marked', () => {
+    const edited = { ...entry, source: 'corrected', autoShadow: { holeIndex: 7, startFrame: 10, endFrame: 40 } } as const;
+    expect(eventWording(edited)).toBe(EDITED_ENTRY);
+    expect(EDITED_ENTRY).toBe('Escape entry — edited by you');
+    expect(eventWording({ ...entry, source: 'corrected', autoShadow: undefined })).toBe(MARKED_ENTRY);
+    expect(reclassifyRefusal(edited)).toContain('revert the edit with “Revert to automatic”');
+  });
+
+  it('says why Keep is off in words that fit the event', () => {
+    expect(keepRefusal({ ...entry, source: 'corrected' })).toContain('this event is your own');
+    expect(keepRefusal({ ...entry, source: 'corrected', autoShadow: { holeIndex: 7, startFrame: 1, endFrame: 2 } })).toContain(
+      'Revert the edit to keep the automatic event',
+    );
+    expect(keepRefusal({ ...entry, confirmed: true })).toContain('Already kept');
+    expect(keepRefusal(entry)).toBeNull();
   });
 
   it('leaves the other kinds as they were', () => {

@@ -1202,7 +1202,9 @@ export function createReviewStep(context: AppContext): Step {
           setTool('off');
         } else {
           // Through the one selection path, so the card beside the video, the list, the table and
-          // the remembered selection all drop it together.
+          // the remembered selection all drop it together. Focus inside the card that is about to
+          // go moves to the timeline first, rather than falling to <body>.
+          if (document.activeElement && selectedPanel.contains(document.activeElement)) timeline.surface.focus();
           selectEvent(null, { announce: 'Selection cleared.', seek: false });
         }
         renderStatus();
