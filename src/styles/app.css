@@ -1322,8 +1322,12 @@ label {
     flex: 0 1 auto;
     min-height: 6rem;
     overflow-y: auto;
-    /* Room for the 2 px focus ring drawn 2 px outside the card and its buttons (D70). */
+    /*
+     * Room for the 2 px focus ring drawn 2 px outside the card and its buttons
+     * (D70), kept when focus scrolls a card taller than the box to its top.
+     */
     padding: var(--s1);
+    scroll-padding: var(--s1);
   }
 
   .review-stage-side .review-selected .event-actions {
@@ -1383,9 +1387,18 @@ label {
   margin: 0;
 }
 
-/* Drawn with a shadow, not an outline, so the 2 px focus ring (D70) still shows on top of it. */
+/*
+ * A 3 px border, not an outline (the 2 px focus ring, D70, is the outline) and
+ * not a shadow (D70). The padding gives back what the border takes, so the
+ * card's content does not move when it is selected.
+ */
 .event-item.is-selected > .event-card {
-  box-shadow: inset 0 0 0 3px var(--accent);
+  border: 3px solid var(--accent);
+  padding: calc(var(--s2) - 2px) calc(var(--s3) - 2px);
+}
+
+.event-item.is-selected > .event-card.is-corrected {
+  padding: calc(var(--s2) - 1px) calc(var(--s3) - 1px);
 }
 
 /* The glyph is decoration beside the word, so it is given empty alternative text. */

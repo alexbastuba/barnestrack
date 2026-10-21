@@ -14,7 +14,9 @@
  * Chunk 15 adds a Review shot taken after `]` selects the first queued event,
  * with the bounding boxes of the regions a decision needs on one screen: the
  * video, the selected event's card, its evidence, the correction toolbar, the
- * queue's previous / next and the clip selector.
+ * queue's previous / next and the clip selector. It then focuses the selected
+ * card and its Keep in turn and reports any side of the focus ring a scroll box
+ * clips.
  *
  * 200 % is emulated the way browser zoom works: the layout viewport is half the
  * window in CSS pixels and every CSS pixel is two device pixels, so the PNG is
@@ -186,6 +188,78 @@ async function regionBoxes(page: Page): Promise<Record<keyof typeof REVIEW_REGIO
   }, REVIEW_REGIONS);
 }
 
+/** The selected card and its Keep, focused in turn: which sides of the 2 px focus ring a clipping ancestor cuts off. */
+const RING_TARGETS = {
+  card: '#review-selected .event-card',
+  keep: '#review-selected .event-actions button:first-of-type',
+} as const;
+
+interface Ring {
+  /** `rendered` when the element matched :focus-visible; otherwise the ring is sized from the `--focus` tokens. */
+  measured: 'rendered' | 'tokens';
+  /** The ring is taller than a scroll box it sits in, so that box cannot show all of it at once. */
+  tallerThanBox: boolean;
+  clippedSides: string[];
+  file: string | null;
+}
+
+async function focusRings(page: Page, prefix: string): Promise<Record<keyof typeof RING_TARGETS, Ring | null>> {
+  const out: Record<string, Ring | null> = {};
+  for (const [key, selector] of Object.entries(RING_TARGETS)) {
+    const facts = await page.evaluate((selector) => {
+      const node = document.querySelector<HTMLElement>(selector);
+      if (!node || !node.checkVisibility() || (node as HTMLButtonElement).disabled) return null;
+      // `focusVisible` asks for the keyboard ring even when a click came last.
+      node.focus({ focusVisible: true } as FocusOptions);
+      const visible = node.matches(':focus-visible');
+      const px = (value: string): number => Number.parseFloat(value) || 0;
+      let reach: number;
+      if (visible) {
+        const style = getComputedStyle(node);
+        reach = px(style.outlineWidth) + px(style.outlineOffset);
+      } else {
+        const root = getComputedStyle(document.documentElement);
+        reach = px(root.getPropertyValue('--focus')) + px(root.getPropertyValue('--focus-offset'));
+      }
+      const rect = node.getBoundingClientRect();
+      const ring = { top: rect.top - reach, bottom: rect.bottom + reach, left: rect.left - reach, right: rect.right + reach };
+      // Each clipped side and by how many pixels; a box shorter than the element must clip one end.
+      const sides = new Map<string, number>();
+      const clipped = (side: string, by: number): void => {
+        if (by > 0.5) sides.set(side, Math.max(sides.get(side) ?? 0, Math.round(by)));
+      };
+      let tallerThanBox = false;
+      for (let up = node.parentElement; up; up = up.parentElement) {
+        const style = getComputedStyle(up);
+        if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+        // An overflow box clips at its padding box.
+        const box = up.getBoundingClientRect();
+        const clip = {
+          top: box.top + up.clientTop,
+          left: box.left + up.clientLeft,
+          bottom: box.top + up.clientTop + up.clientHeight,
+          right: box.left + up.clientLeft + up.clientWidth,
+        };
+        if (ring.bottom - ring.top > clip.bottom - clip.top) tallerThanBox = true;
+        clipped('top', clip.top - ring.top);
+        clipped('bottom', ring.bottom - clip.bottom);
+        clipped('left', clip.left - ring.left);
+        clipped('right', ring.right - clip.right);
+      }
+      const measured: Ring['measured'] = visible ? 'rendered' : 'tokens';
+      return { measured, tallerThanBox, clippedSides: [...sides].map(([side, by]) => `${side} ${by}px`) };
+    }, selector);
+    if (facts === null) {
+      out[key] = null;
+      continue;
+    }
+    const file = `${prefix}-focus-${key}.png`;
+    await page.screenshot({ path: join(OUT_DIR, file) });
+    out[key] = { ...facts, file };
+  }
+  return out as Record<keyof typeof RING_TARGETS, Ring | null>;
+}
+
 async function showStep(page: Page, step: Step): Promise<void> {
   await page.locator(`#tab-${step}`).click();
   await page.locator(`#panel-${step}`).waitFor({ state: 'visible' });
@@ -207,7 +281,14 @@ async function main(): Promise<void> {
     detached: true,
   });
   const results: Measurement[] = [];
-  const selections: { size: string; zoom: string; file: string; scrollY: number; boxes: Record<string, Box | null> }[] = [];
+  const selections: {
+    size: string;
+    zoom: string;
+    file: string;
+    scrollY: number;
+    boxes: Record<string, Box | null>;
+    rings: Record<string, Ring | null>;
+  }[] = [];
   const consoleErrors: string[] = [];
   try {
     await waitForServer(BASE_URL, 30_000);
@@ -252,7 +333,17 @@ async function main(): Promise<void> {
           await page.waitForTimeout(400);
           const selectedFile = `review-selected-${size}-${zoomLabel}.png`;
           await page.screenshot({ path: join(OUT_DIR, selectedFile) });
-          selections.push({ size, zoom: zoomLabel, file: selectedFile, scrollY: await page.evaluate(() => Math.round(window.scrollY)), boxes: await regionBoxes(page) });
+          // The boxes first: focusing the card and Keep may scroll them.
+          const selectedScrollY = await page.evaluate(() => Math.round(window.scrollY));
+          const selectedBoxes = await regionBoxes(page);
+          selections.push({
+            size,
+            zoom: zoomLabel,
+            file: selectedFile,
+            scrollY: selectedScrollY,
+            boxes: selectedBoxes,
+            rings: await focusRings(page, `review-selected-${size}-${zoomLabel}`),
+          });
 
           // An escape entry, whose card (evidence, flag, three actions) is the longest there is:
           // the first video that has one, selected by clicking its card in the events list.
@@ -269,7 +360,16 @@ async function main(): Promise<void> {
             await page.waitForTimeout(400);
             const entryFile = `review-entry-${size}-${zoomLabel}.png`;
             await page.screenshot({ path: join(OUT_DIR, entryFile) });
-            selections.push({ size, zoom: `${zoomLabel} entry`, file: entryFile, scrollY: await page.evaluate(() => Math.round(window.scrollY)), boxes: await regionBoxes(page) });
+            const entryScrollY = await page.evaluate(() => Math.round(window.scrollY));
+            const entryBoxes = await regionBoxes(page);
+            selections.push({
+              size,
+              zoom: `${zoomLabel} entry`,
+              file: entryFile,
+              scrollY: entryScrollY,
+              boxes: entryBoxes,
+              rings: await focusRings(page, `review-entry-${size}-${zoomLabel}`),
+            });
             break;
           }
           await context.close();
@@ -293,6 +393,14 @@ async function main(): Promise<void> {
       .join(' · ');
     const all = Object.values(s.boxes).every((box) => box?.inViewport === true);
     console.log(`review selected ${s.size} ${s.zoom.padEnd(3)} scrollY ${s.scrollY} · all on screen: ${all ? 'yes' : 'NO '} · ${boxes}`);
+    const rings = Object.entries(s.rings)
+      .map(([key, ring]) =>
+        ring === null
+          ? `${key} — (absent or disabled)`
+          : `${key} ${ring.clippedSides.length === 0 ? 'not clipped' : `CLIPPED ${ring.clippedSides.join(', ')}`}${ring.tallerThanBox ? ' (taller than its scroll box)' : ''} (${ring.measured})`,
+      )
+      .join(' · ');
+    console.log(`  focus ring: ${rings}`);
   }
   for (const r of results) {
     const primaries = r.primaries
