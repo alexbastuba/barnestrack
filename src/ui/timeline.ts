@@ -47,7 +47,7 @@ import {
   type TrackLayout,
 } from './timeline-geometry.js';
 import { planEventLabels, type LabelCandidate } from './timeline-labels.js';
-import { eventAtFrame, stateAtFrame, type EventBar, type TimelineModel } from './timeline-model.js';
+import { describeBar, eventAtFrame, stateAtFrame, type EventBar, type TimelineModel } from './timeline-model.js';
 
 export type EventEdge = 'start' | 'end';
 
@@ -751,7 +751,7 @@ export class Timeline {
     const edge = this.edgeUnder(x, y);
     const parts = [`frame ${frame} · ${t.toFixed(3)} s`];
     if (state) parts.push(STATE_WORD[state.state] ?? state.state);
-    if (ev) parts.push(`${ev.wording.charAt(0).toLowerCase()}${ev.wording.slice(1)} ${ev.label}${ev.corrected ? ' (user)' : ''}`);
+    if (ev) parts.push(describeBar(ev));
     if (edge) parts.push(`drag to move the ${edge.edge} edge`);
     this.callbacks.onHover?.(parts.join(' · '));
   }

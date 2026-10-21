@@ -1300,17 +1300,41 @@ label {
     display: flex;
     flex-direction: column;
     gap: var(--s2);
-    max-height: calc(100vh - 3.75rem);
-    min-height: 0;
+    height: calc(100vh - 3.75rem);
+    min-height: 24rem;
   }
 
   .review-stage-side .review-current-event {
     margin-top: 0;
   }
 
+  /* Beside the video the selected card lists its own keys; the strip's copy would repeat them. */
+  .review-stage-side .current-event-hint {
+    display: none;
+  }
+
+  /*
+   * A long card (an escape entry's evidence and its flag) scrolls inside the
+   * column instead of running out of it over the timeline; its actions stay at
+   * the foot of the box, so Keep, Reclassify and Delete are always on screen.
+   */
+  .review-stage-side .review-selected {
+    flex: 0 1 auto;
+    min-height: 6rem;
+    overflow-y: auto;
+  }
+
+  .review-stage-side .review-selected .event-actions {
+    position: sticky;
+    bottom: 0;
+    padding: var(--s1) 0;
+    background: var(--paper);
+  }
+
   .review-stage-side .review-tools {
-    flex: 1 1 auto;
-    min-height: 9rem;
+    /* Basis 0: the tools take what the card leaves, down to 7rem, and give way to it first. */
+    flex: 1 1 0;
+    min-height: 7rem;
     overflow-y: auto;
     flex-direction: column;
     flex-wrap: nowrap;
@@ -1357,13 +1381,14 @@ label {
   margin: 0;
 }
 
+/* Drawn with a shadow, not an outline, so the 2 px focus ring (D70) still shows on top of it. */
 .event-item.is-selected > .event-card {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
+  box-shadow: inset 0 0 0 3px var(--accent);
 }
 
+/* The glyph is decoration beside the word, so it is given empty alternative text. */
 .badge-selected::before {
-  content: '▶ ';
+  content: '▶ ' / '';
 }
 
 .tool-group {

@@ -37,6 +37,7 @@ const REVIEW_REGIONS = {
   video: '#panel-review .viewport',
   card: '#review-selected .event-card',
   evidence: '#review-selected .event-evidence',
+  actions: '#review-selected .event-actions',
   toolbar: '#panel-review .review-tools',
   queueNav: '#review-current-event .current-event-actions',
   clipSelector: '#panel-review .review-top select',
@@ -48,6 +49,8 @@ interface Box {
   left: number;
   right: number;
   inViewport: boolean;
+  /** Pixels of the box actually visible after its scrolling ancestors and the window clip it. */
+  shownPx: number;
 }
 const SIZES = [
   { width: 1366, height: 768 },
@@ -160,12 +163,23 @@ async function regionBoxes(page: Page): Promise<Record<keyof typeof REVIEW_REGIO
         continue;
       }
       const rect = node.getBoundingClientRect();
+      // What is actually shown: the box clipped by every scrolling ancestor and by the window.
+      let top = Math.max(rect.top, 0);
+      let bottom = Math.min(rect.bottom, window.innerHeight);
+      for (let up = node.parentElement; up; up = up.parentElement) {
+        const overflow = getComputedStyle(up).overflowY;
+        if (overflow !== 'auto' && overflow !== 'scroll') continue;
+        const clip = up.getBoundingClientRect();
+        top = Math.max(top, clip.top);
+        bottom = Math.min(bottom, clip.bottom);
+      }
       out[key] = {
         top: Math.round(rect.top),
         bottom: Math.round(rect.bottom),
         left: Math.round(rect.left),
         right: Math.round(rect.right),
         inViewport: rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth,
+        shownPx: Math.max(0, Math.round(bottom - top)),
       };
     }
     return out as Record<keyof typeof regions, Box | null>;
@@ -239,6 +253,25 @@ async function main(): Promise<void> {
           const selectedFile = `review-selected-${size}-${zoomLabel}.png`;
           await page.screenshot({ path: join(OUT_DIR, selectedFile) });
           selections.push({ size, zoom: zoomLabel, file: selectedFile, scrollY: await page.evaluate(() => Math.round(window.scrollY)), boxes: await regionBoxes(page) });
+
+          // An escape entry, whose card (evidence, flag, three actions) is the longest there is:
+          // the first video that has one, selected by clicking its card in the events list.
+          const videoSelect = page.locator('#panel-review .review-top select');
+          for (const value of await videoSelect.locator('option').evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value))) {
+            await videoSelect.selectOption(value);
+            const entryCard = page
+              .locator('#review-events li.event-item')
+              .filter({ has: page.locator('.event-kind', { hasText: /escape entry/i }) })
+              .first();
+            if ((await entryCard.count()) === 0) continue;
+            await entryCard.locator('.event-card').click();
+            await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
+            await page.waitForTimeout(400);
+            const entryFile = `review-entry-${size}-${zoomLabel}.png`;
+            await page.screenshot({ path: join(OUT_DIR, entryFile) });
+            selections.push({ size, zoom: `${zoomLabel} entry`, file: entryFile, scrollY: await page.evaluate(() => Math.round(window.scrollY)), boxes: await regionBoxes(page) });
+            break;
+          }
           await context.close();
         }
       }
@@ -252,7 +285,11 @@ async function main(): Promise<void> {
   writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, selections, consoleErrors }, null, 2)}\n`);
   for (const s of selections) {
     const boxes = Object.entries(s.boxes)
-      .map(([key, box]) => (box === null ? `${key} —` : `${key} y ${box.top}–${box.bottom}${box.inViewport ? '' : ' OFF-SCREEN'}`))
+      .map(([key, box]) =>
+        box === null
+          ? `${key} —`
+          : `${key} y ${box.top}–${box.bottom} (${box.shownPx} px shown)${box.inViewport ? '' : ' OFF-SCREEN'}`,
+      )
       .join(' · ');
     const all = Object.values(s.boxes).every((box) => box?.inViewport === true);
     console.log(`review selected ${s.size} ${s.zoom.padEnd(3)} scrollY ${s.scrollY} · all on screen: ${all ? 'yes' : 'NO '} · ${boxes}`);

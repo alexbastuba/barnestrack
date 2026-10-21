@@ -45,11 +45,21 @@ export interface EventCardProps {
   actions?: 'reclassify' | 'all';
 }
 
-/** Why Keep is off for this event, or null when it can be kept. */
-export function keepRefusal(event: Pick<EventRecord, 'kind'>): string | null {
-  return event.kind === 'tracking_failure'
-    ? 'Keep is off for a tracking failure: there is no measurement to confirm. Delete it, or leave it as it is.'
-    : null;
+/**
+ * Why Keep is off for this event, or null when it can be kept. A confirmation
+ * says "the tool's event is right as it stands" (D64): it cannot stand on an
+ * event that is already a person's — an edited one, an added one or a marked
+ * entry (D57, which by D67 needs no confirmation) — or it would replace that
+ * correction with the automatic values without a word.
+ */
+export function keepRefusal(event: Pick<EventRecord, 'kind' | 'source'>): string | null {
+  if (event.kind === 'tracking_failure') {
+    return 'Keep is off for a tracking failure: there is no measurement to confirm. Delete it, or leave it as it is.';
+  }
+  if (event.source === 'corrected') {
+    return 'Keep is off: this event already carries your correction. Revert the correction to keep the automatic event instead.';
+  }
+  return null;
 }
 
 const KIND_WORDS: Record<EventKind, string> = {
@@ -164,14 +174,13 @@ export function createEventCard(
   // button the user is focused on survives a recompute (D37).
   const actions = el('div', { class: 'event-actions', attrs: { role: 'group', 'aria-label': 'Decide this event' } });
   const keepReason = el('p', { class: 'hint event-action-reason', id: uniqueId('event-keep-reason') });
-  const reclassifyReason = el('p', { class: 'hint event-action-reason', id: uniqueId('event-reclassify-reason') });
   const keepButton = button(KEEP_LABEL, () => callbacks.onKeep?.(current.event.id), {
     class: 'btn-secondary',
     attrs: { 'aria-keyshortcuts': 'K', 'aria-describedby': keepReason.id },
   });
   const reclassifyButton = button(RECLASSIFY_LABEL, () => callbacks.onReclassify?.(current.event.id), {
     class: 'btn-quiet',
-    attrs: { 'aria-keyshortcuts': 'L', 'aria-describedby': reclassifyReason.id },
+    attrs: { 'aria-keyshortcuts': 'L' },
   });
   const deleteButton = button(DELETE_LABEL, () => callbacks.onDelete?.(current.event.id), {
     class: 'btn-quiet',
@@ -194,19 +203,15 @@ export function createEventCard(
       keepReason.hidden = keepNo === null;
       children.push(keepButton);
     }
-    // Reclassifying is for an escape entry only; any other kind gets no button
-    // rather than a disabled one, because there is nothing to say about it.
-    if (event.kind === 'escape_entry' && callbacks.onReclassify) {
-      if (refusal === null || mode === 'all') {
-        reclassifyButton.disabled = refusal !== null;
-        reclassifyReason.textContent = refusal ?? '';
-        reclassifyReason.hidden = refusal === null;
-        children.push(reclassifyButton);
-      }
+    // Reclassifying is for an escape entry the tracker inferred only; anything else gets no button
+    // rather than a disabled one — a marked entry is undone by reverting its range, and `L` on it
+    // says so (`reclassifyRefusal`).
+    if (event.kind === 'escape_entry' && callbacks.onReclassify && refusal === null) {
+      reclassifyButton.disabled = false;
+      children.push(reclassifyButton);
     }
     if (mode === 'all' && callbacks.onDelete) children.push(deleteButton);
     if (mode === 'all') children.push(keepReason);
-    if (event.kind === 'escape_entry' && (refusal === null || mode === 'all')) children.push(reclassifyReason);
     actions.replaceChildren(...children);
     actions.hidden = children.length === 0;
   }

@@ -59,7 +59,7 @@ export interface MetricsCardProps {
  * Why a value the card prints as `—` has no number (D66): one sentence for the
  * metric's own null, read from the trial — a probe's missing escape box, a
  * trial with no window, a target never reached — and the review flags' own
- * messages when the trial has no window. Null when the value exists.
+ * messages when the trial has no window. Called only for a value printed as `—`.
  */
 export function unavailableReason(
   name: string,

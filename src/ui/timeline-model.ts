@@ -27,7 +27,7 @@ export interface EventBar {
   /** The text on the bar: the hole number, `T<n>` for the target, `entry`, or `?` for a failure. */
   label: string;
   /**
-   * The event's full name (\`eventWording\`): an escape entry reads "Inferred escape
+   * The event's full name (`eventWording`): an escape entry reads "Inferred escape
    * entry", "Escape entry — confirmed" or "Escape entry — marked by you" (D67).
    */
   wording: string;
@@ -72,6 +72,17 @@ export function eventLabel(ev: Pick<EventRecord, 'kind' | 'holeIndex' | 'isTarge
   if (ev.kind === 'escape_entry') return 'entry';
   if (ev.kind === 'tracking_failure') return ev.holeIndex === null ? '? lost' : `? lost at ${ev.holeIndex}`;
   return ev.isTarget ? `T${ev.holeIndex}` : String(ev.holeIndex);
+}
+
+/**
+ * A bar as running text: `investigation T7 (user)`, `inferred escape entry`. An entry's and a
+ * reclassified loss's name already says whose it is and carries the word "entry", so neither the
+ * bar label nor "(user)" is added to it.
+ */
+export function describeBar(ev: Pick<EventBar, 'kind' | 'wording' | 'label' | 'corrected'>): string {
+  const name = ev.wording.charAt(0).toLowerCase() + ev.wording.slice(1);
+  if (ev.kind === 'escape_entry' || ev.wording.startsWith('Tracking loss')) return name;
+  return `${name} ${ev.label}${ev.corrected ? ' (user)' : ''}`;
 }
 
 const AUTO_EVENT_ID = /^auto-(?:investigation|escape_entry|tracking_failure)-h(?:\d+|x)-f(\d+)$/;

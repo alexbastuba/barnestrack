@@ -121,6 +121,7 @@ import { Scrubber } from './scrubber.js';
 import { stateRuns } from '../viz/quality-strip.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
 import {
+  describeBar,
   eventAtFrame,
   flaggedRuns,
   nextSpan,
@@ -427,6 +428,8 @@ export function createReviewStep(context: AppContext): Step {
       const next = addEvent(layer, hole, from, end, newMeta());
       selectedEventId = `user-${next.entries[next.entries.length - 1]!.id}`;
       selectedEdge = null;
+      const video = currentVideo();
+      if (video) rememberSelection(store.current.sessionId, video.id, selectedEventId);
       commit(next, `Investigation added at hole ${hole}, frames ${Math.min(from, end)}–${Math.max(from, end)}; change the hole with H if it is wrong`);
     } else {
       painting = { kind: 'add_event', startFrame: playhead };
@@ -719,10 +722,9 @@ export function createReviewStep(context: AppContext): Step {
   const eventCallbacks: EventCallbacks = {
     onSeek: (frame) => seek(positionOfFrame(frame), true),
     onAnnounce: (message) => context.announce(message),
-    onSelect: (id) => {
-      const ev = analysis?.events.find((e) => e.id === id);
-      selectEvent(id, { announce: ev ? `${selectionLineText()}.` : null });
-    },
+    // No announcement of its own: the strip under the video is a polite live region and names
+    // the newly selected event, so saying it here too made one click two utterances.
+    onSelect: (id) => selectEvent(id),
     onKeep: (id) => keepSelected(id),
     onReclassify: (id) => reclassifySelected(id),
     onDelete: (id) => deleteSelected(id),
@@ -812,7 +814,7 @@ export function createReviewStep(context: AppContext): Step {
       if (!frame.centroid.valid) lines.push('centroid: not positioned');
       if (!frame.nose.valid) lines.push('nose: not available');
       if (analysis?.trial.startFrame === playhead) lines.push('trial start');
-      if (current) lines.push(`${current.wording.toLowerCase()} ${current.label}${current.corrected ? ' · user' : ''}`);
+      if (current) lines.push(describeBar(current));
       lines.forEach((line, i) => drawLabel(ctx, line, 8, 8 + i * 18, i === 0));
     }
     if (tool !== 'off' && hoverPoint) drawCrosshair(ctx, at(hoverPoint), `place the ${tool} here`);
@@ -925,7 +927,7 @@ export function createReviewStep(context: AppContext): Step {
   const revertTrialStartButton = button('Revert trial start', () => {
     const layer = layerOrNull();
     if (!layer) return;
-    commit(revertTrialStart(layer), 'Trial start reverted to automatic');
+    commit(revertTrialStart(layer), 'Trial start reverted to automatic', false);
   }, { class: 'btn-quiet' });
   /*
    * D63: "the animal never entered the escape box", asserted by a person.
@@ -959,7 +961,7 @@ export function createReviewStep(context: AppContext): Step {
     }
     if (!noEscapeBox.checked) {
       noEscapeProblem.hidden = true;
-      commit(revertNoEscape(layer), 'Confirmation that the animal never escaped removed');
+      commit(revertNoEscape(layer), 'Confirmation that the animal never escaped removed', false);
       return;
     }
     const reason = noEscapeReason.value.trim();
@@ -1166,7 +1168,7 @@ export function createReviewStep(context: AppContext): Step {
           return;
         }
         selectEvent(ev.id, {
-          announce: `${ev.wording} ${ev.label}${ev.corrected ? ' (user)' : ''}, frames ${ev.startFrame}–${ev.endFrame}, selected.`,
+          announce: `${describeBar(ev)}, frames ${ev.startFrame}–${ev.endFrame}, selected.`,
         });
         break;
       }
@@ -1199,12 +1201,9 @@ export function createReviewStep(context: AppContext): Step {
         } else if (tool !== 'off') {
           setTool('off');
         } else {
-          selectedEventId = null;
-          selectedEdge = null;
-          timeline.setSelection(null, null);
-          renderEventsTable();
-          renderQueue();
-          context.announce('Selection cleared.');
+          // Through the one selection path, so the card beside the video, the list, the table and
+          // the remembered selection all drop it together.
+          selectEvent(null, { announce: 'Selection cleared.', seek: false });
         }
         renderStatus();
         break;
@@ -1811,7 +1810,7 @@ export function createReviewStep(context: AppContext): Step {
           el('td', { class: 'num', text: frame.nose.valid ? frame.nose.y.toFixed(1) : '—' }),
           el('td', { class: 'num', text: frame.nose.valid ? frame.noseHeadingConfidence.toFixed(2) : '—' }),
           el('td', { text: frame.nose.source }),
-          el('td', { text: ev ? `${ev.wording.toLowerCase()} ${ev.label}${ev.corrected ? ' (user)' : ''}` : '' }),
+          el('td', { text: ev ? describeBar(ev) : '' }),
           el('td', { text: marks.map((m) => describeCorrection(m)).join('; ') }),
         ]),
       );
@@ -1861,9 +1860,9 @@ export function createReviewStep(context: AppContext): Step {
               const current = currentLayer();
               if (!current) return;
               if (entry.kind === 'event' && entry.eventId && entry.action !== 'add') {
-                commit(revertEvent(current, entry.eventId), `Reverted: ${describeCorrection(entry)}`);
+                commit(revertEvent(current, entry.eventId), `Reverted: ${describeCorrection(entry)}`, false);
               } else {
-                commit(revertCorrection(current, entry.id), `Reverted: ${describeCorrection(entry)}`);
+                commit(revertCorrection(current, entry.id), `Reverted: ${describeCorrection(entry)}`, false);
               }
               // The list was rebuilt under this button; keep the keyboard in the step.
               timeline.surface.focus();
@@ -1913,7 +1912,7 @@ export function createReviewStep(context: AppContext): Step {
     onRevert: (id) => {
       const layer = layerOrNull();
       if (!layer) return;
-      commit(revertCorrection(layer, id), 'Strategy override removed');
+      commit(revertCorrection(layer, id), 'Strategy override removed', false);
     },
   };
 

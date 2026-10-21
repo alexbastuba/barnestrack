@@ -750,6 +750,58 @@ describe('one selection, from every route (§1)', () => {
     expect(harness.said.at(-1)).toContain('revert it with “Revert to automatic” in the Corrections list');
   });
 
+  it('Escape drops the selection everywhere: line, card beside the video, list, memory', () => {
+    press(harness.step, 'e');
+    const id = selectionSeen(harness.step).card!;
+    const key = `barnestrack:selected-event:${harness.store.current.sessionId}:${harness.store.videos[0]!.id}`;
+    expect(sessionStorage.getItem(key)).toBe(id);
+    press(harness.step, 'Escape');
+    const seen = selectionSeen(harness.step);
+    expect(seen.line).toMatch(/^Nothing selected/);
+    expect(seen.card).toBeNull();
+    expect(seen.row).toBeNull();
+    expect(harness.step.body.querySelector('#review-selected .event-item')).toBeNull();
+    expect(harness.step.body.querySelector('#review-selected button')).toBeNull();
+    expect(sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it('refuses Keep on an event that already carries a correction, so the correction is not lost', () => {
+    const video = harness.store.videos[0]!;
+    const target = events().find((e) => e.kind === 'investigation' && e.source === 'auto')!;
+    harness.store.setCorrections(
+      video.id,
+      editEvent(harness.store.analysisFor(video.id)!.corrections, target.id, { holeIndex: ((target.holeIndex ?? 0) + 1) % 20 }, {
+        id: 'test-edit-before-keep',
+        timestamp: '2026-10-21T12:00:00.000Z',
+      }),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    const before = harness.store.analysisFor(video.id)!.corrections.entries;
+    harness.step.body
+      .querySelector<HTMLButtonElement>(`#review-events li[data-event-id="${target.id}"] .event-card`)!
+      .click();
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-selected button')].find(
+      (b) => b.textContent === 'Keep (K)',
+    )!;
+    expect(keep.disabled).toBe(true);
+    press(harness.step, 'k');
+    expect(harness.store.analysisFor(video.id)!.corrections.entries).toBe(before);
+    expect(harness.said.at(-1)).toContain('already carries your correction');
+  });
+
+  it('a revert does not tell the user to revert it', () => {
+    press(harness.step, 'e');
+    press(harness.step, 't');
+    expect(harness.said.at(-1)).toContain('revert it with');
+    const revert = [...harness.step.body.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'Revert trial start',
+    )!;
+    revert.click();
+    expect(harness.said.at(-1)).toMatch(/^Trial start reverted to automatic\./);
+    expect(harness.said.at(-1)).not.toContain('revert it with');
+  });
+
   it('comes back after a reload, and a remembered event that is gone is dropped', () => {
     press(harness.step, 'e');
     const before = selectionSeen(harness.step);
