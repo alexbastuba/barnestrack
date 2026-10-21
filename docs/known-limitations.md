@@ -92,10 +92,17 @@ session it is found (D39).
   announced its selection on the press, that reflow happened under the held pointer and a centre
   drag of 25 screen px committed 19 video px too far — about 4 cm at the sample rig's scale. Two
   things now stop it: a handle is announced on release, when nothing is held, and a captured drag
-  is mapped from the press point plus the pointer's own travel (`src/ui/canvas-view.ts`), so a
-  reflow under a held pointer cannot become a move; `tests/browser/maze.spec.ts` checks an
-  unscrolled 1920 × 1080 drag. The banner still reflows the page on every message of a different
-  line count, which a reader of the frame sees as a jump. The fix is a fixed minimum height on the
+  is measured from where the viewport was at the press, through the view as it is now
+  (`src/ui/canvas-view.ts`), so a reflow under a held pointer cannot become a move while a zoom or
+  pan made mid-drag still lands the pixel under the pointer; `tests/browser/maze.spec.ts` checks an
+  unscrolled 1920 × 1080 drag and a zoom made mid-drag. What remains: a value typed in a field and
+  a handle grabbed straight after still reflows at the press, because the press takes focus, the
+  field's `change` commits and announces, and the banner shrinks — the frame then sits a line above
+  the pointer for the whole drag, though what lands is still the pointer's own travel (measured:
+  shift −22.5 px, committed Δcy 20.90 for 25 screen px at zoom 1.197). The banner reflows the page
+  on every message of a different line count, which a reader of the frame sees as a jump. The
+  plain wheel is held while a drag is held, since scrolling the page would carry the frame away
+  from the pointer holding it. The fix for the reflow itself is a fixed minimum height on the
   banner (`#app-status` in `src/ui/app.ts` and its rule in `src/styles/app.css`), outside chunk
   14's boundary.
 - **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a

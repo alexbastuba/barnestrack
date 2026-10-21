@@ -33,6 +33,7 @@ import {
   IDENTITY_VIEW,
   panBy,
   screenToVideo,
+  viewportToVideo,
   zoomAt,
   type ViewTransform,
 } from '../maze/view-transform.js';
@@ -73,8 +74,9 @@ interface DragGesture {
   pointerId: number;
   startX: number;
   startY: number;
-  /** The press in video pixels; every later point is this plus the pointer's travel over the zoom. */
-  startVideo: Point;
+  /** Where the viewport was on the page at the press; every later point is measured from here. */
+  originLeft: number;
+  originTop: number;
   /** True once the pointer has left the dead zone; only then does `onDrag` fire. */
   moved: boolean;
 }
@@ -262,14 +264,16 @@ export class CanvasView {
     // Measure before focusing: focus can scroll the viewport into view, which
     // moves the rect while the event's client coordinates stay where they were,
     // and the click would then land on the wrong hole.
-    const point = this.videoPointFor(event);
+    const rect = this.viewport.getBoundingClientRect();
+    const point = screenToVideo(event.clientX, event.clientY, rect, this.view);
     this.viewport.focus({ preventScroll: true });
     if (this.options.onDragStart?.(point) === true) {
       this.gesture = {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        startVideo: point,
+        originLeft: rect.left,
+        originTop: rect.top,
         moved: false,
       };
       this.overlay.setPointerCapture(event.pointerId);
@@ -313,17 +317,21 @@ export class CanvasView {
   }
 
   /**
-   * Where a captured drag's pointer is, in video pixels: the press plus the
-   * pointer's travel since, over the zoom. Not `videoPointFor`, which reads
-   * the viewport's position afresh — if the page reflows under a held pointer
-   * (a live-region message of a different height does it) that position moves
-   * while the pointer does not, and the shift would be committed as a move.
+   * Where a captured drag's pointer is, in video pixels: the pointer measured
+   * from where the viewport was at the press, through the view as it is now.
+   * Not `videoPointFor`, which reads the viewport's position afresh — if the
+   * page reflows under a held pointer (a live-region message of a different
+   * height does it) that position moves while the pointer does not, and the
+   * shift would be committed as a move. The view, by contrast, is read live:
+   * a zoom or pan made mid-drag (Ctrl with the wheel, the keys, a refit) is
+   * anchored on the image, and the pixel under the pointer must stay the
+   * pixel that lands (D15).
    */
   private gesturePointFor(gesture: DragGesture, event: PointerEvent): Point {
-    return {
-      x: gesture.startVideo.x + (event.clientX - gesture.startX) / this.view.zoom,
-      y: gesture.startVideo.y + (event.clientY - gesture.startY) / this.view.zoom,
-    };
+    return viewportToVideo(
+      { x: event.clientX - gesture.originLeft, y: event.clientY - gesture.originTop },
+      this.view,
+    );
   }
 
   private onPointerCancel(event: PointerEvent): void {
@@ -357,8 +365,13 @@ export class CanvasView {
     // viewports, so swallowing every wheel event over it trapped the scroll:
     // a user rolling down the Maze step stopped dead on the video and zoomed
     // it instead. Ctrl or ⌘ with the wheel is the zoom, which is also the
-    // gesture a trackpad pinch already sends.
-    if (!event.ctrlKey && !event.metaKey) return;
+    // gesture a trackpad pinch already sends. The one exception: while a drag
+    // is held, scrolling the page would carry the frame away from the pointer
+    // that is holding it, so the plain wheel waits for the release.
+    if (!event.ctrlKey && !event.metaKey) {
+      if (this.gesture) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     const factor = event.deltaY > 0 ? 1 / WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
     this.userAdjusted = true;

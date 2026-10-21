@@ -84,11 +84,14 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   It asserts from the fields and the chip: a centre drag of (+40, +25) screen px moves the centre
   fields by the same amount over the view scale; a platform-edge drag grows the radius and leaves
   the ratio; a ring-edge drag lowers the ratio and leaves the radius; each drag adds exactly one to
-  "N clicks on the image" and a press that only selects adds nothing; `ArrowRight` moves the
-  selected centre by 1 px and `Shift+ArrowRight` by 10 without counting, and `Escape` clears the
-  selection; and with the frame scrolled to the top of a 1366 × 768 viewport the Platform fieldset
-  is wholly on screen and the page does not scroll sideways. It needs neither ffmpeg nor the sample
-  videos and runs in about fifteen seconds, so it is in `npm run test:browser:ci`.
+  "N clicks on the image" and a press that only selects adds nothing; the same centre drag on an
+  unscrolled 1920 × 1080 page lands where the pointer went, with the frame not shifting while held;
+  a zoom made mid-drag with Ctrl and the wheel keeps the pixel under the pointer as the one that
+  lands; `ArrowRight` moves the selected centre by 1 px and `Shift+ArrowRight` by 10 without
+  counting, and `Escape` clears the selection; and with the frame scrolled to the top of a
+  1366 × 768 viewport the Platform fieldset is wholly on screen and the page does not scroll
+  sideways. It needs neither ffmpeg nor the sample videos and runs in about eight seconds, so it is
+  in `npm run test:browser:ci`.
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 

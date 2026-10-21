@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MAZE_MAP_SCHEMA_VERSION, type MazeMapFile } from '../../src/contracts/mazeMap.js';
 import type { SessionFile, VideoDescriptor } from '../../src/contracts/session.js';
 import { handlePositions, type HandleKind } from '../../src/maze/handles.js';
+import { applyTransform } from '../../src/maze/similarity.js';
 import { createSessionFile } from '../../src/session/session-file.js';
 import { SessionStore } from '../../src/session/session-store.js';
 import { MemorySessionStorage } from '../../src/session/storage.js';
@@ -397,6 +398,95 @@ describe('dragging a handle (D69)', () => {
     const transform = store.current.videos[0]!.mazeTransform;
     expect(transform.translateX).toBeCloseTo(40, 6);
     expect(transform.translateY).toBeCloseTo(25, 6);
+  });
+
+  it('keeps the pixel under the pointer when the view zooms mid-drag', () => {
+    const { step, store } = mount();
+    const c = positions().centre;
+    const overlay = step.body.querySelector('.overlay-layer')!;
+
+    pointer(step, 'pointerdown', c);
+    // Ctrl with the wheel zooms about the pointer, so the pixel under it stays.
+    const wheel = new WheelEvent('wheel', { deltaY: -120, cancelable: true, bubbles: true });
+    Object.assign(wheel, { ctrlKey: true, clientX: c.x, clientY: c.y });
+    overlay.dispatchEvent(wheel);
+    const zoom = 1.1;
+    pointer(step, 'pointermove', { x: c.x + 40, y: c.y + 25 });
+    pointer(step, 'pointerup', { x: c.x + 40, y: c.y + 25 });
+
+    // Forty screen pixels at the new zoom are 40 / 1.1 video pixels: the
+    // centre lands where the pointer let go, not where the old zoom would say.
+    const transform = store.current.videos[0]!.mazeTransform;
+    expect(transform.translateX).toBeCloseTo(40 / zoom, 6);
+    expect(transform.translateY).toBeCloseTo(25 / zoom, 6);
+  });
+
+  it('holds the plain wheel while a drag is held, and lets it go after', () => {
+    const { step } = mount();
+    const c = positions().centre;
+    const overlay = step.body.querySelector('.overlay-layer')!;
+    const plainWheel = (): WheelEvent => {
+      const event = new WheelEvent('wheel', { deltaY: 120, cancelable: true, bubbles: true });
+      Object.assign(event, { ctrlKey: false, metaKey: false });
+      return event;
+    };
+
+    pointer(step, 'pointerdown', c);
+    const held = plainWheel();
+    overlay.dispatchEvent(held);
+    expect(held.defaultPrevented).toBe(true);
+    pointer(step, 'pointerup', c);
+
+    const released = plainWheel();
+    overlay.dispatchEvent(released);
+    expect(released.defaultPrevented).toBe(false);
+  });
+
+  it('routes a second video’s drags to its own transform and the ring to the shared map', () => {
+    const secondVideo: VideoDescriptor = {
+      ...video(),
+      id: 'video-test54',
+      filename: 'test54.mp4',
+      fingerprint: { ...video().fingerprint, sha256: 'b'.repeat(64) },
+      mazeTransform: { translateX: 12, translateY: -7, rotationDeg: 33, scale: 0.9 },
+    };
+    const { step, store } = mount(session([video(), secondVideo]));
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test54';
+    select.dispatchEvent(new Event('change'));
+    const firstBefore = store.current.videos[0]!.mazeTransform;
+    const sharedBefore = store.current.mazeMap!;
+    // Where the shared centre sits in the second video before the drag.
+    const shared = { x: sharedBefore.platform.cx, y: sharedBefore.platform.cy };
+    const centreBefore = applyTransform(secondVideo.mazeTransform, shared);
+
+    drag(step, centreBefore, { x: centreBefore.x + 40, y: centreBefore.y + 25 });
+
+    const second = store.current.videos[1]!.mazeTransform;
+    const centreAfter = applyTransform(second, shared);
+    expect(centreAfter.x).toBeCloseTo(centreBefore.x + 40, 6);
+    expect(centreAfter.y).toBeCloseTo(centreBefore.y + 25, 6);
+    // The placement keeps the ring alignment and the scale this video had.
+    expect(second.rotationDeg).toBeCloseTo(33, 6);
+    expect(second.scale).toBeCloseTo(0.9, 6);
+    // The first video and the shared platform are untouched; the click is this video's.
+    expect(store.current.videos[0]!.mazeTransform).toEqual(firstBefore);
+    expect(store.current.mazeMap!.platform).toEqual(sharedBefore.platform);
+    expect(store.mazeClickCount('video-test54')).toBe(1);
+    expect(store.mazeClickCount(VIDEO_ID)).toBe(0);
+
+    // The ring edge in this video: on its ring at its bearing, in this video's pixels.
+    const videoPlatform = { cx: centreAfter.x, cy: centreAfter.y, r: sharedBefore.platform.r * 0.9 };
+    const ringHandle = handlePositions(videoPlatform, sharedBefore.holes).ringRim;
+    const d = Math.hypot(ringHandle.x - centreAfter.x, ringHandle.y - centreAfter.y);
+    const inward = {
+      x: ringHandle.x - ((ringHandle.x - centreAfter.x) / d) * 15,
+      y: ringHandle.y - ((ringHandle.y - centreAfter.y) / d) * 15,
+    };
+    const transformBeforeRing = store.current.videos[1]!.mazeTransform;
+    drag(step, ringHandle, inward);
+    expect(store.current.mazeMap!.holes.ringRatio).toBeCloseTo(0.89 - 15 / videoPlatform.r, 6);
+    expect(store.current.videos[1]!.mazeTransform).toEqual(transformBeforeRing);
   });
 
   it('places nothing and counts nothing for a drag that comes back to where it started', () => {

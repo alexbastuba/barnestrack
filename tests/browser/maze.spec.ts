@@ -53,13 +53,23 @@ async function geometry(page: Page): Promise<Geometry> {
   };
 }
 
+/**
+ * The frame's origin and scale as the step maps a pointer: through the
+ * viewport's border box. The frame layer sits inside the viewport's 1 px
+ * border, so its own box is a border's width further in; that cancels in a
+ * drag at one zoom, but not across a zoom made mid-drag.
+ */
 async function frameBox(page: Page): Promise<FrameBox> {
   const frame = page.locator('#panel-maze .frame-layer');
   const box = await frame.boundingBox();
   expect(box, 'the frame layer has a box').not.toBeNull();
   const width = await frame.evaluate((canvas) => (canvas as HTMLCanvasElement).width);
   expect(width).toBeGreaterThan(0);
-  return { left: box!.x, top: box!.y, zoom: box!.width / width };
+  const border = await page.locator('#panel-maze .viewport').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { left: parseFloat(style.borderLeftWidth), top: parseFloat(style.borderTopWidth) };
+  });
+  return { left: box!.x - border.left, top: box!.y - border.top, zoom: box!.width / width };
 }
 
 async function handleOnScreen(page: Page, kind: HandleKind): Promise<{ x: number; y: number }> {
@@ -263,6 +273,42 @@ test('a centre drag on an unscrolled 1920 × 1080 page lands where the pointer w
   expect(Math.abs(dx - 40 / zoom)).toBeLessThan(0.15);
   expect(Math.abs(dy - 25 / zoom)).toBeLessThan(0.15);
   expect(shift).toBe(0);
+});
+
+test('a zoom made mid-drag keeps the pixel under the pointer as the one that lands', async ({ page }) => {
+  const before = await geometry(page);
+  const raw = await handleOnScreen(page, 'centre');
+  const start = { x: Math.round(raw.x), y: Math.round(raw.y) };
+  const boxBefore = await frameBox(page);
+  const from = { x: (start.x - boxBefore.left) / boxBefore.zoom, y: (start.y - boxBefore.top) / boxBefore.zoom };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 40, start.y + 25, { steps: 8 });
+  // Ctrl with the wheel zooms about the pointer, three notches.
+  await page.keyboard.down('Control');
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, -120);
+  await page.keyboard.up('Control');
+  const end = { x: start.x + 41, y: start.y + 25 };
+  await page.mouse.move(end.x, end.y);
+  // Read the frame before the release: the commit is announced on release,
+  // and the banner's reflow then moves the page half a pixel under scroll
+  // anchoring — after the step has already mapped the release point.
+  const boxAfter = await frameBox(page);
+  await page.mouse.up();
+
+  const to = { x: (end.x - boxAfter.left) / boxAfter.zoom, y: (end.y - boxAfter.top) / boxAfter.zoom };
+  const after = await geometry(page);
+  console.log(
+    `maze handles: zoom ${boxBefore.zoom.toFixed(4)} → ${boxAfter.zoom.toFixed(4)} mid-drag; ` +
+      `frame origin (${boxBefore.left.toFixed(2)}, ${boxBefore.top.toFixed(2)}) → ` +
+      `(${boxAfter.left.toFixed(2)}, ${boxAfter.top.toFixed(2)}); ` +
+      `Δcx ${(after.cx - before.cx).toFixed(2)}, Δcy ${(after.cy - before.cy).toFixed(2)} video px ` +
+      `(the pointer's own path ${(to.x - from.x).toFixed(2)}, ${(to.y - from.y).toFixed(2)})`,
+  );
+  expect(boxAfter.zoom).toBeGreaterThan(boxBefore.zoom * 1.3);
+  expect(Math.abs(after.cx - before.cx - (to.x - from.x))).toBeLessThan(0.15);
+  expect(Math.abs(after.cy - before.cy - (to.y - from.y))).toBeLessThan(0.15);
 });
 
 test('a press that only selects a handle counts nothing', async ({ page }) => {
