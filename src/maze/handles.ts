@@ -116,7 +116,8 @@ export function hitTestHandle(
  * never below `MIN_PLATFORM_RADIUS_PX`, leaving the ratio alone so the ring
  * scales with the platform; a ring-rim drag changes the ring radius the same
  * way and expresses it as a ratio clamped to the field's bounds. A zero-length
- * drag is the identity from any starting point.
+ * drag is the identity from any starting point — even a geometry outside the
+ * clamps, which a drag that goes nowhere must not pull inside them.
  */
 export function applyHandleDrag(
   handle: HandleKind,
@@ -133,6 +134,7 @@ export function applyHandleDrag(
     };
   }
   const radialDelta = distance(to, centre) - distance(from, centre);
+  if (radialDelta === 0) return { platform: { ...platform }, ringRatio: ring.ringRatio };
   if (handle === 'platformRim') {
     return {
       platform: { ...platform, r: Math.max(MIN_PLATFORM_RADIUS_PX, platform.r + radialDelta) },

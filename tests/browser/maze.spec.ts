@@ -80,10 +80,10 @@ interface Drag {
   /** The press and the release, in whole screen pixels. */
   start: Point;
   end: Point;
-  /** The same two points in video pixels, as the step maps them. */
+  /** The press and the release in video pixels: the press over the frame as it was, plus the travel over the zoom. */
   from: Point;
   to: Point;
-  /** How far the frame moved on screen between the press and the release. */
+  /** How far the frame moved on screen while the pointer was held. */
   shift: number;
 }
 
@@ -91,12 +91,12 @@ interface Drag {
  * Press on the handle, move in eight steps, release. The points are whole
  * screen pixels — the pointer lands on whole pixels whatever is asked for.
  *
- * The press selects the handle, which announces a one-line message into the
- * live region where the two-line "Example cohort loaded" banner stood, so the
- * page reflows under the held pointer by whatever scroll anchoring leaves over
- * (half a pixel in Chrome). The step maps the press through the frame as it
- * was and the release through the frame as it is, so the expectation does the
- * same: `from` uses the box before the press, `to` the box after it.
+ * The frame's box is read before the press and again while the pointer is
+ * held. A selection used to be announced on the press, and a one-line message
+ * where the two-line "Example cohort loaded" banner stood reflowed the page by
+ * a line under the held pointer; the step now announces on release and maps
+ * every move from the press point, so the shift is reported and the pointer's
+ * own travel is what must land.
  */
 async function drag(page: Page, kind: HandleKind, dx: number, dy: number): Promise<Drag> {
   const raw = await handleOnScreen(page, kind);
@@ -108,11 +108,12 @@ async function drag(page: Page, kind: HandleKind, dx: number, dy: number): Promi
   const held = await frameBox(page);
   await page.mouse.move(end.x, end.y, { steps: 8 });
   await page.mouse.up();
+  const from = { x: (start.x - before.left) / before.zoom, y: (start.y - before.top) / before.zoom };
   return {
     start,
     end,
-    from: { x: (start.x - before.left) / before.zoom, y: (start.y - before.top) / before.zoom },
-    to: { x: (end.x - held.left) / held.zoom, y: (end.y - held.top) / held.zoom },
+    from,
+    to: { x: from.x + (end.x - start.x) / before.zoom, y: from.y + (end.y - start.y) / before.zoom },
     shift: held.top - before.top,
   };
 }
@@ -170,18 +171,16 @@ test('a centre drag moves the centre fields by the drag over the view scale, and
   const dy = after.cy - before.cy;
   console.log(
     `maze handles: centre drag (+${end.x - start.x}, +${end.y - start.y}) screen px at zoom ${zoom.toFixed(4)} → ` +
-      `Δcx ${dx.toFixed(2)}, Δcy ${dy.toFixed(2)} video px ` +
-      `(nominal ${(40 / zoom).toFixed(2)}, ${(25 / zoom).toFixed(2)}; as received ${(to.x - from.x).toFixed(2)}, ` +
-      `${(to.y - from.y).toFixed(2)}, the frame having shifted ${shift.toFixed(2)} px under the pointer)`,
+      `Δcx ${dx.toFixed(2)}, Δcy ${dy.toFixed(2)} video px (expected ${(to.x - from.x).toFixed(2)}, ` +
+      `${(to.y - from.y).toFixed(2)}); the frame shifted ${shift.toFixed(2)} px while held`,
   );
   expect(end.x - start.x).toBe(40);
   expect(end.y - start.y).toBe(25);
-  // The fields show one decimal, so the match to the gesture is to a tenth of
-  // a pixel; the nominal amount is within the page's own shift.
-  expect(Math.abs(dx - (to.x - from.x))).toBeLessThan(0.15);
-  expect(Math.abs(dy - (to.y - from.y))).toBeLessThan(0.15);
-  expect(Math.abs(dx - 40 / zoom)).toBeLessThan(1);
-  expect(Math.abs(dy - 25 / zoom)).toBeLessThan(1);
+  // The fields show one decimal, so the match is to a tenth of a pixel.
+  expect(Math.abs(dx - 40 / zoom)).toBeLessThan(0.15);
+  expect(Math.abs(dy - 25 / zoom)).toBeLessThan(0.15);
+  // Nothing is announced on the press, so nothing reflows under the pointer.
+  expect(shift).toBe(0);
   expect(after.r).toBe(before.r);
   expect(after.ratio).toBe(before.ratio);
   expect(await chip(page)).toBe(clicks + 1);
@@ -204,11 +203,11 @@ test('a platform-edge drag outward grows the radius and leaves the ring ratio al
   const expected = distance(to, centre) - distance(from, centre);
   console.log(
     `maze handles: platform-edge drag 30 screen px outward at zoom ${zoom.toFixed(4)} → ` +
-      `Δr ${dr.toFixed(2)} video px (nominal ${(30 / zoom).toFixed(2)}, as received ${expected.toFixed(2)})`,
+      `Δr ${dr.toFixed(2)} video px (expected ${expected.toFixed(2)}; ${(30 / zoom).toFixed(2)} before rounding the pointer to whole pixels)`,
   );
   expect(dr).toBeGreaterThan(20);
   expect(Math.abs(dr - expected)).toBeLessThan(0.15);
-  expect(Math.abs(dr - 30 / zoom)).toBeLessThan(1);
+  expect(Math.abs(dr - 30 / zoom)).toBeLessThan(0.8);
   expect(await field(page, 'Ring radius ÷ platform radius').inputValue()).toBe(ratioText);
   expect(after.cx).toBe(before.cx);
   expect(after.cy).toBe(before.cy);
@@ -230,7 +229,7 @@ test('a ring-edge drag inward lowers the ratio and leaves the radius alone', asy
   const expected = (distance(to, centre) - distance(from, centre)) / before.r;
   console.log(
     `maze handles: ring-edge drag 12 screen px inward at zoom ${zoom.toFixed(4)} → ` +
-      `Δratio ${dRatio.toFixed(4)} (nominal ${(-12 / zoom / before.r).toFixed(4)}, as received ${expected.toFixed(4)}); ` +
+      `Δratio ${dRatio.toFixed(4)} (expected ${expected.toFixed(4)}; ${(-12 / zoom / before.r).toFixed(4)} before rounding the pointer); ` +
       `radius ${radiusText} unchanged`,
   );
   expect(dRatio).toBeLessThan(0);
@@ -239,6 +238,31 @@ test('a ring-edge drag inward lowers the ratio and leaves the radius alone', asy
   expect(await field(page, 'Radius (px)').inputValue()).toBe(radiusText);
   expect(await chip(page)).toBe(clicks + 1);
   await expect(page.locator('#app-status')).toContainText('applies to every video in this session');
+});
+
+test('a centre drag on an unscrolled 1920 × 1080 page lands where the pointer went', async ({ page }) => {
+  // With nothing scrolled there is no scroll anchoring to hide a reflow: a
+  // message announced on the press used to move the frame a whole line up
+  // under the pointer and the drag committed 19 video px too far down.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const before = await geometry(page);
+  const { zoom } = await frameBox(page);
+
+  const { from, to, shift } = await drag(page, 'centre', 40, 25);
+
+  const after = await geometry(page);
+  const dx = after.cx - before.cx;
+  const dy = after.cy - before.cy;
+  console.log(
+    `maze handles: 1920 × 1080, scrollY 0: centre drag (+40, +25) at zoom ${zoom.toFixed(4)} → ` +
+      `Δcx ${dx.toFixed(2)}, Δcy ${dy.toFixed(2)} video px (expected ${(to.x - from.x).toFixed(2)}, ` +
+      `${(to.y - from.y).toFixed(2)}); the frame shifted ${shift.toFixed(2)} px while held`,
+  );
+  expect(Math.abs(dx - 40 / zoom)).toBeLessThan(0.15);
+  expect(Math.abs(dy - 25 / zoom)).toBeLessThan(0.15);
+  expect(shift).toBe(0);
 });
 
 test('a press that only selects a handle counts nothing', async ({ page }) => {

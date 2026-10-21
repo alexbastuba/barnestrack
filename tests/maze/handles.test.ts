@@ -156,6 +156,17 @@ describe('applyHandleDrag', () => {
       }
     }
   });
+
+  it('is the identity for a zero-length drag even when the geometry is outside the clamps', () => {
+    // A typed or imported map can hold values a drag would clamp; a drag that
+    // goes nowhere must not pull them inside the bounds.
+    const tiny = { ...PLATFORM, r: 6 };
+    const press = handlePositions(tiny, RING).platformRim;
+    expect(applyHandleDrag('platformRim', press, { ...press }, tiny, RING).platform.r).toBe(6);
+    const narrow = { ringRatio: 0.05 };
+    const ringPress = handlePositions(PLATFORM, narrow).ringRim;
+    expect(applyHandleDrag('ringRim', ringPress, { ...ringPress }, PLATFORM, narrow).ringRatio).toBe(0.05);
+  });
 });
 
 describe('nudgeHandle', () => {

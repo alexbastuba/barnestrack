@@ -253,14 +253,16 @@ describe('dragging a handle (D69)', () => {
   const VIDEO_ID = 'video-test53';
   const positions = () => handlePositions(mazeMap().platform, mazeMap().holes);
 
+  /** `rectTop` moves the stubbed stage on the page, as a reflow above it would. */
   function pointer(
     step: Step,
     type: string,
     point: { x: number; y: number },
     extra: Record<string, unknown> = {},
+    rectTop = 0,
   ): void {
     const overlay = step.body.querySelector('.overlay-layer')!;
-    const rect = { left: 0, top: 0, width: 640, height: 480, right: 640, bottom: 480, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    const rect = { left: 0, top: rectTop, width: 640, height: 480, right: 640, bottom: 480 + rectTop, x: 0, y: rectTop, toJSON: () => ({}) } as DOMRect;
     overlay.getBoundingClientRect = () => rect;
     overlay.parentElement!.getBoundingClientRect = () => rect;
     const event = new Event(type, { bubbles: true, cancelable: true }) as Event & Record<string, unknown>;
@@ -351,12 +353,19 @@ describe('dragging a handle (D69)', () => {
     expect(store.mazeClickCount(VIDEO_ID)).toBe(0);
   });
 
-  it('writes the shared ring ratio from the ring-edge handle and leaves the transform alone', () => {
+  it('writes the shared ring ratio from the ring-edge handle and leaves the transform alone', async () => {
     const { step, store } = mount();
     const before = store.current.videos[0]!.mazeTransform;
     const r = mazeMap().platform.r;
+    const to = outward('ringRim', -10);
 
-    drag(step, positions().ringRim, outward('ringRim', -10));
+    pointer(step, 'pointerdown', positions().ringRim);
+    pointer(step, 'pointermove', to);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // The ratio field follows the preview before anything is written.
+    expect(fieldNamed(step, 'Ring radius ÷ platform radius').value).toBe((0.89 - 10 / r).toFixed(3));
+    expect(store.current.mazeMap!.holes.ringRatio).toBe(0.89);
+    pointer(step, 'pointerup', to);
 
     expect(store.current.mazeMap!.holes.ringRatio).toBeCloseTo(0.89 - 10 / r, 6);
     expect(store.current.videos[0]!.mazeTransform).toEqual(before);
@@ -373,6 +382,36 @@ describe('dragging a handle (D69)', () => {
     expect(store.current.videos[0]!.mazeTransform.scale).toBeCloseTo((r + 20) / r, 6);
     expect(store.current.mazeMap!.holes.ringRatio).toBe(0.89);
     expect(fieldNamed(step, 'Radius (px)').value).toBe((r + 20).toFixed(1));
+  });
+
+  it('maps the drag from the press, so a page reflow under the held pointer is not a move', () => {
+    const { step, store } = mount();
+    const c = positions().centre;
+
+    pointer(step, 'pointerdown', c);
+    // A live-region message of a different height moves the stage up a line
+    // while the pointer stays where it is — as the status banner does.
+    pointer(step, 'pointermove', { x: c.x + 40, y: c.y + 25 }, {}, -22.5);
+    pointer(step, 'pointerup', { x: c.x + 40, y: c.y + 25 }, {}, -22.5);
+
+    const transform = store.current.videos[0]!.mazeTransform;
+    expect(transform.translateX).toBeCloseTo(40, 6);
+    expect(transform.translateY).toBeCloseTo(25, 6);
+  });
+
+  it('places nothing and counts nothing for a drag that comes back to where it started', () => {
+    const { step, store } = mount();
+    const writes = vi.spyOn(store, 'setMazeTransform');
+    const c = positions().centre;
+
+    pointer(step, 'pointerdown', c);
+    pointer(step, 'pointermove', { x: c.x + 40, y: c.y + 25 });
+    pointer(step, 'pointermove', c);
+    pointer(step, 'pointerup', c);
+
+    expect(writes).not.toHaveBeenCalled();
+    expect(store.mazeClickCount(VIDEO_ID)).toBe(0);
+    expect(handleButton(step, 'Centre').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('puts nothing back and counts nothing when the browser cancels the pointer', () => {
@@ -430,6 +469,19 @@ describe('dragging a handle (D69)', () => {
 
     viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(handleButton(step, 'Platform edge').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('lets a pressed handle button go when pressed again', () => {
+    const { step } = mount();
+    handleButton(step, 'Ring edge').click();
+    expect(handleButton(step, 'Ring edge').getAttribute('aria-pressed')).toBe('true');
+    handleButton(step, 'Ring edge').click();
+    expect(handleButton(step, 'Ring edge').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('keeps the radius field’s floor and the platform-edge handle’s floor the same', () => {
+    const { step } = mount();
+    expect(fieldNamed(step, 'Radius (px)').min).toBe('10');
   });
 
   it('reads the click count as a status chip, never as a button', () => {

@@ -73,6 +73,8 @@ interface DragGesture {
   pointerId: number;
   startX: number;
   startY: number;
+  /** The press in video pixels; every later point is this plus the pointer's travel over the zoom. */
+  startVideo: Point;
   /** True once the pointer has left the dead zone; only then does `onDrag` fire. */
   moved: boolean;
 }
@@ -263,7 +265,13 @@ export class CanvasView {
     const point = this.videoPointFor(event);
     this.viewport.focus({ preventScroll: true });
     if (this.options.onDragStart?.(point) === true) {
-      this.gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false };
+      this.gesture = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startVideo: point,
+        moved: false,
+      };
       this.overlay.setPointerCapture(event.pointerId);
       this.viewport.classList.add('is-dragging');
       event.preventDefault();
@@ -288,7 +296,7 @@ export class CanvasView {
         if (travelled < DRAG_DEAD_ZONE_PX) return;
         this.gesture.moved = true;
       }
-      this.options.onDrag?.(this.videoPointFor(event));
+      this.options.onDrag?.(this.gesturePointFor(this.gesture, event));
       return;
     }
     this.options.onHover?.(this.videoPointFor(event));
@@ -296,11 +304,26 @@ export class CanvasView {
 
   private onPointerUp(event: PointerEvent): void {
     if (this.gesture && this.gesture.pointerId === event.pointerId) {
+      const point = this.gesturePointFor(this.gesture, event);
       this.endGesture(event.pointerId);
-      this.options.onDragEnd?.(this.videoPointFor(event));
+      this.options.onDragEnd?.(point);
       return;
     }
     this.endPan(event);
+  }
+
+  /**
+   * Where a captured drag's pointer is, in video pixels: the press plus the
+   * pointer's travel since, over the zoom. Not `videoPointFor`, which reads
+   * the viewport's position afresh — if the page reflows under a held pointer
+   * (a live-region message of a different height does it) that position moves
+   * while the pointer does not, and the shift would be committed as a move.
+   */
+  private gesturePointFor(gesture: DragGesture, event: PointerEvent): Point {
+    return {
+      x: gesture.startVideo.x + (event.clientX - gesture.startX) / this.view.zoom,
+      y: gesture.startVideo.y + (event.clientY - gesture.startY) / this.view.zoom,
+    };
   }
 
   private onPointerCancel(event: PointerEvent): void {

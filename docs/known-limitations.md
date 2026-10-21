@@ -85,15 +85,19 @@ session it is found (D39).
   based and the overlay has `touch-action: none`, so a finger should drag a handle as a mouse does,
   but every check was made with a mouse in Google Chrome; the 10 px hit tolerance is a mouse
   target, not a finger one.
-- **A message in the live region can move the page under a held pointer.** The status banner at
-  the top of the page is as tall as its message. Pressing a maze handle announces a one-line
-  message where the two-line "Example cohort loaded" banner stood, the content below reflows up by
-  22.5 px, and Chrome's scroll anchoring puts 22 px of it back — so the frame ends half a pixel
-  higher under the pointer than it was at the press (measured in `tests/browser/maze.spec.ts`,
-  which maps the press and the release through the frame as each found it). Half a pixel is below
-  anything a user would see; a message that changes the line count more would shift the frame by
-  whole lines. The fix is a fixed minimum height on the banner (`#app-status` in `src/ui/app.ts`
-  and its rule in `src/styles/app.css`), outside chunk 14's boundary.
+- **A message in the live region reflows the page.** The status banner at the top of the page is
+  as tall as its message: a one-line message where the two-line "Example cohort loaded" banner
+  stood moves everything below it up by 22.5 px, and on an unscrolled page nothing puts it back
+  (on a scrolled one Chrome's scroll anchoring returns all but half a pixel). While a maze handle
+  announced its selection on the press, that reflow happened under the held pointer and a centre
+  drag of 25 screen px committed 19 video px too far — about 4 cm at the sample rig's scale. Two
+  things now stop it: a handle is announced on release, when nothing is held, and a captured drag
+  is mapped from the press point plus the pointer's own travel (`src/ui/canvas-view.ts`), so a
+  reflow under a held pointer cannot become a move; `tests/browser/maze.spec.ts` checks an
+  unscrolled 1920 × 1080 drag. The banner still reflows the page on every message of a different
+  line count, which a reader of the frame sees as a jump. The fix is a fixed minimum height on the
+  banner (`#app-status` in `src/ui/app.ts` and its rule in `src/styles/app.css`), outside chunk
+  14's boundary.
 - **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a
   similarity from circle correspondences, whose true rotation is exactly zero; the least-squares
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no

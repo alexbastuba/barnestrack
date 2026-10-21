@@ -24,6 +24,7 @@ import {
   HANDLE_NAMES,
   handlePositions,
   hitTestHandle,
+  MIN_PLATFORM_RADIUS_PX,
   nudgeHandle,
   RING_RATIO_MAX,
   RING_RATIO_MIN,
@@ -108,7 +109,7 @@ const NUDGE_PX = 1;
 const NUDGE_PX_LARGE = 10;
 
 const MODE_PROMPT: Record<Mode, string> = {
-  idle: 'Drag a handle on the image, pick an action below, or use the numeric fields.',
+  idle: 'Drag a handle on the image, pick an action from the controls, or use the numeric fields.',
   rim: 'Click 3 points on the platform edge.',
   align: 'Click one hole to align the ring.',
   target: 'Click the target hole, or type its number.',
@@ -372,9 +373,18 @@ export function createMazeStep(context: AppContext): Step {
     return handle === 'ringRim' ? `${how} The ring ratio applies to every video in this session.` : how;
   }
 
-  function selectHandle(handle: HandleKind): void {
+  function selectHandle(handle: HandleKind, announce = true): void {
     selection = { kind: 'handle', handle };
-    context.announce(selectionMessage(handle));
+    if (announce) context.announce(selectionMessage(handle));
+  }
+
+  function sameGeometry(a: HandleGeometry, b: HandleGeometry): boolean {
+    return (
+      a.platform.cx === b.platform.cx &&
+      a.platform.cy === b.platform.cy &&
+      a.platform.r === b.platform.r &&
+      a.ringRatio === b.ringRatio
+    );
   }
 
   /** The label drawn beside a handle; the ring's says what else it changes when it has the user's attention. */
@@ -387,7 +397,9 @@ export function createMazeStep(context: AppContext): Step {
     const map = videoMap();
     const handle = handleAt(point);
     if (!map || !handle) return false;
-    selectHandle(handle);
+    // Announced on release, not here: a message of a different height reflows
+    // the page, and the frame must not move under a pointer that is holding it.
+    selectHandle(handle, false);
     const base = { platform: map.platform, ringRatio: map.holes.ringRatio };
     drag = { handle, from: point, base, preview: base, moved: false, frame: 0 };
     render();
@@ -411,11 +423,15 @@ export function createMazeStep(context: AppContext): Step {
     const ended = drag;
     if (ended.frame !== 0) cancelAnimationFrame(ended.frame);
     drag = null;
-    if (ended.moved) {
-      commitHandle(
-        ended.handle,
-        applyHandleDrag(ended.handle, ended.from, point, ended.base.platform, ended.base),
-      );
+    const result = ended.moved
+      ? applyHandleDrag(ended.handle, ended.from, point, ended.base.platform, ended.base)
+      : ended.base;
+    if (sameGeometry(result, ended.base)) {
+      // A press that only selected, or a drag that came back to where it
+      // started: nothing was placed, so nothing is written or counted.
+      context.announce(selectionMessage(ended.handle));
+    } else {
+      commitHandle(ended.handle, result);
       // One drag is one placement on the image, however many moves it took (D50).
       countClick();
     }
@@ -533,7 +549,12 @@ export function createMazeStep(context: AppContext): Step {
     const map = videoMap();
     if (!selection || !map || drag) return;
     if (selection.kind === 'handle') {
-      commitHandle(selection.handle, nudgeHandle(selection.handle, dx, dy, map.platform, map.holes));
+      const result = nudgeHandle(selection.handle, dx, dy, map.platform, map.holes);
+      if (sameGeometry(result, { platform: map.platform, ringRatio: map.holes.ringRatio })) {
+        context.announce(`${HANDLE_NAMES[selection.handle]} is at its limit.`);
+      } else {
+        commitHandle(selection.handle, result);
+      }
       render();
       return;
     }
@@ -926,7 +947,8 @@ export function createMazeStep(context: AppContext): Step {
     'Radius (px)',
     {
       step: '0.1',
-      min: '1',
+      // The same floor as the platform-edge handle, so the two never disagree.
+      min: String(MIN_PLATFORM_RADIUS_PX),
       max: '10000',
       hint: 'Typing any of these three creates the platform without clicking the rim.',
     },
@@ -938,8 +960,14 @@ export function createMazeStep(context: AppContext): Step {
   // button did for the whole circle.
   const handleButtons = HANDLE_BUTTON_ORDER.map((kind) => {
     const control = button(HANDLE_NAMES[kind], () => {
-      selectHandle(kind);
-      canvasView.viewport.focus({ preventScroll: true });
+      if (selection?.kind === 'handle' && selection.handle === kind) {
+        // A pressed toggle pressed again lets go, as its aria-pressed promises.
+        selection = null;
+        context.announce('Nothing selected.');
+      } else {
+        selectHandle(kind);
+        canvasView.viewport.focus({ preventScroll: true });
+      }
       render();
     }, { class: 'btn-quiet' });
     control.dataset['handle'] = kind;
@@ -1268,7 +1296,9 @@ export function createMazeStep(context: AppContext): Step {
     setNumber(cyField.input, map?.platform.cy, 1);
     setNumber(rField.input, map?.platform.r, 1);
     setNumber(holeCountField.input, shared?.holes.n);
-    setNumber(ringRatioField.input, shared?.holes.ringRatio, 3);
+    // From the effective map, so a ring-edge drag's preview reaches the field
+    // live; outside a drag the transform leaves the ratio as the shared map has it.
+    setNumber(ringRatioField.input, (map ?? shared)?.holes.ringRatio, 3);
     setNumber(holeDiameterField.input, shared ? currentHoleDiameterCm() : undefined, 2);
     // The effective map, not the shared one: the ring turns per video, so the
     // shared phase stays where the map was created and would read 0 forever.
