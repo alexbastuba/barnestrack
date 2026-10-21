@@ -16,7 +16,7 @@ import type { Parameters } from '../contracts/parameters.js';
 import type { CorrectionsLayer, EventCorrection } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { IN_ESCAPE_BOX_REASON, correctionsOfKind } from './corrections.js';
-import { correctionIdsInSpan, frameCorrectionSpans } from './match-events.js';
+import { correctionIdsInSpan, frameCorrectionSpans, kindChangeSentence } from './match-events.js';
 import {
   distanceFromCentre_cm,
   distanceToHole_px,
@@ -781,6 +781,17 @@ function matchEvent(events: readonly EventRecord[], c: EventCorrection): EventRe
   return events.find((e) => e.id === c.eventId) ?? null;
 }
 
+/** D71: a shadow names the automatic kind only while the live kind differs from it. */
+function shadowForKind(
+  base: NonNullable<EventRecord['autoShadow']>,
+  autoKind: EventKind,
+  liveKind: EventKind,
+): NonNullable<EventRecord['autoShadow']> {
+  const { kind: _dropped, ...rest } = base;
+  void _dropped;
+  return autoKind === liveKind ? rest : { ...rest, kind: autoKind };
+}
+
 export interface CorrectedEvents {
   events: EventRecord[];
   flags: ReviewFlag[];
@@ -870,15 +881,16 @@ export function applyEventCorrections(
         source: 'corrected',
         confirmed: false,
         evidence: `Reclassified by the user (correction ${c.id}) from an escape entry to a tracking failure: the animal was lost here, not in the escape box, so these frames stay a gap and the trial, its latency and its errors are computed without an entry. The entry's reading was: ${target.evidence}`,
-        autoShadow: {
-          ...(target.autoShadow ?? {
+        // D71: the shadow names the automatic kind only while the live kind differs from it
+        autoShadow: shadowForKind(
+          target.autoShadow ?? {
             holeIndex: target.holeIndex,
             startFrame: target.startFrame,
             endFrame: target.endFrame,
-          }),
-          // D71: the shadow names the automatic kind once the live kind differs from it
-          kind: target.autoShadow?.kind ?? target.kind,
-        },
+          },
+          target.autoShadow?.kind ?? target.kind,
+          'tracking_failure',
+        ),
       };
       events = events.map((x) => (x === target ? reclassified : x));
       applied++;
@@ -1005,7 +1017,14 @@ export function applyEventCorrections(
               endFrame: target.endFrame,
             }
           : undefined);
-      if (shadow !== undefined) ev.autoShadow = shadow;
+      if (shadow !== undefined) {
+        ev.autoShadow = shadow;
+        // D71: an edit rebuilds the evidence, so the sentence that names the automatic kind of a
+        // kind-change shadow is appended again — the CSV shadow columns cannot carry it
+        if (shadow.kind !== undefined && shadow.kind !== kind) {
+          ev.evidence = `${ev.evidence} ${kindChangeSentence({ ...shadow, kind: shadow.kind })}`;
+        }
+      }
       events = events.map((x) => (x === target ? ev : x));
     } else {
       events.push(ev);

@@ -110,5 +110,7 @@ export interface ParametersProvenance {
  * the hash it names — the reconciliation D11 and D12 exist for.
  */
 export function parametersJson(parameters: Parameters, provenance: ParametersProvenance): string {
-  return `${JSON.stringify({ ...provenance, ...parameters }, null, 2)}\n`;
+  // the provenance first for the key order, and last so its values win over any stray
+  // `toolVersion`/`parametersHash` a parameter set read back from an older file might carry
+  return `${JSON.stringify({ ...provenance, ...parameters, ...provenance }, null, 2)}\n`;
 }

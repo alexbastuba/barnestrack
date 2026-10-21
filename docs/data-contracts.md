@@ -200,8 +200,7 @@ superseding the session-level "calibration" field named in D9's prose).
   eventId?, correctionId? }` — persisted so the reason a trial reads `review` travels with the
   row (`review_flags` in `trials.csv`, D66). It is the fifth field of a layer D55 described as
   four, and it is still only a cache: recomputed on load with the rest, never read as the truth.
-  That amendment to D55 was part of the plan Alex approved for chunk 12 and awaits its own entry
-  in `docs/decisions.md`.
+  That amendment to D55 is D71 (1).
   `null` for a video that has been tracked but not yet analysed (D52) — a placeholder or fabricated
   derived layer is forbidden (D16), so the honest value is a null.
 
@@ -341,10 +340,14 @@ sentence says which. An automatic event with no counterpart after both passes wa
 correction* (a `not_visible` range over an investigation, a nudge that merged two visits into one):
 it has no row; the trial carries one soft flag `auto_event_removed_by_correction` per removed event
 (`frameIndex` = its start frame, `eventId` = its automatic id, the message naming the corrections
-inside its span); it is counted in `correctionCount` exactly as an event `delete` is; and the
-in-memory analysis result (`DerivedAnalysis.removedAutoEvents`, never persisted — the derived layer
-stays a cache, D55) lists it with those correction ids as its `correctionIds`. Event corrections
-(`kind: event`) apply after the match: an edit sets `source: corrected` as before; a
+inside its span); it is counted in `correctionCount` exactly as an event `delete` is — once: when a
+delete, an edit or a reclassification already names that id, the correction counts for it and the
+removal is not counted again, and the flag says so (an edit then keeps a pinned row with that id,
+so "no row" holds only for an event nothing names); and the in-memory analysis result
+(`DerivedAnalysis.removedAutoEvents`, never persisted — the derived layer stays a cache, D55) lists
+it with those correction ids as its `correctionIds`. Event corrections (`kind: event`) apply after
+the match: an edit sets `source: corrected` as before, and an edit of a kind-change event rebuilds
+the evidence and appends the kind sentence again, so the automatic kind survives the edit; a
 `confirmed: true` edit sets `confirmed: true` on the automatic event without re-measuring anything.
 One consequence worth knowing: a `not_visible` range that splits one automatic visit leaves the
 second fragment `source: corrected` (the first fragment takes the match). With no point or range
@@ -376,7 +379,7 @@ seconds applied to each frame's own timestamp (D7).
 | `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review` unless the non-escape is confirmed (D63).          | O5 |
 | `targetQuadrant.holeSpan`              | holes              | 2.5     | The target quadrant reaches this many hole spacings either side of the target hole (2.5 on a 20-hole ring = 90°).               | O6 |
 | `kinematicsSmoothingWindowFrames`      | frames             | 3       | Median filter width applied to centroid positions for path length and speed only; stored track and events use raw positions.    | O9 |
-| `gapFilling.enabled`                   | on/off             | on      | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
+| `gapFilling.enabled`                   | on/off             | off     | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
 | `gapFilling.maxDuration_s`             | s                  | 0.1     | Only gaps no longer than this (between the positioned frames either side) are filled, never when either side is within one hole radius of a hole. | O10 |
 | `kinematics.speedWindowFrames`         | frames             | 2       | Speed at a frame is the path over the centred window of this many frames either side, over the span of their timestamps.         | O11 |
 | `kinematics.duplicateTimestampFactor`  | × nominal interval | 0.25    | Consecutive frames closer in time than this fraction of the nominal interval carry a duplicate stamp: skipped for speed and the outlier test, kept for path length. | O11 |
@@ -593,7 +596,7 @@ the top of this document says exactly what changed.
 | `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
 | `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
 | `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |
-| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code. `auto_event_removed_by_correction` (D71) and `non_persistent_entry_noted` (D67) are soft: they never set `review` on their own |
+| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag — or only the soft ones — is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code. `auto_event_removed_by_correction` (D71) and `non_persistent_entry_noted` (D67) are soft: they never set `review` on their own |
 | `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |

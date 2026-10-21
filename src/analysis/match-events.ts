@@ -105,6 +105,22 @@ export const EVENT_KIND_LABEL: Record<EventKind, string> = {
 };
 
 /**
+ * The sentence that names the automatic kind of a kind-change shadow (D71),
+ * appended to the event's evidence: the CSV shadow columns carry hole and
+ * frames only, so this is where the kind travels. An event edit that keeps
+ * such a shadow rebuilds its evidence and appends the sentence again.
+ */
+export function kindChangeSentence(shadow: {
+  kind: EventKind;
+  holeIndex: number | null;
+  startFrame: number;
+  endFrame: number;
+}): string {
+  const where = shadow.holeIndex === null ? 'away from any hole' : `at hole ${shadow.holeIndex}`;
+  return `Was an automatic ${EVENT_KIND_LABEL[shadow.kind]} ${where}, frames ${shadow.startFrame}–${shadow.endFrame}, before the corrections changed its kind.`;
+}
+
+/**
  * Pairs the free corrected events with the free automatic ones that `eligible`
  * admits, largest overlap first, each event at most once. Ties go to the
  * earlier corrected event, then the earlier automatic one. Returns corrected
@@ -221,11 +237,9 @@ export function matchEvents(
       // and the automatic event stands beside it with its kind — the CSV shadow columns carry
       // hole and frames only, so the sentence is where the kind travels (D71).
       const shadow = autoOnly[changed]!;
-      const where =
-        shadow.holeIndex === null ? 'away from any hole' : `at hole ${shadow.holeIndex}`;
       return {
         ...ev,
-        evidence: `${ev.evidence} Was an automatic ${EVENT_KIND_LABEL[shadow.kind]} ${where}, frames ${shadow.startFrame}–${shadow.endFrame}, before the corrections changed its kind.`,
+        evidence: `${ev.evidence} ${kindChangeSentence(shadow)}`,
         source: 'corrected',
         evidenceCorrected: false,
         correctionIds: correctionIdsInSpan(

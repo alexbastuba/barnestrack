@@ -1546,3 +1546,143 @@ describe('D71 (3): escaped is null when nothing can be said', () => {
     expect(trialRowFor(probeInput, p)).toMatchObject({ trial_type: 'probe', escaped: '', status: 'ok' });
   });
 });
+
+/*
+ * D71 (2), after review: a removal is counted once. A delete or an edit that already names the
+ * removed event's id counts for it; the flag says which, and an edit keeps a pinned row with
+ * that id. And an edit of a kind-change event keeps the automatic kind in its rebuilt evidence.
+ */
+describe('D71 (2): a removal is counted once, and an edit keeps the automatic kind', () => {
+  const script: Segment[] = [...visitHoles([3, 5]), { kind: 'moveToCentre', seconds: 0.5 }];
+  const notVisibleOver = (
+    visit: { startFrame: number; endFrame: number },
+    i: number,
+  ): CorrectionEntry => ({
+    id: 'r',
+    kind: 'range',
+    timestamp: at(i),
+    source: 'user',
+    rangeType: 'not_visible',
+    startFrame: visit.startFrame,
+    endFrame: visit.endFrame,
+  });
+
+  it('does not count a removal again when a delete already names the event', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    const { input } = inputFor(script, {
+      corrections: [
+        { id: 'd', kind: 'event', timestamp: at(1), source: 'user', action: 'delete', eventId: visit5.id },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    expect(d.events.map((e) => e.holeIndex)).toEqual([3]);
+    expect(d.removedAutoEvents.map((e) => e.id)).toEqual([visit5.id]);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction d already deleted it');
+    expect(flag.message).not.toContain('no row');
+    // the delete and the range — not the delete, the range and the removal
+    expect(d.metrics.correctionCount).toBe(2);
+    // the delete now names an event the range removed, which the orphan flag reports as before
+    expect(d.reviewFlags.map((f) => f.code).sort()).toEqual([
+      'auto_event_removed_by_correction',
+      'orphaned_correction',
+    ]);
+  });
+
+  it('does not count a removal again when an edit already names the event, whose pinned row stands', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    const { input } = inputFor(script, {
+      corrections: [
+        {
+          id: 'e',
+          kind: 'event',
+          timestamp: at(1),
+          source: 'user',
+          action: 'edit',
+          eventId: visit5.id,
+          holeIndex: 5,
+          startFrame: visit5.startFrame,
+          endFrame: visit5.endFrame - 2,
+        },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    // the pinned edit keeps the automatic id, so there is a row with it
+    const pinned = d.events.find((e) => e.id === visit5.id)!;
+    expect(pinned).toMatchObject({ source: 'corrected', holeIndex: 5, endFrame: visit5.endFrame - 2 });
+    expect(eventRows(sessionAround(input, d)).filter((r) => r.eventId === visit5.id)).toHaveLength(1);
+    expect(d.removedAutoEvents.map((e) => e.id)).toEqual([visit5.id]);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction e names it, so its values stand as a pinned row');
+    expect(flag.message).not.toContain('no row');
+    expect(d.metrics.correctionCount).toBe(2);
+  });
+
+  it('keeps the automatic kind in the evidence of a kind-change event the user then edits', () => {
+    const stay: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 1.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 1 },
+    ];
+    const { input: plain } = inputFor(stay);
+    const investigation = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: investigation.startFrame,
+      endFrame: investigation.endFrame,
+    };
+    const entry = derive(inputFor(stay, { corrections: [range] }).input).events.find(
+      (e) => e.kind === 'escape_entry',
+    )!;
+    const { input } = inputFor(stay, {
+      corrections: [
+        range,
+        {
+          id: 'e1',
+          kind: 'event',
+          timestamp: at(2),
+          source: 'user',
+          action: 'edit',
+          eventId: entry.id,
+          holeIndex: 7,
+          startFrame: entry.startFrame,
+          endFrame: entry.endFrame - 1,
+        },
+      ],
+    });
+    const d = derive(input);
+    const edited = d.events.find((e) => e.id === entry.id)!;
+    expect(edited).toMatchObject({
+      kind: 'escape_entry',
+      source: 'corrected',
+      endFrame: entry.endFrame - 1,
+      autoShadow: {
+        holeIndex: 7,
+        startFrame: investigation.startFrame,
+        endFrame: investigation.endFrame,
+        kind: 'investigation',
+      },
+    });
+    expect(edited.evidence).toContain('Corrected by the user (correction e1)');
+    expect(edited.evidence).toContain(
+      `Was an automatic investigation at hole 7, frames ${investigation.startFrame}–${investigation.endFrame}, before the corrections changed its kind.`,
+    );
+    const row = rowFor(input, d, entry.id);
+    expect(row).toMatchObject({
+      source: 'corrected',
+      auto_hole_index: '7',
+      auto_start_frame: String(investigation.startFrame),
+    });
+    expect(row['evidence_summary']).toContain('Was an automatic investigation at hole 7');
+  });
+});

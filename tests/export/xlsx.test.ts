@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EXPORT_SCHEMA_VERSION } from '../../src/contracts/exportRows.js';
+import type { Parameters } from '../../src/contracts/parameters.js';
 import { EVENT_COLUMNS, QUALITY_COLUMNS, TRIAL_COLUMNS } from '../../src/export/columns.js';
 import { parameterRows, parametersJson } from '../../src/export/parameter-sheet.js';
 import { eventRows, trialRows } from '../../src/export/rows.js';
@@ -134,5 +135,18 @@ describe('parameterRows', () => {
     expect(JSON.parse(text)).toEqual({ ...provenance, ...FIXTURE_PARAMETERS });
     expect(Object.keys(JSON.parse(text) as object).slice(0, 2)).toEqual(['toolVersion', 'parametersHash']);
     expect(text.endsWith('\n')).toBe(true);
+  });
+
+  it('lets the export’s provenance win over stray provenance keys in the parameter set (D71)', () => {
+    const provenance = { toolVersion: 'barnestrack v0.2.0 (test)', parametersHash: 'b'.repeat(64) };
+    const stale = {
+      ...FIXTURE_PARAMETERS,
+      toolVersion: 'barnestrack v0.1.0 (old)',
+      parametersHash: 'deadbeef',
+    } as Parameters;
+    const parsed = JSON.parse(parametersJson(stale, provenance)) as Record<string, unknown>;
+    expect(parsed['toolVersion']).toBe(provenance.toolVersion);
+    expect(parsed['parametersHash']).toBe(provenance.parametersHash);
+    expect(Object.keys(parsed).slice(0, 2)).toEqual(['toolVersion', 'parametersHash']);
   });
 });

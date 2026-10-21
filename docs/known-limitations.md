@@ -550,6 +550,26 @@ session it is found (D39).
   `correction_count = 18`. The count and the flag are honest about what the corrections erased; a
   third pass matching by span alone with the automatic hole in the shadow would read as a move,
   and whether a hole change is a move or an erasure is a decision.
+- **Repairing a tracking loss with hand-placed points reports and counts the loss as a removed
+  automatic event.** A `tracking_failure` is an automatic event, so under D71's rule a loss the
+  user repairs frame by frame (the commonest correction workflow) has no counterpart in the
+  corrected detection and is reported removed: one soft `auto_event_removed_by_correction`, and
+  `correction_count` adds 1 beside the point corrections themselves. Measured by the chunk-16
+  reviewer on a scripted 1.5 s loss in the open repaired with 45 centroid points:
+  `removedAutoEvents = [auto-tracking_failure-hx-f45]`, one flag, `correction_count = 46`. D71's
+  wording covers it literally and the numbers are honest, but whether a repaired loss is an
+  "erased event" or simply a repaired track is Alex's call (D67: a loss counts toward nothing); the
+  smallest change would exclude `tracking_failure` from the removal report and count, or word the
+  flag per kind. The flag's message names at most three correction ids and says "and N more".
+- **The shipped-UI smoke flow's identity-column list predates D68.** `TRIAL_IDENTITY_COLUMNS` in
+  `tests/browser/app-smoke.spec.ts:432` expects `group` sixth, but `trials.csv` has carried
+  `session_name` second since D68 (chunk 12), so `load, review, correct, retune, export, reload`
+  fails at `:536` whenever `dist/` exists — before it reaches the `parameters.json` hash
+  reconciliation at `:539–545`. Measured at chunk 16's HEAD and, identically, on a scratch
+  extraction of its base `3dde72f`: 9 passed, 1 failed, `+ "session_name" … - "group"`. With only
+  that list patched in a throwaway copy, all 10 pass, hash reconciliation included.
+  `tests/browser/README.md:369` and `:408` still say "9 passed". One-token fix for whoever owns
+  `tests/browser/`: insert `'session_name'` after `'session_id'`.
 - **An autosave record from a newer build is kept only until the next change.** `restore()` leaves
   a record whose schema this build cannot read where it is and starts empty, but the first change
   in the new session autosaves over it, because there is one autosave slot per browser (the entry

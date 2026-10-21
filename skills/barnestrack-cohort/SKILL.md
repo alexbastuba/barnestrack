@@ -123,9 +123,10 @@ Measures:
   `non_persistent_entry_noted`, `orphaned_correction`, `oversized_in_trial`,
   `physically_unlikely_entry`, `stale_auto_layer`, `tracking_failure_at_hole`. This is *why* a row
   reads `review`, so quote it when triaging — with three exceptions. A `review` row with **blank**
-  `review_flags` is the commonest case and has no code: an acquisition trial that never escaped
-  and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which
-  the two columns beside it already say. `non_persistent_entry_noted` is a note, not a problem (a
+  `review_flags`, or with only the two notes below, is the commonest case and has no code of its
+  own: an acquisition trial that never escaped and was not confirmed as a non-escape
+  (`escaped = false`, `no_escape_confirmed = false`), which the two columns beside it already
+  say. `non_persistent_entry_noted` is a note, not a problem (a
   reviewer confirmed a non-escape and the tool had seen a short head-in-hole at the target), so a
   row can read `ok` with it. And `auto_event_removed_by_correction` is also a note: a reviewer's
   point or range correction removed an automatic event (a "not visible" range over an
@@ -142,7 +143,8 @@ Measures:
 - `correction_count` (count) — human corrections affecting this trial. An automatic event that a
   point or range correction removed counts here exactly as a deletion does, beside the correction
   itself, so one "not visible" range over a visit adds 2 (the row then carries
-  `auto_event_removed_by_correction`).
+  `auto_event_removed_by_correction`); when a delete or an edit already names that event, the
+  removal is not counted a second time.
 
 Threshold columns, carried so the numbers can be reconciled later:
 `hole_investigation_radius_factor` (× hole radius), `hole_investigation_min_duration_s` (s),
@@ -262,8 +264,9 @@ fields first: `toolVersion` (the build that wrote the export, the same string as
 row's `parameters_hash`). Everything else in the object is the parameter set — no wrapper. The two
 provenance fields are not part of the hashed value, so hashing the file with the tool's own hasher
 reproduces `parametersHash`; a file whose `parametersHash` differs from the rows' `parameters_hash`
-was assembled from more than one export and must not be read as one. An export written by tool
-0.2.0 or earlier has neither field; read `parameters_hash` from the rows instead.
+was assembled from more than one export and must not be read as one. A `parameters.json` without
+the two fields was written by an earlier build (tool 0.1.0, or a 0.2.0 build before they were
+added); read `parameters_hash` from the rows instead.
 
 It contains everything `parameters_hash` covers, which is **more than the
 threshold columns in `trials.csv`**: the kinematics block (`speedWindowFrames`,

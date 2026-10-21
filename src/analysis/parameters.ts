@@ -458,15 +458,12 @@ function hashCanonical(value: unknown): string {
  */
 export const PARAMETERS_PROVENANCE_KEYS = ['toolVersion', 'parametersHash'] as const;
 
+const PROVENANCE_KEY_SET: ReadonlySet<string> = new Set(PARAMETERS_PROVENANCE_KEYS);
+
 export function hashParameters(parameters: Parameters): string {
-  const {
-    toolVersion: _tool,
-    parametersHash: _hash,
-    ...set
-  } = parameters as Parameters &
-    Partial<Record<(typeof PARAMETERS_PROVENANCE_KEYS)[number], unknown>>;
-  void _tool;
-  void _hash;
+  const set = Object.fromEntries(
+    Object.entries(parameters).filter(([key]) => !PROVENANCE_KEY_SET.has(key)),
+  );
   return hashCanonical(set);
 }
 

@@ -51,6 +51,9 @@ import {
 } from './trial.js';
 import type { ReviewFlag } from './types.js';
 
+/** How many correction ids a removal flag's message names before saying "and N more"; a display cap, not a threshold. */
+const NAMED_CORRECTIONS_IN_MESSAGE = 3;
+
 export interface DeriveInput {
   videoId: string;
   auto: AutoLayer;
@@ -238,21 +241,44 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   });
   // D71: an automatic event the corrected detection no longer finds leaves a trace — no row, one
   // soft flag per event at its start frame, and a count beside the deletes — so evidence a
-  // correction erased is never silently gone.
+  // correction erased is never silently gone. An event correction that names the same id (a
+  // delete, an edit, a reclassification; never a confirmation, which is not counted) already
+  // counts the human act on that event, so the removal is not counted a second time; an edit
+  // keeps a pinned row with that id, and the flag says which it is.
+  const namedBy = (id: string): string[] =>
+    corrections.entries
+      .filter((entry) => entry.kind === 'event' && entry.confirmed !== true && entry.eventId === id)
+      .map((entry) => entry.id);
+  let uncountedRemovals = 0;
   for (const ev of removedAutoEvents) {
     const where = ev.holeIndex === null ? 'away from any hole' : `at hole ${ev.holeIndex}`;
     const ids = ev.correctionIds;
+    const named =
+      ids.length <= NAMED_CORRECTIONS_IN_MESSAGE
+        ? ids.join(', ')
+        : `${ids.slice(0, NAMED_CORRECTIONS_IN_MESSAGE).join(', ')} and ${ids.length - NAMED_CORRECTIONS_IN_MESSAGE} more`;
     const once =
       ids.length === 0
-        ? 'the corrections in force are applied'
+        ? 'the corrections in force are applied: they removed its evidence'
         : ids.length === 1
-          ? `correction ${ids[0]} is applied`
-          : `corrections ${ids.join(', ')} are applied`;
+          ? `correction ${ids[0]} is applied: the correction removed its evidence`
+          : `corrections ${named} are applied: the corrections removed its evidence`;
+    const naming = namedBy(ev.id);
+    let standing: string;
+    if (naming.length === 0) {
+      standing = 'It has no row in events.csv and is counted as a correction.';
+    } else if (liveEvents.has(ev.id)) {
+      uncountedRemovals++;
+      standing = `Event correction ${naming.join(', ')} names it, so its values stand as a pinned row with that id; the removal is not counted again.`;
+    } else {
+      uncountedRemovals++;
+      standing = `Event correction ${naming.join(', ')} already deleted it and counts for it; the removal is not counted again.`;
+    }
     reviewFlags.push({
       code: 'auto_event_removed_by_correction',
       eventId: ev.id,
       frameIndex: ev.startFrame,
-      message: `The automatic ${EVENT_KIND_LABEL[ev.kind]} ${where}, frames ${ev.startFrame}–${ev.endFrame} (${ev.startTime_s.toFixed(2)}–${ev.endTime_s.toFixed(2)} s), is not found once ${once}: the correction removed its evidence. It has no row in events.csv and is counted as a correction.`,
+      message: `The automatic ${EVENT_KIND_LABEL[ev.kind]} ${where}, frames ${ev.startFrame}–${ev.endFrame} (${ev.startTime_s.toFixed(2)}–${ev.endTime_s.toFixed(2)} s), is not found once ${once}. ${standing}`,
     });
   }
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
@@ -374,8 +400,10 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     correctionCount:
       corrections.entries.filter((entry) => !(entry.kind === 'event' && entry.confirmed === true))
         .length +
-      // D71: an automatic event a correction removed is counted exactly as an event delete is
-      removedAutoEvents.length,
+      // D71: an automatic event a correction removed is counted exactly as an event delete is —
+      // once: a delete or edit that already names it counts for it
+      removedAutoEvents.length -
+      uncountedRemovals,
     parameters,
   });
   const quality = qualityReport({
