@@ -56,13 +56,16 @@ function session(videos: VideoDescriptor[] = [video()]): SessionFile {
   };
 }
 
-function mount(file: SessionFile = session()): { step: Step; store: SessionStore } {
+function mount(
+  file: SessionFile = session(),
+  announce: (message: string) => void = () => {},
+): { step: Step; store: SessionStore } {
   const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION, { autosaveDelayMs: 0 });
   store.replaceSession(file);
   const context: AppContext = {
     store,
     toolVersion: TOOL_VERSION,
-    announce: () => {},
+    announce,
     showStep: () => {},
   };
   const step = createMazeStep(context);
@@ -627,6 +630,37 @@ describe('the stage and the action bar (D69, D72)', () => {
     expect(status.hidden).toBe(false);
     expect(status.textContent).toContain('set on 1 of 2 videos');
     expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(true);
+  });
+
+  it('says where the cohort stands at the end of every announcement that changes the count', () => {
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const announced: string[] = [];
+    const { step, store } = mount(session([video(), second]), (message) => announced.push(message));
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toBe('Maze step now showing test50.mp4.');
+
+    // Typing a radius places the platform in the second video, which is what sets the maze on it.
+    const radius = fieldNamed(step, 'Radius (px)');
+    radius.value = '200';
+    radius.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toMatch(/^Platform for test50\.mp4: centre .* radius 200\.0 px\. Maze set on 2 of 2 videos\.$/);
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+
+    // Applying the first video's map to it again changes nothing in the count, and still says so.
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    const applyFrom = step.body.querySelector<HTMLSelectElement>('#maze-apply-from')!;
+    applyFrom.value = 'video-test53';
+    pressButton(step, 'Apply map from this video');
+    expect(announced.at(-1)).toMatch(/^Maze map applied from test53\.mp4\. .* Maze set on 2 of 2 videos\.$/);
+    expect(store.videoById('video-test50')!.mazeTransform).not.toEqual(video().mazeTransform);
   });
 });
 

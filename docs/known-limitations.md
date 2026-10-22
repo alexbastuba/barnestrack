@@ -495,7 +495,10 @@ session it is found (D39).
   a 384 px window). Once the step is scrolled into view the bar stays at the foot of the window.
   At 100 % every step's primary is on the first screen at 1366 × 768 and 1400 × 866
   (`scripts/screenshots.ts`). A collapsing header at narrow heights would close the gap; that is a
-  layout decision for Alex.
+  layout decision for Alex. Since chunk 14b the Maze step's finished-state count ("Maze set on 3 of
+  3 videos.") lives in the bar's status line, so at 200 % it is hidden with the rest of that line;
+  the enabled Next step and the tab's "✓ maze set" say the same, and the count is spoken at the
+  end of every announcement of an action that changes it.
 - **The export still states an inferred escape entry's evidence as a fact (D67).** The interface
   names the detector's entry "Inferred escape entry" and prefixes its evidence "Inferred — "
   (`src/ui/event-wording.ts`), but `events.csv` carries the engine's sentence verbatim ("Escape-box

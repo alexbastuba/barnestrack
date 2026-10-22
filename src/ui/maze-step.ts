@@ -208,6 +208,26 @@ export function createMazeStep(context: AppContext): Step {
     return holeDiameterCm(map.holes.holeRadius_px, scale);
   }
 
+  /**
+   * "Maze set on N of M videos." — the bar's status line once the step is
+   * finished (D72), and the tail of every announcement of an action that can
+   * change the count, so a screen reader hears where the cohort stands the
+   * moment it moves. Null while there is no cohort. Per-video confirmation is
+   * session state and is not built here, so the count is of videos the map
+   * has been placed in, not of videos anyone has signed off.
+   */
+  function progressText(): string | null {
+    const total = store.videos.length;
+    if (total === 0) return null;
+    return `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+  }
+
+  /** `message` with the cohort's progress after it, for an action that can change the count. */
+  function withProgress(message: string): string {
+    const progress = progressText();
+    return progress === null ? message : `${message} ${progress}`;
+  }
+
   // ---- edits ----------------------------------------------------------------
 
   function countClick(): void {
@@ -255,7 +275,9 @@ export function createMazeStep(context: AppContext): Step {
       // next target click names the shared number instead of turning the ring.
       targetChosen = false;
       context.announce(
-        `Platform set: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px. Twenty holes generated. Enter the platform diameter to finish.`,
+        withProgress(
+          `Platform set: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px. Twenty holes generated. Enter the platform diameter to finish.`,
+        ),
       );
       return;
     }
@@ -263,7 +285,9 @@ export function createMazeStep(context: AppContext): Step {
     if (!placed) return;
     store.setMazeTransform(video.id, placed);
     context.announce(
-      `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
+      withProgress(
+        `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
+      ),
     );
   }
 
@@ -611,7 +635,9 @@ export function createMazeStep(context: AppContext): Step {
     const problem = adoptMapDocument(await file.text());
     context.announce(
       problem ??
-        `Maze map loaded from ${file.name} and scaled onto every video in this session. Check each one and use "Adjust" where the platform sits differently.`,
+        withProgress(
+          `Maze map loaded from ${file.name} and scaled onto every video in this session. Check each one and use "Adjust" where the platform sits differently.`,
+        ),
     );
     render();
   }
@@ -654,7 +680,9 @@ export function createMazeStep(context: AppContext): Step {
     mode = 'idle';
     rimPoints = [];
     context.announce(
-      `Maze map applied from ${source.filename}. If the platform sits differently in this video, choose "Adjust" and click 3 rim points.`,
+      withProgress(
+        `Maze map applied from ${source.filename}. If the platform sits differently in this video, choose "Adjust" and click 3 rim points.`,
+      ),
     );
     render();
   }
@@ -1201,16 +1229,16 @@ export function createMazeStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
-    const total = store.videos.length;
     const missing = mazeMissing(store);
     nextStep.update(missing);
     // The bar's status line (D72): while the step is unfinished it is the
     // button's reason, which carries the count; once every video is set it
     // says how far the cohort is, so the line never goes blank while there is
-    // one. Per-video confirmation is session state and is not built here, so
-    // the count is of videos the map has been placed in, not signed off on.
-    if (missing === null && total > 0) {
-      nextStep.bar.status.textContent = `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+    // one. The line is not a live region — the count is spoken by the action
+    // that changes it, through `withProgress`.
+    const progress = missing === null ? progressText() : null;
+    if (progress !== null) {
+      nextStep.bar.status.textContent = progress;
       nextStep.bar.status.hidden = false;
     }
     if (store.epoch !== lastEpoch) {

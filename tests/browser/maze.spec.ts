@@ -351,9 +351,12 @@ test('every handle is under the pointer, never under the action bar, at 1366 × 
         const onScreen = at.x >= 0 && at.y >= 0 && at.x < size.width && at.y < size.height;
         const under = await elementUnder(page, at);
         seen.push(`${kind} at (${at.x}, ${at.y}) → ${onScreen ? under : `below the fold, ${under}`}`);
-        expect(under, `${kind}, ${size.width} × ${size.height} ${state}: never under the action bar`).not.toContain('next-step');
+        expect(under, `${kind}, ${size.width} × ${size.height} ${state}: never under the action bar`).not.toMatch(/next-step|action-bar/);
         // A handle below the fold is pressable by nobody; one on screen must be the canvas's.
         if (onScreen) expect(under, `${kind}, ${size.width} × ${size.height} ${state}`).toBe(CANVAS);
+        // The CI case — 1920 × 1080 unscrolled, where the centre press used to land on the bar —
+        // must have every handle on screen, or the two checks above would pass with nothing under them.
+        if (size.width === 1920 && !scrolled) expect(onScreen, `${kind} is on screen at 1920 × 1080 unscrolled`).toBe(true);
       }
       console.log(
         `maze bar: ${size.width} × ${size.height}, ${state} (scrollY ${boxes.scrollY}): canvas ${span(boxes.canvas)}; ` +
