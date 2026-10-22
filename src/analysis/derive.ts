@@ -86,11 +86,14 @@ export interface DerivedAnalysis extends DerivedLayer {
   strategy: StrategyResult;
   reviewFlags: ReviewFlag[];
   /**
-   * D71: automatic events the corrected detection no longer finds — a point or
+   * D71, D73: automatic investigations and escape entries inside the corrected
+   * trial window that the corrected detection no longer finds — a point or
    * range correction removed their evidence. They have no row, are counted in
    * `metrics.correctionCount` exactly as an event delete is, and each raises
    * `auto_event_removed_by_correction`; kept here for the Review step, never
    * persisted. Each carries the corrections inside its span as `correctionIds`.
+   * A tracking failure the corrections repaired, and an automatic event the
+   * corrected trial never reached, are never listed.
    */
   removedAutoEvents: EventRecord[];
   correctionsApplied: { point: number; range: number; event: number };
@@ -134,9 +137,10 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   /*
    * D65: provenance is the difference between two detections. When any point or range correction
    * is in force, detection also runs over the automatic frames alone — same parameters, same trial
-   * start, same trial window — and the corrected detection's events are labelled by matching the
-   * two lists. With no frame correction the two detections are identical, so the single pass is
-   * its own auto-only pass and every event is automatic and untouched.
+   * start, to the later of its own trial end and the corrected one (D73) — and the corrected
+   * detection's events are labelled by matching the two lists. With no frame correction the two
+   * detections are identical, so the single pass is its own auto-only pass and every event is
+   * automatic and untouched.
    */
   const spans = frameCorrectionSpans(corrections.entries);
   let ctxAuto: EventContext | null = null;
@@ -160,15 +164,28 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   let detectedById = new Map<string, EventRecord>();
   const withProvenance = (detected: AutoEvents): EventRecord[] => {
     detectedById = new Map(detected.events.map((ev) => [ev.id, ev]));
-    if (ctxAuto === null || detected.endFrame === null) {
+    if (ctxAuto === null || proposal.startFrame === null || detected.endFrame === null) {
       removedAutoEvents = [];
       return detected.events;
     }
-    const autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
-      endFrame: detected.endFrame,
-      endReason: detected.endReason,
-    });
-    const matched = matchEvents(autoOnly.events, detected.events, spans);
+    // D73 (4): the auto-only pass runs to the later of its own trial end and the corrected one —
+    // never shorter than its own, so a range that turned an automatic investigation into the entry
+    // ending the trial still sees the investigation it replaced; never shorter than the corrected
+    // one, so investigations a removed entry uncovers are found on the automatic side and never
+    // read as human claims. A trial end that an event correction moved is the corrected end here.
+    let autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame);
+    if (autoOnly.endFrame !== null && autoOnly.endFrame < detected.endFrame) {
+      autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
+        endFrame: detected.endFrame,
+        endReason: detected.endReason,
+      });
+    }
+    // the corrected trial as frame indices: D73 (3) reads the leftovers against it
+    const window = {
+      startFrame: cleaned.track[proposal.startFrame]!.frameIndex,
+      endFrame: cleaned.track[detected.endFrame]!.frameIndex,
+    };
+    const matched = matchEvents(autoOnly.events, detected.events, spans, window);
     removedAutoEvents = matched.removedAutoEvents;
     return matched.events;
   };

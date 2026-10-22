@@ -20,9 +20,12 @@ export type ReviewFlagCode =
   | 'non_persistent_entry_noted'
   /**
    * Soft: a point or range correction removed the evidence of an automatic
-   * event, so the corrected detection no longer finds it. It has no row, is
-   * counted in `correctionCount` as an event delete is, and the in-memory
-   * analysis lists it; one flag per removed event, at its start frame (D71).
+   * investigation or escape entry inside the corrected trial window, so the
+   * corrected detection no longer finds it. It has no row, is counted in
+   * `correctionCount` as an event delete is, and the in-memory analysis lists
+   * it; one flag per removed event, at its start frame (D71). A tracking
+   * failure the corrections repaired, and an automatic event lying after the
+   * corrected trial end, are not removals (D73).
    */
   | 'auto_event_removed_by_correction';
 
