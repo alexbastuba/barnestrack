@@ -20,14 +20,21 @@ The work is four steps, and the page says the same thing at the top of each one:
 1. **Videos** — "Load the videos of one cohort. Each file is read in this browser: BarnesTrack
    parses its frame table and fingerprints its contents so the session can find the same file again
    after a reload. Nothing is uploaded."
-2. **Maze** — "Mark the platform, generate the hole ring, name the target hole and enter the
-   platform diameter. The map belongs to the whole session, so hole 7 means the same hole in every
-   video; a second video only needs to say where that maze sits in its own frame." D13 budgets at
-   most six clicks on the image for a new maze and at most three for a reused one; on the sample
-   recordings a new maze cost five, reusing it on a video from the same rig cost none, and three
-   where the camera had moved. The panel shows the running count. Hole numbers are counted from the
-   target hole: naming it once fixes the numbering for the cohort, and clicking the target in a
-   later video turns *that* video's ring onto it rather than renumbering everyone else (D49).
+2. **Maze** — "Place the platform by dragging its handles, by clicking three rim points or by
+   typing the numbers; generate the hole ring, name the target hole and enter the platform
+   diameter. The map belongs to the whole session, so hole 7 means the same hole in every video; a
+   second video only needs to say where that maze sits in its own frame." There are three ways to
+   place the maze. Dragging: the centre handle moves the whole maze, the platform-edge handle
+   resizes it and the ring-edge handle sets the hole ring's radius, and one drag counts as one
+   click on the image (D69). Three clicks: three points on the platform rim fit a least-squares
+   circle. Typed fields: centre, radius and ring ratio, which remain the authoritative numbers and
+   update live while a handle is dragged. The ring ratio is shared by every video in the session;
+   where the platform sits is each video's own. D13 budgets at most six clicks on the image for a
+   new maze and at most three for a reused one; on the sample recordings a new maze cost five,
+   reusing it on a video from the same rig cost none, and three where the camera had moved. The
+   panel shows the running count. Hole numbers are counted from the target hole: naming it once
+   fixes the numbering for the cohort, and clicking the target in a later video turns *that*
+   video's ring onto it rather than renumbering everyone else (D49).
 3. **Track** — "Run the automatic tracking pass over each video and watch it work. Tracking runs in
    the background, so you can keep working on the Videos and Maze steps while it does." A
    3-minute video takes a few seconds, and the page stays responsive while it happens.
