@@ -59,17 +59,50 @@ export const FETCH_BUTTON_HINT =
   'clips listed below from raw.githubusercontent.com into this browser and checks each one ' +
   'against the example cohort before using it. Nothing is uploaded.';
 
-/*
- * Names test53 only, which is wrong for the other two clips now that all three
- * are fetched. The sentence is pinned verbatim by
- * `tests/demo/fetch-sample-clip.test.ts`, so correcting the wording means
- * changing that assertion too; it is recorded in docs/known-limitations.md
- * rather than half-changed here. The three-fold repetition it once caused is
- * already fixed — the outcome line says the sentence once, not once per clip.
+/** `a`, `a and b`, `a, b and c`. */
+function listOfNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]!}`;
+}
+
+/** What to do when clips could not be fetched, naming every one of them. */
+export function offlineAdvice(filenames: readonly string[]): string {
+  const one = filenames.length === 1;
+  return (
+    `Check your connection, or download ${listOfNames(filenames)} yourself and drop ` +
+    `${one ? 'it' : 'them'} on the Videos step instead.`
+  );
+}
+
+/**
+ * The network failures of several clips as one sentence per kind of failure,
+ * naming every clip that failed that way: offline, all three fail alike, and
+ * three copies of one sentence is a 470-character announcement (D37).
  */
-const OFFLINE_MESSAGE =
-  'Could not reach the sample-data repository. Check your connection, or download ' +
-  'test53.mp4 yourself and drop it on the Videos step instead.';
+export function mergeNetworkFailures(failures: readonly NetworkFailure[]): string[] {
+  const byReason = new Map<string, string[]>();
+  for (const failure of failures) {
+    const names = byReason.get(failure.reason) ?? [];
+    names.push(failure.filename);
+    byReason.set(failure.reason, names);
+  }
+  return [...byReason].map(([reason, names]) => `${reason} for ${listOfNames(names)}. ${offlineAdvice(names)}`);
+}
+
+/** A failure to get a clip off the network, as the merge in the outcome line needs it. */
+export interface NetworkFailure {
+  /** The sentence's first clause, without the clip: `Could not reach the sample-data repository`. */
+  reason: string;
+  filename: string;
+}
+
+function networkFailed(reason: string, filename: string): FetchSampleClipResult {
+  return {
+    kind: 'failed',
+    message: `${reason}. ${offlineAdvice([filename])}`,
+    network: { reason, filename },
+  };
+}
 
 export interface FetchProgress {
   receivedBytes: number;
@@ -87,7 +120,8 @@ export interface FetchSampleClipOptions {
 
 export type FetchSampleClipResult =
   | { kind: 'ok'; file: File }
-  | { kind: 'failed'; message: string };
+  /** `network` is set when the clip never arrived, so several such failures can be merged. */
+  | { kind: 'failed'; message: string; network?: NetworkFailure };
 
 export type VerifyResult =
   | { kind: 'verified'; fingerprint: VideoFingerprint }
@@ -191,14 +225,11 @@ export async function fetchSampleClip(
   } catch {
     // An offline or blocked request rejects with a TypeError carrying no
     // useful detail, so the user gets the sentence rather than the error.
-    return { kind: 'failed', message: OFFLINE_MESSAGE };
+    return networkFailed('Could not reach the sample-data repository', descriptor.filename);
   }
 
   if (!response.ok) {
-    return {
-      kind: 'failed',
-      message: `The sample-data repository answered ${response.status}. ${OFFLINE_MESSAGE}`,
-    };
+    return networkFailed(`The sample-data repository answered ${response.status}`, descriptor.filename);
   }
 
   let bytes: Uint8Array;
@@ -217,7 +248,7 @@ export async function fetchSampleClip(
           'expects, so it was stopped and discarded.',
       };
     }
-    return { kind: 'failed', message: `The download did not finish. ${OFFLINE_MESSAGE}` };
+    return networkFailed('The download did not finish', descriptor.filename);
   }
 
   const verified = await verifyAgainstDescriptor(bytes, descriptor);

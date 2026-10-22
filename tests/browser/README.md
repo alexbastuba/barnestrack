@@ -64,13 +64,18 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   `.empty` placeholder hidden except the quality panel's "No gaps in the trial window" line, which
   is content; an event selected with `E` and kept with `K`; the hole-investigation radius factor
   retuned through its opened `details.param-block`, with the event count, the parameters hash and
-  the diff badge all changing; the export bundle downloaded and read — the six entries of D11 in
-  order, three `trials.csv` rows under the identity columns, and `parameters.json` hashing to the
-  `parameters_hash` on every row and on screen (`parameters.json` is the parameter set itself, so
-  the hash is reconciled rather than read from a field); then, once `.save-state.is-saved` shows, a
-  reload that brings back the three cards, the session name and the correction. Without that wait
-  the reload finds 0 cards. It skips only when `dist/` is missing. The axe scan covers every step
-  that renders (Videos, Maze, Track) and fails on `serious`/`critical` only; `KNOWN_VIOLATIONS` is
+  the diff badge all changing; (chunk 15) a reviewer named in `#session-reviewer`, then an event
+  selected by clicking its card — the events-table row (`aria-current`), the selected card beside
+  the video and the "Selected: …" line all follow — and kept with the Keep button on that card;
+  the export bundle downloaded and read — the six entries of D11 in order, three `trials.csv` rows
+  under the identity columns (`session_name` included since schema 2), `parameters.json` hashing to
+  the `parameters_hash` on every row and on screen (`parameters.json` is the parameter set itself,
+  so the hash is reconciled rather than read from a field), and the kept event's `events.csv` row
+  reading `confirmed = true`, `source = auto` and the reviewer's name; then, once
+  `.save-state.is-saved` shows, a reload that brings back the three cards, the session name, the
+  reviewer field, the keyboard-kept correction and the selection line. Without that wait the
+  reload finds 0 cards. It skips only when `dist/` is missing. The axe scan covers all four steps
+  (Review since chunk 15, scanned with an event selected) and fails on `serious`/`critical` only; `KNOWN_VIOLATIONS` is
   **empty** since chunk 10b fixed the maze step's scroll container, so any serious or critical
   finding fails the run. It makes no network request: the results-only path never fetches, every
   request off the preview origin is recorded and fails the flow, and `raw.githubusercontent.com` is
@@ -432,3 +437,37 @@ top of the page.
 - The export manifest table: names left, counts right in tabular numerals, contents left. The
   64-character hash breaks inside the line at 200 % rather than widening the page.
 - Status badges keep their glyph and word.
+
+### Chunk 15 — Review on a laptop, the action bars (D72)
+
+**`app-smoke.spec.ts`.** The shipped-UI flow gained the reviewer, the card-click selection, Keep
+from the selected card, the `events.csv` row check (`confirmed = true`, `source = auto`,
+`reviewer`) and the restored reviewer field and selection line after the reload (described in the
+spec list above). The axe loop now covers Review with an event selected; the six remaining
+`.table-scroll` boxes became `scrollRegion`s so it passes with the allowlist still empty. After
+`npm run build`: **10 passed** (twice in a row; one earlier full run failed "Escape cancels the
+replace confirmation" once and it passed alone and on both reruns — recorded as intermittent).
+`review.spec.ts` with `BARNESTRACK_SAMPLE_DIR`: 2 passed, after its relabel assertion was
+re-pointed at the new announcement ("Hole changed from 1 to 2 — revert it with …").
+
+**`scripts/screenshots.ts`** now writes to `notes/screens/chunk-15/`, checks tiers on every
+visible button (the example panel included, now tiered), and adds two Review shots: after `]`
+selects the first queued event (an investigation on test50), and after clicking the first escape
+entry's card (test51's marked entry, the longest card there is). For each it reports the box of
+seven regions and how many pixels of it are shown once scroll boxes and the window clip it.
+Measured on the example cohort (no video attached), CSS pixels from the top of the window, after
+the reviewer's fixes:
+
+| shot | video | card (shown) | evidence (shown) | actions | toolbar (shown) | queue nav | clip selector |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1366 × 768, investigation | 101–561 | 170–482 (all) | 311–428 (all) | 486–526 | 534–708 (174 px) | 80–153 | 23–53 |
+| 1366 × 768, escape entry | 101–561 | 260–783 (328 px, scrolls in its box) | 439–615 (part; scrolls) | 504–588 | 596–708 (112 px) | 170–243 | 23–53 |
+| 1400 × 866, investigation | 101–620 | 170–482 (all) | 311–428 (all) | 486–526 | 534–806 (272 px) | 80–153 | 23–53 |
+| 1400 × 866, escape entry | 101–620 | 260–783 (426 px, scrolls) | 439–615 (all) | 602–686 | 694–806 (112 px) | 170–243 | 23–53 |
+
+Every step's primary is at y = 728 (1366 × 768) and 824–826 (1400 × 866) at 100 %, inside the
+window; at 200 % it is at 722–753 of a 384 / 433 px window, and only the video and the clip
+selector of the Review shot are on screen (`docs/known-limitations.md`, "At 200 % zoom the action
+bar is not on the first screen"). No horizontal scroll, no untiered or multi-tier button and no contrast failure at any of
+the 20 measurements. The Maze step measured is BASE's: chunk 14's two-column stage was not merged
+into this branch.

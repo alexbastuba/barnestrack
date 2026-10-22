@@ -483,24 +483,65 @@ label {
 }
 
 /*
- * The way on from a step: bottom-right of the panel, the primary action only
- * when the step is actually finished, with the reason it is not beside it.
+ * The step's action bar (D72): stuck to the bottom of the window while the
+ * step is shown, so its one primary is always on screen. Sticky inside the
+ * step, not fixed: it stops at the end of the step's content and never sits
+ * over a dialog (the dialogs are in the top layer). Paper behind it so the
+ * content scrolling under it never shows through; a 1 px rule above it, flat
+ * like every panel (D70). The last thing in the step, so last in tab order.
  */
 .next-step {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--s3);
+  gap: var(--s2) var(--s3);
   margin-top: var(--s5);
-  padding-top: var(--s3);
-  border-top: 1px solid var(--line);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--line-strong);
+  background: var(--paper);
 }
 
 .next-step-hint {
   margin: 0;
   flex: 1 1 16rem;
   text-align: right;
+}
+
+.action-bar-secondary,
+.action-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.action-bar-status {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * At 200 % zoom (683 × 384 CSS px on a 1366 × 768 screen) the bar collapses to
+ * its primary, so it does not take a third of the window. A disabled primary
+ * keeps the line that says why (D70), which `has-reason` marks.
+ */
+@media (max-width: 760px), (max-height: 500px) {
+  .next-step {
+    margin-top: var(--s3);
+    padding: var(--s1) 0;
+  }
+
+  .next-step .action-bar-secondary,
+  .next-step:not(.has-reason) .action-bar-status {
+    display: none;
+  }
+
+  .next-step .action-bar-actions > :disabled:not(:only-child) {
+    display: none;
+  }
 }
 
 /* ---- panels --------------------------------------------------------------- */
@@ -1001,6 +1042,22 @@ label {
   text-align: left;
 }
 
+/*
+ * A table that marks its numeric cells (`has-num`): text cells read left, as
+ * text does, and only the `.num` cells — and their headers — right-align on
+ * the tabular figures. Opt-in, so a table that has not marked its numbers yet
+ * keeps today's all-right alignment rather than losing it.
+ */
+.mirror-table.has-num td,
+.mirror-table.has-num thead th {
+  text-align: left;
+}
+
+.mirror-table.has-num td.num,
+.mirror-table.has-num thead th.num {
+  text-align: right;
+}
+
 .mirror-table tr.is-target th,
 .mirror-table tr.is-target td {
   font-weight: 700;
@@ -1227,12 +1284,64 @@ label {
 @media (min-width: 1200px) {
   .review-stage {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 21rem;
+    grid-template-columns: minmax(0, 1fr) 24rem;
     gap: var(--s3);
     align-items: start;
   }
 
-  .review-stage .review-tools {
+  /*
+   * Chunk 15 (§5): the column beside the video is one window tall less the
+   * action bar, so the queue, the selected event's card with its evidence, and
+   * the tools are on screen with the frame; the tools take what is left and
+   * scroll inside it. Each tool is a button, so the scroll box is reachable
+   * from the keyboard by tabbing into it.
+   */
+  .review-stage-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    height: calc(100vh - 3.75rem);
+    min-height: 24rem;
+  }
+
+  .review-stage-side .review-current-event {
+    margin-top: 0;
+  }
+
+  /* Beside the video the selected card lists its own keys; the strip's copy would repeat them. */
+  .review-stage-side .current-event-hint {
+    display: none;
+  }
+
+  /*
+   * A long card (an escape entry's evidence and its flag) scrolls inside the
+   * column instead of running out of it over the timeline; its actions stay at
+   * the foot of the box, so Keep, Reclassify and Delete are always on screen.
+   */
+  .review-stage-side .review-selected {
+    flex: 0 1 auto;
+    min-height: 6rem;
+    overflow-y: auto;
+    /*
+     * Room for the 2 px focus ring drawn 2 px outside the card and its buttons
+     * (D70), kept when focus scrolls a card taller than the box to its top.
+     */
+    padding: var(--s1);
+    scroll-padding: var(--s1);
+  }
+
+  .review-stage-side .review-selected .event-actions {
+    position: sticky;
+    bottom: 0;
+    padding: var(--s1) 0;
+    background: var(--paper);
+  }
+
+  .review-stage-side .review-tools {
+    /* Basis 0: the tools take what the card leaves, down to 7rem, and give way to it first. */
+    flex: 1 1 0;
+    min-height: 7rem;
+    overflow-y: auto;
     flex-direction: column;
     flex-wrap: nowrap;
     margin: 0;
@@ -1241,6 +1350,60 @@ label {
   .review-stage .tool-group {
     width: 100%;
   }
+}
+
+/* The selected event's card beside the video: the list's card, with its actions. */
+.review-selected .event-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.review-selected .event-card {
+  cursor: default;
+}
+
+.selected-empty {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--line-strong);
+}
+
+.selection-line {
+  margin: 0 0 var(--s1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s2);
+}
+
+.event-action-reason {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/*
+ * A 3 px border, not an outline (the 2 px focus ring, D70, is the outline) and
+ * not a shadow (D70). The padding gives back what the border takes, so the
+ * card's content does not move when it is selected.
+ */
+.event-item.is-selected > .event-card {
+  border: 3px solid var(--accent);
+  padding: calc(var(--s2) - 2px) calc(var(--s3) - 2px);
+}
+
+.event-item.is-selected > .event-card.is-corrected {
+  padding: calc(var(--s2) - 1px) calc(var(--s3) - 1px);
+}
+
+/* The glyph is decoration beside the word, so it is given empty alternative text. */
+.badge-selected::before {
+  content: '▶ ' / '';
 }
 
 .tool-group {

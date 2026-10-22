@@ -19,6 +19,7 @@ import {
   SAMPLE_CLIP_FILENAME,
   SAMPLE_CLIP_URL,
   fetchSampleClip,
+  mergeNetworkFailures,
   verifyAgainstDescriptor,
   type FetchLike,
 } from '../../src/demo/fetch-sample-clip.js';
@@ -178,12 +179,27 @@ describe('fetchSampleClip', () => {
 
     const result = await fetchSampleClip(descriptor, { fetchImpl: offline });
 
+    // The sentence names the clip that failed, not test53 whichever it was.
     expect(result).toEqual({
       kind: 'failed',
       message:
         'Could not reach the sample-data repository. Check your connection, or download ' +
-        'test53.mp4 yourself and drop it on the Videos step instead.',
+        `${descriptor.filename} yourself and drop it on the Videos step instead.`,
+      network: { reason: 'Could not reach the sample-data repository', filename: descriptor.filename },
     });
+  });
+
+  it('merges the same network failure of several clips into one sentence naming each', () => {
+    expect(
+      mergeNetworkFailures([
+        { reason: 'Could not reach the sample-data repository', filename: 'test50.mp4' },
+        { reason: 'Could not reach the sample-data repository', filename: 'test51.mp4' },
+        { reason: 'The sample-data repository answered 404', filename: 'test53.mp4' },
+      ]),
+    ).toEqual([
+      'Could not reach the sample-data repository for test50.mp4 and test51.mp4. Check your connection, or download test50.mp4 and test51.mp4 yourself and drop them on the Videos step instead.',
+      'The sample-data repository answered 404 for test53.mp4. Check your connection, or download test53.mp4 yourself and drop it on the Videos step instead.',
+    ]);
   });
 
   it('reports an HTTP error with its status', async () => {

@@ -28,7 +28,9 @@ import {
   SAMPLE_CLIP_FILENAME,
   attachFetchedClip,
   fetchSampleClip,
+  mergeNetworkFailures,
   type FetchProgress,
+  type NetworkFailure,
 } from './fetch-sample-clip.js';
 
 export const LOAD_BUTTON_LABEL = 'Load example cohort';
@@ -94,7 +96,9 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   });
   confirmRow.hidden = true;
 
-  const loadButton = button(LOAD_BUTTON_LABEL, () => openConsent(), { class: 'example-load' });
+  // Tiers (D70): every button here is secondary but the dialog's confirm, which is the dialog's
+  // primary; `primary` stays beside `btn-primary` there because the tests click `.primary`.
+  const loadButton = button(LOAD_BUTTON_LABEL, () => openConsent(), { class: 'btn-secondary example-load' });
 
   /*
    * The one network request in the product, asked for before it is made (D2).
@@ -111,13 +115,13 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   const consentConfirm = button('Load the example and fetch the clips', () => {
     closeConsent();
     void onLoad(true);
-  }, { class: 'primary' });
+  }, { class: 'primary btn-primary' });
   // D33 keeps the results reachable with no network at all: the bundle is
   // local, and this is the button that delivers what the line above promises.
   const consentResultsOnly = button('Load the results only', () => {
     closeConsent();
     void onLoad(false);
-  }, { class: 'example-results-only' });
+  }, { class: 'btn-secondary example-results-only' });
   consentDialog.append(
     el('h3', { id: consentTitleId, text: 'Load the example cohort?' }),
     el('p', { text: FETCH_BUTTON_HINT }),
@@ -133,7 +137,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
       text: `${formatBytes(SAMPLE_CLIPS_TOTAL_BYTES)} in total, downloaded one after another. "Load the results only" downloads nothing from the internet; without the files there are no frames to correct.`,
     }),
     el('div', { class: 'example-dialog-actions' }, [
-      button('Cancel', () => closeConsent(), {}),
+      button('Cancel', () => closeConsent(), { class: 'btn-secondary' }),
       consentResultsOnly,
       consentConfirm,
     ]),
@@ -207,8 +211,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
 
       confirmRow.replaceChildren(
         el('span', { class: 'confirm-text', text: CONFIRM_TEXT }),
-        button(CONFIRM_ACCEPT_LABEL, () => finish(true), { class: 'danger' }),
-        button(CONFIRM_CANCEL_LABEL, () => finish(false)),
+        button(CONFIRM_ACCEPT_LABEL, () => finish(true), { class: 'btn-secondary danger' }),
+        button(CONFIRM_CANCEL_LABEL, () => finish(false), { class: 'btn-quiet' }),
       );
       confirmRow.hidden = false;
       loadButton.hidden = true;
@@ -267,6 +271,7 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
   async function fetchAllClips(): Promise<void> {
     let attachedCount = 0;
     const failures: string[] = [];
+    const networkFailures: NetworkFailure[] = [];
 
     for (const clip of SAMPLE_CLIPS) {
       const descriptor = store.videos.find((video) => video.filename === clip.filename);
@@ -291,7 +296,8 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
         },
       });
       if (result.kind === 'failed') {
-        failures.push(result.message);
+        if (result.network) networkFailures.push(result.network);
+        else failures.push(result.message);
         continue;
       }
       const attached = await attachFetchedClip(store, result.file);
@@ -300,9 +306,9 @@ export function mountExampleCohortPanel(context: ExampleCohortPanelContext): HTM
     }
 
     const verified = `${attachedCount} of ${SAMPLE_CLIPS.length} clips verified and attached`;
-    // Distinct sentences only: offline, all three fail the same way, and three
-    // copies of one sentence is a 470-character announcement (D37).
-    const distinct = [...new Set(failures)];
+    // One sentence per kind of network failure, naming every clip that failed that way, then
+    // any other failure once: three copies of one sentence is a 470-character announcement (D37).
+    const distinct = [...mergeNetworkFailures(networkFailures), ...new Set(failures)];
     say(
       distinct.length === 0
         ? `${verified} — frames and corrections are available.`

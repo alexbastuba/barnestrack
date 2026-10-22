@@ -17,6 +17,7 @@
  */
 import { fillHatched } from '../viz/figure.js';
 import { button, el, uniqueId } from './dom.js';
+import { RECLASSIFIED_LOSS } from './event-wording.js';
 import { ACCENT, DANGER, INK, INK_SOFT } from './overlay-draw.js';
 import {
   EVENT_BAR_BOTTOM,
@@ -46,7 +47,7 @@ import {
   type TrackLayout,
 } from './timeline-geometry.js';
 import { planEventLabels, type LabelCandidate } from './timeline-labels.js';
-import { eventAtFrame, stateAtFrame, type EventBar, type TimelineModel } from './timeline-model.js';
+import { describeBar, eventAtFrame, stateAtFrame, type EventBar, type TimelineModel } from './timeline-model.js';
 
 export type EventEdge = 'start' | 'end';
 
@@ -450,7 +451,12 @@ export class Timeline {
         id: ev.id,
         x: rect.x,
         width: rect.width,
-        full: `${ev.unlikely ? '! ' : ''}${ev.label}${ev.corrected ? ' user' : ''}`,
+        // An entry or a reclassified loss carries its full name when it fits (D67); every
+        // other bar keeps its hole number, which is what a reader scans the row for.
+        full:
+          ev.kind === 'escape_entry' || ev.wording === RECLASSIFIED_LOSS
+            ? `${ev.unlikely ? '! ' : ''}${ev.wording}`
+            : `${ev.unlikely ? '! ' : ''}${ev.label}${ev.corrected ? ' user' : ''}`,
         bare: ev.label,
       });
       colours.set(ev.id, ev.kind === 'escape_entry' ? '#ffffff' : INK);
@@ -745,7 +751,7 @@ export class Timeline {
     const edge = this.edgeUnder(x, y);
     const parts = [`frame ${frame} · ${t.toFixed(3)} s`];
     if (state) parts.push(STATE_WORD[state.state] ?? state.state);
-    if (ev) parts.push(`${ev.kind === 'investigation' ? 'investigation' : ev.kind === 'escape_entry' ? 'escape entry' : 'tracking failure'} ${ev.label}${ev.corrected ? ' (user)' : ''}`);
+    if (ev) parts.push(describeBar(ev));
     if (edge) parts.push(`drag to move the ${edge.edge} edge`);
     this.callbacks.onHover?.(parts.join(' · '));
   }

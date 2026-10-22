@@ -13,7 +13,8 @@ import type { DerivedAnalysis } from '../analysis/derive.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { CorrectionsLayer } from '../contracts/session.js';
 import type { DetectionState } from '../contracts/track.js';
-import { describeCorrection } from '../session/corrections.js';
+import { describeCorrection, isReclassification } from '../session/corrections.js';
+import { eventWording } from './event-wording.js';
 import { stateRuns, type StateRun } from '../viz/quality-strip.js';
 
 export interface EventBar {
@@ -25,6 +26,11 @@ export interface EventBar {
   endFrame: number;
   /** The text on the bar: the hole number, `T<n>` for the target, `entry`, or `?` for a failure. */
   label: string;
+  /**
+   * The event's full name (`eventWording`): an escape entry reads "Inferred escape
+   * entry", "Escape entry — confirmed" or "Escape entry — marked by you" (D67).
+   */
+  wording: string;
   corrected: boolean;
   /** An entry-shaped run at a non-target hole: flagged for review. */
   unlikely: boolean;
@@ -66,6 +72,17 @@ export function eventLabel(ev: Pick<EventRecord, 'kind' | 'holeIndex' | 'isTarge
   if (ev.kind === 'escape_entry') return 'entry';
   if (ev.kind === 'tracking_failure') return ev.holeIndex === null ? '? lost' : `? lost at ${ev.holeIndex}`;
   return ev.isTarget ? `T${ev.holeIndex}` : String(ev.holeIndex);
+}
+
+/**
+ * A bar as running text: `investigation T7 (user)`, `inferred escape entry`. An entry's and a
+ * reclassified loss's name already says whose it is and carries the word "entry", so neither the
+ * bar label nor "(user)" is added to it.
+ */
+export function describeBar(ev: Pick<EventBar, 'kind' | 'wording' | 'label' | 'corrected'>): string {
+  const name = ev.wording.charAt(0).toLowerCase() + ev.wording.slice(1);
+  if (ev.kind === 'escape_entry' || ev.wording.startsWith('Tracking loss')) return name;
+  return `${name} ${ev.label}${ev.corrected ? ' (user)' : ''}`;
 }
 
 const AUTO_EVENT_ID = /^auto-(?:investigation|escape_entry|tracking_failure)-h(?:\d+|x)-f(\d+)$/;
@@ -115,6 +132,9 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
 
   // The flag, not the prose: a corrected event's evidence is rewritten, its flag is not.
   const unlikelyIds = unlikelyEventIds(analysis);
+  const reclassified = new Set(
+    corrections.entries.filter(isReclassification).map((entry) => (entry.kind === 'event' ? entry.eventId : undefined)),
+  );
   const events: EventBar[] = analysis.events.map((ev) => ({
     id: ev.id,
     kind: ev.kind,
@@ -123,6 +143,7 @@ export function timelineModel(analysis: DerivedAnalysis, corrections: Correction
     startFrame: ev.startFrame,
     endFrame: ev.endFrame,
     label: eventLabel(ev),
+    wording: eventWording(ev, reclassified.has(ev.id)),
     corrected: ev.source === 'corrected',
     unlikely: unlikelyIds.has(ev.id),
   }));

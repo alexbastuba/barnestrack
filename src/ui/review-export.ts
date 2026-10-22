@@ -164,6 +164,12 @@ export interface ReviewExportCallbacks {
    * figure redraw — for each one, in the middle of building a file.
    */
   runQuietly?<T>(work: () => T): T;
+  /**
+   * Where the export button and its reason go when the step keeps them in its
+   * action bar (D72). Without it they sit under the manifest, as a section
+   * standing on its own.
+   */
+  placeActions?(button: HTMLButtonElement, reason: HTMLElement): void;
 }
 
 export interface ReviewExport {
@@ -274,14 +280,19 @@ export function createReviewExport(
     blocked.textContent = reason;
   }
 
-  root.append(
-    heading,
-    meta,
-    manifest,
-    exportButton,
-    blocked,
-    missing,
-  );
+  if (callbacks.placeActions) {
+    // One export button on the page, in the step's action bar; the manifest says where it is.
+    root.append(
+      heading,
+      meta,
+      manifest,
+      el('p', { class: 'hint export-pointer', text: 'Export bundle (.zip) is in the bar at the foot of the window.' }),
+      missing,
+    );
+    callbacks.placeActions(exportButton, blocked);
+  } else {
+    root.append(heading, meta, manifest, exportButton, blocked, missing);
+  }
   container.append(root);
   update();
 

@@ -396,53 +396,33 @@ session it is found (D39).
   anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
   gated on this count, so it can enable a step early; it never blocks one wrongly.
 
-- **The Review step still does not fit one 1400 × 866 screen.** Chunk 10b put the correction
-  toolbar in a column beside the video past 1200 px, which takes its ~150 px row out of the vertical
-  stack, and capped the stage at 60 vh sized to the clip's own aspect. Measured in Chrome at
-  1400 × 866 on the example cohort: the video/toolbar row starts at y = 744 and is 623 px tall, so
-  the timeline is below the fold. The 744 px above it is the app header (212), the stepper (47), the
-  step heading (25), the "what this step does" paragraph (72), the Definitions disclosure (38), the
-  video selector row (55), the unattached-video note (36), the status line (21) and the scrubber
-  (59). Reaching one screen needs the step's preamble to collapse once the user is working and the
-  stage to drop to roughly 35 vh — both changes to what the page always shows, which is a design
-  call rather than a layout fix, so the measurement is recorded rather than chased.
-
-- **Six more `.table-scroll` containers are still unreachable from the keyboard, one of them a live
-  serious failure.** Chunk 10b added `scrollRegion()` to `src/ui/dom.ts` and used it for the maze
-  step's mirror, which is the node the browser-smoke allowlist named. The identical containers at
-  `src/ui/components/quality-panel.ts:228, 282, 359`, `src/ui/review-step.ts:984, 1039, 1291` and
-  `src/ui/review-figures.ts:221` were left as they are. axe on the running Review step reports
-  `scrollable-region-focusable` (serious) against `.quality-strip > .mirror > .table-scroll`; it does
-  not fail the smoke run because the axe loop covers Videos, Maze and Track only, and adding the
-  Review step to that loop was out of this chunk's scope. The fix is one line per site — swap the
-  `el('div', { class: 'table-scroll' }, …)` for `scrollRegion(label, …)`.
+- **The timeline is below the fold once an event is selected.** Chunk 15 fits the decision onto
+  one screen at 1366 × 768 and 1400 × 866 (100 %): selecting an event scrolls the stage to the top,
+  and the video, the selected event's card with its evidence, the correction tools, the queue's
+  previous / next and the clip selector are all inside the window (measured by
+  `scripts/screenshots.ts`). The timeline, a full-width row under the stage, is not: retiming an
+  edge by dragging means scrolling down to it. `S` / `D` with Shift + ← / → retime from the stage
+  without it. The tools scroll inside their column when they do not fit, so the Trial group is
+  usually scrolled to rather than seen. A long card — an escape entry's evidence with its flag — scrolls
+  inside its own box at 1366 × 768 (328 of 523 px shown, the actions pinned at its foot), so the
+  end of its evidence sentence is scrolled to; the queue strip above it repeats the flag's message
+  in full, which is where that height goes.
 - **"N events to check" queues nearly every event.** `eventsToCheck` in `src/ui/review-queue.ts`
   puts an event in the queue when a review flag names it *or* any frame of its span is
   `low_confidence`, `ambiguous` or `not_detected`. D48 makes `partial_at_rim` / `small_blob` the
   ordinary state of a mouse with its head in a hole, which is exactly where an investigation is, so
   a single such frame queues the event. Measured on the example cohort: 15 of 16 events on test50,
-  5 and 6 on test51 and test53. The only way out of the queue is `source === 'corrected'`, and there
-  is no "reviewed, leave automatic" action, so clearing it means writing correction entries for
-  events that may be right — a false provenance record under D25 and D26. The rule wants either a
-  materiality threshold (uncertain frames as a share of the span) or an explicit "keep automatic"
-  mark; both are operational definitions and need Alex.
+  5 and 6 on test51 and test53 (2026-09 measurement; chunk 15's run of the example cohort shows 25
+  on test50). Keep (`K`, D64; on escape entries too since chunk 15, D67) takes an event out without
+  a false correction, so the queue can be emptied honestly — but one keystroke per event over
+  frames that were never doubtful. The rule wants a materiality threshold (uncertain frames as a
+  share of the span); that is an operational definition and needs Alex.
 
-- **Correction to the two entries above.** The entry saying the browser smoke run is "9 passed /
-  1 skipped with an empty allowlist" measured it with no `dist/` present; with `dist/` built the
-  shipped-UI flow ran and failed on stale selectors. Chunk 11 retuned and un-skipped that flow, so
-  that half of this correction no longer applies. What remains true: the axe scan passes with the
-  empty allowlist.
+- **The axe scan passes with an empty allowlist on all four steps.** Not a limitation; recorded
+  because two earlier entries here measured it wrongly. Chunk 15 added the Review step (with an
+  event selected) to the loop in `tests/browser/app-smoke.spec.ts`; it reports no serious or
+  critical violation, after the last six `.table-scroll` boxes became `scrollRegion`s.
 
-- **The offline message names test53 for all three clips.** `OFFLINE_MESSAGE` in
-  `src/demo/fetch-sample-clip.ts:70` tells a user who is offline to download "test53.mp4" whichever
-  clip failed. The real blocker is not that sentence but how failures are combined: naming the
-  failed clip makes the three offline failures three distinct sentences, and the aggregator in
-  `fetchAllClips` (`src/demo/example-cohort-ui.ts:302–309`) dedups only identical strings, so the
-  outcome line would say "Could not reach the sample-data repository" three times —
-  `tests/ui/example-cohort-dialog.test.ts:189` pins it to once (D37: a 470-character announcement).
-  Chunk 11 cut its change for that reason. Smallest fix, in the chunk that owns the UI: have the
-  aggregator merge the network failures into one sentence naming every clip that failed, then name
-  the clip in `OFFLINE_MESSAGE` and re-point `tests/demo/fetch-sample-clip.test.ts:174–186`.
 - **The generated tracking clip exercises the happy path only.** CI's end-to-end tracking check
   (`tests/browser/track.spec.ts`, clip from `encodeSyntheticMazeClip` in
   `tests/video/synthetic-clip.ts`) is one clean blob on a clean disc that walks to the target and
@@ -455,70 +435,33 @@ session it is found (D39).
 - **CI's browser-smoke job is not a required check.** It fails the workflow on a red spec, but
   whether a red run blocks a merge is a GitHub branch-protection setting, not a file in this
   repository. It has to be set on the repository by its owner.
-- **The empty Videos step has no primary action (D70).** D70 gives each step one filled primary,
-  its main action. Videos' intake action is "Choose a folder", which is secondary. The reason is
-  the shared Next-step button: it becomes primary once a video is in (`tests/ui/videos-step.test.ts`
-  pins that), and a primary intake would leave two filled primaries on the loaded step. So until a
-  video is loaded, the Videos step shows no primary. The file input and the drop zone carry the
-  intake.
-  - Track is consistent by a different route: Track all is primary and is disabled exactly when no
-    video is left to track, and a disabled primary is drawn unfilled.
-  - One state shows no filled primary at all on Track: a video that cannot be tracked (detached, or
-    the maze not placed on it) is neither untracked nor analysed, so Track all and Next step are
-    both disabled.
-  - Smallest fix, needing logic outside chunk 13's class-only rule: let the intake button hand its
-    tier to Next step when `videosMissing()` becomes null.
-- **The example-cohort panel's buttons carry no tier class.** `src/demo/example-cohort-ui.ts` is
-  outside chunk 13's files. Its buttons render with the bare `button` rule, which is the secondary
-  look, and the consent dialog's confirm keeps the legacy `primary` class, which the stylesheet
-  aliases to `btn-primary`. They look right, but a reader auditing tiers by class finds "Load
-  example cohort", "Load the results only", Cancel and the replace confirmation untiered.
-  Smallest fix: `btn-secondary` on the first three and `btn-secondary danger` on the confirmation.
-  Keep `primary` beside `btn-primary` on the dialog's confirm, because `.example-dialog .primary`
-  is what `tests/ui/example-cohort-dialog.test.ts` and `tests/browser/app-smoke.spec.ts` click.
-- **Two disabled buttons do not say why on screen (D70).**
-  - "Save session file" is disabled while the session has no videos, with no sentence beside it.
-  - "Keep (K)" gives its reason for refusing an escape entry or a tracking failure only as a
-    `title` tooltip, which a keyboard or touch user never sees.
-  - The other disabled controls all have a reason in a line next to them: Track all ("3 of 3 videos
-    tracked"), Previous/Next flagged (the queue count), Export map (the scale readout), Save PNG
-    (the figure note) and the Review tools (the not-attached note).
-  - Adding the two sentences is a text change in `app.ts` and `review-step.ts`, outside chunk 13.
-- **No step's primary is on the first screen (D70 check, chunk 13).** The Next-step button sits at
-  the foot of each step's panel, which is 1191–2631 px down at 1366 × 768. Review's Export is at
-  about 11 000 px of an 11 800 px page. At 200 % zoom the header and the status banner alone fill
-  the first screen. Nothing is unreachable — every control is in tab order and nothing scrolls
-  sideways — but "one thing to press" is never in view.
-  - Review's layout is chunk 15's.
-  - For the other steps, the smallest change is a sticky `.next-step` bar. That is a layout
-    decision for Alex rather than a styling fix.
-- **The interface still speaks schema 1 and the pre-D65 provenance; chunk 15 wires it.**
-  Everything D65–D68 added is in the contracts, the engine, the session store and the exports; the
-  Review step has no control for any of it and four of its readers assume the old shape. Nothing
-  in the interface sets `reviewer`, `trialType` or `targetHole`, so every session this build
-  creates has a null reviewer, every video is an acquisition trial with no target override, and
-  `no_escape_confirmed_by` and `reviewer` export blank; the only way to a probe trial or a
-  per-video target today is to edit the session file. `Keep (K)` is still disabled on anything but
-  an investigation (`src/ui/review-step.ts:528`), with an explanation at `:601` that D65 made
-  false: a confirmation now keeps the event's point, distances and evidence verbatim, so an escape
-  entry can be kept. The non-escape checkbox is still disabled beside any escape entry (`:928`),
-  though the engine now accepts a confirmation beside a non-persistent entry and raises the soft
-  `non_persistent_entry_noted` instead of a contradiction; the way through is still to delete the
-  entry. The events table labels a row "confirmed" only when `source === 'corrected'` (`:1543`),
-  which a confirmation no longer is, so a kept event reads as plain `auto` in the table — the event
-  card and the queue count were re-pointed, so the card says confirmed and the count falls. The
-  review canvas draws the map's target rather than the video's effective target (`:702`). The
-  metrics card prints `Escaped: no` for a probe trial's null (`src/ui/components/metrics-card.ts:230`),
-  and the change badge prints `null` for a null error count
-  (`src/ui/components/describe-diff.ts:196`). No control reclassifies an escape entry as a
-  tracking failure, and `physically_unlikely_entry` is still the only way such an entry reaches a
-  person. D67 asks for the entry to read as an inference "everywhere it appears", and two places
-  still state it as a fact: the detector's evidence sentence ("Escape-box entry at the target hole
-  7: …", `src/analysis/events.ts`), left alone because the migration test holds the 0.1.0 evidence
-  text verbatim, and the event card, which shows that sentence; the five-state wording in
-  `ESCAPE_ENTRY_STATE_DEFINITIONS` (`src/analysis/parameters.ts`) is tested but shown nowhere yet.
-  The smallest edits this chunk made inside the interface to keep it working are listed in the
-  chunk report, with line numbers, for chunk 15 to own.
+- **One Track state shows no filled primary.** A video that cannot be tracked (detached, or the
+  maze not placed on it) is neither untracked nor analysed, so Track all untracked steps out of the
+  action bar and Next step stays disabled. The bar's status line says why (`trackMissing`), so the
+  disabled button is not silent, but there is nothing filled to press.
+- **At 200 % zoom the action bar is not on the first screen (D72).** The bar is `position: sticky`
+  inside its step, as D72 asks, so it cannot rise above the top of the step — and at 200 % the app
+  header and the status banner alone fill the first screen (the step starts at about y = 720–750 of
+  a 384 px window). Once the step is scrolled into view the bar stays at the foot of the window.
+  At 100 % every step's primary is on the first screen at 1366 × 768 and 1400 × 866
+  (`scripts/screenshots.ts`). A collapsing header at narrow heights would close the gap; that is a
+  layout decision for Alex.
+- **The export still states an inferred escape entry's evidence as a fact (D67).** The interface
+  names the detector's entry "Inferred escape entry" and prefixes its evidence "Inferred — "
+  (`src/ui/event-wording.ts`), but `events.csv` carries the engine's sentence verbatim ("Escape-box
+  entry at the target hole 7: …", `src/analysis/events.ts`), which the migration test pins to the
+  0.1.0 text. A reader of the CSV alone tells an inference from a confirmation by `confirmed` and
+  `source`, not by the evidence words. Changing the sentence is an engine and fixture change.
+- **A target override the store clears on a new map is named only while the page is open.**
+  `setMazeMap` drops a per-video `targetHole` that the new map no longer has, and returns nothing
+  that says so (D68). The video card notices the override it was showing go and says "Target
+  override cleared — hole N no longer exists on this map", but a reload, or a map change made
+  while the Videos step was never rendered, loses the note: the descriptor simply reads "map's
+  target". Smallest fix: the store returns (or flags) the videos it cleared.
+- **The selected event is remembered per browser tab, not in the session.** The selection survives
+  a reload through `sessionStorage` (`src/ui/selection-memory.ts`), deliberately outside the
+  session file so the contract is unchanged. A new tab, another browser, or a loaded session file
+  starts with nothing selected; a remembered event that no longer exists is dropped silently.
 - **A kind change between the two detections exports as `source = corrected`.** D65 matches an
   automatic event to a corrected one by kind and hole. A point correction that turns an automatic
   investigation at the target into an escape entry — or an entry into an investigation — finds no
@@ -602,10 +545,6 @@ session it is found (D39).
   regenerated). The loader sniffs the gzip magic bytes and falls back to plain UTF-8, so
   a host that serves `.gz` with `Content-Encoding: gzip` — where `fetch` has already decoded the
   body — works too.
-- **Only `test53.mp4` can be fetched.** The button downloads the smallest clip (496,723 bytes);
-  test50 and test51 have to be dropped by hand from a local copy of the sample-data repository.
-  Fetching 3 MB of video on a click is not something to do without asking, and one attached clip is
-  enough to demonstrate frame-level work (D2, D33).
 - **Input format.** MP4 with H.264 (AVC) video only (D4, O13). Other containers/codecs are listed
   in the UI with the reason, never silently dropped, and with a re-encode hint:
 

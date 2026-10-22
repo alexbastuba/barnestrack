@@ -16,9 +16,11 @@ import {
   formatHole,
   formatSeconds,
 } from '../../src/ui/components/index.js';
+import type { EventRecord } from '../../src/contracts/events.js';
 import type { SessionFile } from '../../src/contracts/session.js';
-import { analyseAllVideos } from '../../src/session/analyse.js';
-import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange } from '../../src/session/corrections.js';
+import { isPersistentEscape } from '../../src/analysis/metrics.js';
+import { analyseAllVideos, analyseVideo } from '../../src/session/analyse.js';
+import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange, setPoint, setTrialStart } from '../../src/session/corrections.js';
 import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
 import { eventRows } from '../../src/export/rows.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
@@ -39,7 +41,10 @@ interface Harness {
   session: SessionFile;
 }
 
-function mount(session: SessionFile = syntheticSession()): Harness {
+function mount(session: SessionFile = syntheticSession(), options: { keepSelection?: boolean } = {}): Harness {
+  // The selected event is remembered per page in sessionStorage (selection-memory.ts); each
+  // mount is a fresh page unless a test is checking exactly that memory.
+  if (!options.keepSelection) sessionStorage.clear();
   const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION, { autosaveDelayMs: 0 });
   store.replaceSession(session);
   analyseAllVideos(store); // `replaceSession` drops the caches (A2)
@@ -60,6 +65,16 @@ function mount(session: SessionFile = syntheticSession()): Harness {
 
 function panel(step: Step, id: string): HTMLElement {
   return step.body.querySelector<HTMLElement>(`#${id}`)!;
+}
+
+/** The one Export bundle button, in the step's action bar (D72), never a second one by the manifest. */
+function exportButton(step: Step): HTMLButtonElement {
+  const buttons = [...step.body.querySelectorAll<HTMLButtonElement>('button')].filter(
+    (b) => b.textContent === 'Export bundle (.zip)',
+  );
+  expect(buttons).toHaveLength(1);
+  expect(buttons[0]!.closest('.action-bar')).not.toBeNull();
+  return buttons[0]!;
 }
 
 /**
@@ -175,7 +190,7 @@ describe('the step re-derives what the store invalidated', () => {
 
     expect(store.videos.map((v) => store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
     expect(step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
-    expect(step.body.querySelector<HTMLButtonElement>('#review-export button')!.disabled).toBe(false);
+    expect(exportButton(step).disabled).toBe(false);
     expect(step.body.querySelector<HTMLElement>('#review-export .figure-missing')!.hidden).toBe(true);
   });
 
@@ -186,7 +201,7 @@ describe('the step re-derives what the store invalidated', () => {
     harness.store.setMazeTransform(first.id, { ...first.mazeTransform, rotationDeg: 3 });
 
     expect(harness.store.videos.map((v) => harness.store.analysisFor(v.id)?.derived ?? null)).not.toContain(null);
-    expect(panel(harness.step, 'review-export').querySelector<HTMLButtonElement>('button')!.disabled).toBe(false);
+    expect(exportButton(harness.step).disabled).toBe(false);
     expect(harness.step.body.querySelector<HTMLElement>('.figure-missing-block')!.hidden).toBe(true);
   });
 });
@@ -413,9 +428,12 @@ describe('the review queue', () => {
   it('counts the events that want a human, between the video and the timeline', () => {
     const bar = strip();
     expect(bar).not.toBeNull();
-    // Directly under the video and the toolbar, and still above the timeline.
-    expect(bar.previousElementSibling!.classList.contains('review-stage')).toBe(true);
-    expect(bar.nextElementSibling!.classList.contains('timeline')).toBe(true);
+    // In the stage, at the head of the column beside the video, above the tools; the stage
+    // itself is still above the timeline.
+    expect(bar.parentElement!.classList.contains('review-stage-side')).toBe(true);
+    expect(bar.nextElementSibling!.id).toBe('review-selected');
+    expect(bar.nextElementSibling!.nextElementSibling!.classList.contains('review-tools')).toBe(true);
+    expect(bar.closest('.review-stage')!.nextElementSibling!.classList.contains('timeline')).toBe(true);
     expect(count()).toBe(describeQueue(queued().length));
     expect(queued().length).toBeGreaterThan(0);
   });
@@ -558,7 +576,8 @@ describe('the review queue', () => {
     next.click();
     const kept = harness.store.analysisFor(video.id)!.derived!.events.find((e) => e.id === before[0])!;
 
-    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+    // Keep sits on the selected event's card, beside the evidence.
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-selected button')].find(
       (b) => b.textContent === 'Keep (K)',
     )!;
     expect(keep.disabled).toBe(false);
@@ -604,24 +623,306 @@ describe('the review queue', () => {
     expect(count()).toBe(describeQueue(before.length));
   });
 
-  it('refuses to keep an escape entry or a tracking failure, whose numbers would be recomputed', () => {
+  it('refuses Keep on a tracking failure, and says why on screen', () => {
     const video = harness.store.videos[0]!;
-    const other = harness.store
+    const failure = harness.store
       .analysisFor(video.id)!
-      .derived!.events.find((e) => e.kind !== 'investigation');
-    expect(other, 'the fixture has no non-investigation event').toBeDefined();
+      .derived!.events.find((e) => e.kind === 'tracking_failure');
+    expect(failure, 'the fixture has no tracking failure on its first video').toBeDefined();
 
     // Selecting it the way the mirror table does.
     const row = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-events-mirror th button')].find(
-      (b) => b.getAttribute('aria-label')?.includes(`frame ${other!.startFrame}`),
+      (b) => b.getAttribute('aria-label')?.includes(`frame ${failure!.startFrame}`),
     )!;
     row.click();
 
-    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('.queue-step')].find(
+    const panelButtons = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-selected button')];
+    const keep = panelButtons.find((b) => b.textContent === 'Keep (K)')!;
+    expect(keep.disabled).toBe(true);
+    const reason = harness.step.body.querySelector<HTMLElement>(`#${keep.getAttribute('aria-describedby')!}`)!;
+    expect(reason.hidden).toBe(false);
+    expect(reason.textContent).toContain('Keep is off for a tracking failure');
+  });
+});
+
+/** Presses a key the way the step hears it: from inside the step, here the timeline surface. */
+function press(step: Step, key: string, shiftKey = false): void {
+  step.body
+    .querySelector<HTMLElement>('.timeline-surface')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true }));
+}
+
+/** The selection as every view draws it: the line, the table row, the card, the playhead. */
+function selectionSeen(step: Step): { line: string; row: string | null; card: string | null; frame: number } {
+  const row = step.body.querySelector('#review-events-mirror tr.is-selected');
+  const card = step.body.querySelector('#review-events li.event-item.is-selected');
+  return {
+    line: step.body.querySelector('#review-selection-line')!.textContent ?? '',
+    row: row?.getAttribute('aria-current') === 'true' ? (row.querySelector('th button')?.getAttribute('aria-label') ?? '') : null,
+    card: card?.getAttribute('data-event-id') ?? null,
+    frame: playheadFrame(step),
+  };
+}
+
+describe('one selection, from every route (§1)', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    harness = mount();
+  });
+
+  const events = () => harness.store.analysisFor(harness.store.videos[0]!.id)!.derived!.events;
+
+  it('says in one sentence what to do while nothing is selected', () => {
+    expect(selectionSeen(harness.step).line).toMatch(/^Nothing selected — click an event card/);
+    expect(harness.step.body.querySelector('#review-selected')!.textContent).toContain('Nothing selected');
+  });
+
+  it('a card click selects the event and seeks to its first frame', () => {
+    const target = events()[2]!;
+    const card = harness.step.body.querySelector<HTMLButtonElement>(
+      `#review-events li[data-event-id="${target.id}"] .event-card`,
+    )!;
+    card.click();
+    const seen = selectionSeen(harness.step);
+    expect(seen.frame).toBe(target.startFrame);
+    expect(seen.card).toBe(target.id);
+    expect(seen.row).toContain(`frame ${target.startFrame}`);
+    expect(seen.line).toBe(
+      `Selected: investigation · hole ${target.holeIndex} · frames ${target.startFrame.toLocaleString()}–${target.endFrame.toLocaleString()}`,
+    );
+    expect(card.getAttribute('aria-current')).toBe('true');
+    // The selected card beside the video is the same event, with its evidence.
+    expect(harness.step.body.querySelector('#review-selected .event-item')!.getAttribute('data-event-id')).toBe(target.id);
+    expect(harness.step.body.querySelector('#review-selected .event-evidence')).not.toBeNull();
+  });
+
+  it('right-aligns only the numbers in the events table (.num)', () => {
+    const table = harness.step.body.querySelector('#review-events-mirror table')!;
+    expect(table.classList.contains('has-num')).toBe(true);
+    const headers = [...table.querySelectorAll('thead th')].map((th) => [th.textContent, th.classList.contains('num')]);
+    expect(headers).toContainEqual(['Start (s)', true]);
+    expect(headers).toContainEqual(['Point used', false]);
+    expect(headers).toContainEqual(['Source', false]);
+    const cells = table.querySelector('tbody tr')!.querySelectorAll('td');
+    expect(cells[3]!.classList.contains('num')).toBe(true); // start (s)
+    expect(cells[5]!.classList.contains('num')).toBe(false); // point used
+  });
+
+  it('E selects the same way, and Shift+E goes back', () => {
+    press(harness.step, 'e');
+    const first = selectionSeen(harness.step);
+    const ev = events().find((e) => e.id === first.card)!;
+    expect(ev).toBeDefined();
+    expect(first.frame).toBe(ev.startFrame);
+    expect(first.row).toContain(`frame ${ev.startFrame}`);
+    expect(first.line).toContain('Selected: ');
+    press(harness.step, 'e');
+    expect(selectionSeen(harness.step).card).not.toBe(first.card);
+  });
+
+  it('a click on an event bar on the timeline sets the same selection', () => {
+    const canvas = stubCanvasRect(harness.step);
+    // An automatic event no other event overlaps, so the bar under the pointer is unambiguous.
+    const all = events();
+    const target = all.find(
+      (ev) => ev.source === 'auto' && !all.some((other) => other !== ev && other.startFrame <= ev.endFrame && ev.startFrame <= other.endFrame),
+    )!;
+    const frameCount = harnessFrameCount(harness.step);
+    const middle = Math.round((target.startFrame + target.endFrame) / 2);
+    const x = frameToX(middle, { first: 0, last: frameCount - 1 }, 900);
+    canvas.dispatchEvent(pointer('pointerdown', x, EVENTS_ROW_Y));
+    canvas.dispatchEvent(pointer('pointerup', x, EVENTS_ROW_Y));
+    const seen = selectionSeen(harness.step);
+    expect(seen.card).toBe(target.id);
+    expect(seen.row).toContain(`frame ${target.startFrame}`);
+    expect(seen.line).toContain(`hole ${target.holeIndex}`);
+  });
+
+  it('says how to revert every correction it applies', () => {
+    press(harness.step, 'e');
+    const ev = events().find((e) => e.id === selectionSeen(harness.step).card)!;
+    const select = harness.step.body.querySelector<HTMLSelectElement>('select[aria-label="Hole of the selected event"]')!;
+    const moved = ((ev.holeIndex ?? 0) + 1) % 20;
+    select.value = String(moved);
+    select.dispatchEvent(new Event('change'));
+    expect(harness.said.at(-1)).toContain(`Hole changed from ${ev.holeIndex} to ${moved}`);
+    expect(harness.said.at(-1)).toContain('revert it with “Revert to automatic” in the Corrections list');
+  });
+
+  it('Escape drops the selection everywhere: line, card beside the video, list, memory', () => {
+    press(harness.step, 'e');
+    const id = selectionSeen(harness.step).card!;
+    const key = `barnestrack:selected-event:${harness.store.current.sessionId}:${harness.store.videos[0]!.id}`;
+    expect(sessionStorage.getItem(key)).toBe(id);
+    press(harness.step, 'Escape');
+    const seen = selectionSeen(harness.step);
+    expect(seen.line).toMatch(/^Nothing selected/);
+    expect(seen.card).toBeNull();
+    expect(seen.row).toBeNull();
+    expect(harness.step.body.querySelector('#review-selected .event-item')).toBeNull();
+    expect(harness.step.body.querySelector('#review-selected button')).toBeNull();
+    expect(sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it('refuses Keep on an event that already carries a correction, so the correction is not lost', () => {
+    const video = harness.store.videos[0]!;
+    const target = events().find((e) => e.kind === 'investigation' && e.source === 'auto')!;
+    harness.store.setCorrections(
+      video.id,
+      editEvent(harness.store.analysisFor(video.id)!.corrections, target.id, { holeIndex: ((target.holeIndex ?? 0) + 1) % 20 }, {
+        id: 'test-edit-before-keep',
+        timestamp: '2026-10-21T12:00:00.000Z',
+      }),
+    );
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    const before = harness.store.analysisFor(video.id)!.corrections.entries;
+    harness.step.body
+      .querySelector<HTMLButtonElement>(`#review-events li[data-event-id="${target.id}"] .event-card`)!
+      .click();
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-selected button')].find(
       (b) => b.textContent === 'Keep (K)',
     )!;
     expect(keep.disabled).toBe(true);
-    expect(keep.title).toContain('cannot be kept');
+    press(harness.step, 'k');
+    expect(harness.store.analysisFor(video.id)!.corrections.entries).toBe(before);
+    expect(harness.said.at(-1)).toContain('this event carries your edit. Revert the edit');
+  });
+
+  it('a revert does not tell the user to revert it', () => {
+    press(harness.step, 'e');
+    press(harness.step, 't');
+    expect(harness.said.at(-1)).toContain('revert it with');
+    const revert = [...harness.step.body.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'Revert trial start',
+    )!;
+    revert.click();
+    expect(harness.said.at(-1)).toMatch(/^Trial start reverted to automatic\./);
+    expect(harness.said.at(-1)).not.toContain('revert it with');
+  });
+
+  it('comes back after a reload, and a remembered event that is gone is dropped', () => {
+    press(harness.step, 'e');
+    const before = selectionSeen(harness.step);
+    harness.step.body.remove();
+    document.body.replaceChildren();
+    const again = mount(harness.store.current, { keepSelection: true });
+    expect(selectionSeen(again.step).line).toBe(before.line);
+
+    sessionStorage.setItem(
+      `barnestrack:selected-event:${again.store.current.sessionId}:${again.store.videos[0]!.id}`,
+      'auto-investigation-h3-f999999',
+    );
+    again.step.body.remove();
+    document.body.replaceChildren();
+    const third = mount(again.store.current, { keepSelection: true });
+    expect(selectionSeen(third.step).line).toMatch(/^Nothing selected/);
+  });
+});
+
+/*
+ * D67 in the interface: the detector's escape entry is an inference a person can keep, reject or
+ * reclassify. The fixture's second and third videos end in an entry.
+ */
+describe('an escape entry is an inference', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    harness = mount();
+  });
+
+  /** Shows the first video with an escape entry and selects that entry by clicking its card. */
+  function selectEntry(): { videoId: string; entry: EventRecord } {
+    for (const video of harness.store.videos) {
+      const entry = harness.store.analysisFor(video.id)?.derived?.events.find((e) => e.kind === 'escape_entry');
+      if (!entry) continue;
+      const select = harness.step.body.querySelector<HTMLSelectElement>('.review-top select')!;
+      select.value = video.id;
+      select.dispatchEvent(new Event('change'));
+      harness.step.body
+        .querySelector<HTMLButtonElement>(`#review-events li[data-event-id="${entry.id}"] .event-card`)!
+        .click();
+      return { videoId: video.id, entry };
+    }
+    throw new Error('the fixture has no escape entry');
+  }
+
+  const entries = (videoId: string) => harness.store.analysisFor(videoId)!.corrections.entries;
+
+  it('reads "Inferred escape entry" on the card, in the table and in the selection line', () => {
+    const { entry } = selectEntry();
+    const card = harness.step.body.querySelector(`#review-events li[data-event-id="${entry.id}"] .event-kind`)!;
+    expect(card.textContent).toBe('Inferred escape entry ');
+    const row = harness.step.body.querySelector('#review-events-mirror tr.is-selected th button')!;
+    expect(row.textContent).toBe('Inferred escape entry');
+    expect(harness.step.body.querySelector('#review-selection-line')!.textContent).toContain('Selected: inferred escape entry');
+    expect(harness.step.body.querySelector('#review-selected .event-evidence')!.textContent).toMatch(/^Inferred — /);
+  });
+
+  it('Keep writes the confirmed edit, and the export says confirmed = true', () => {
+    const { videoId, entry } = selectEntry();
+    const keep = [...harness.step.body.querySelectorAll<HTMLButtonElement>('#review-selected button')].find(
+      (b) => b.textContent === 'Keep (K)',
+    )!;
+    expect(keep.disabled).toBe(false);
+    keep.click();
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+
+    expect(entries(videoId)).toContainEqual(
+      expect.objectContaining({ kind: 'event', action: 'edit', eventId: entry.id, confirmed: true }),
+    );
+    const after = harness.store.analysisFor(videoId)!.derived!.events.find((e) => e.id === entry.id)!;
+    expect(after.confirmed).toBe(true);
+    expect(after.kind).toBe('escape_entry');
+    const row = eventRows(harness.store.current, TOOL_VERSION).find((r) => r.videoId === videoId && r.eventId === entry.id)!;
+    expect(row.confirmed).toBe(true);
+    // The table's label is read from `confirmed`, and the card names it.
+    const source = [...harness.step.body.querySelectorAll('#review-events-mirror tbody tr')]
+      .find((tr) => tr.querySelector('th button')?.getAttribute('aria-label')?.includes(`frame ${entry.startFrame}`))!
+      .querySelectorAll('td')[8]!.textContent;
+    expect(source).toBe('auto · confirmed, no change');
+    expect(harness.step.body.querySelector(`#review-events li[data-event-id="${entry.id}"] .event-kind`)!.textContent).toBe(
+      'Escape entry — confirmed ',
+    );
+  });
+
+  it('L reclassifies it as tracking loss with one edit carrying newKind', () => {
+    const { videoId, entry } = selectEntry();
+    press(harness.step, 'l');
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    expect(entries(videoId)).toContainEqual(
+      expect.objectContaining({ kind: 'event', action: 'edit', eventId: entry.id, newKind: 'tracking_failure' }),
+    );
+    const after = harness.store.analysisFor(videoId)!.derived!.events.find((e) => e.id === entry.id)!;
+    expect(after.kind).toBe('tracking_failure');
+    expect(harness.step.body.querySelector(`#review-events li[data-event-id="${entry.id}"] .event-kind`)!.textContent).toBe(
+      'Tracking loss — reclassified by you ',
+    );
+  });
+
+  it('the button on the entry card writes the same edit', () => {
+    const { videoId, entry } = selectEntry();
+    const button = [
+      ...harness.step.body.querySelectorAll<HTMLButtonElement>(`#review-events li[data-event-id="${entry.id}"] button`),
+    ].find((b) => b.textContent === 'Not an entry — tracking loss (L)')!;
+    button.click();
+    expect(entries(videoId)).toContainEqual(
+      expect.objectContaining({ kind: 'event', action: 'edit', eventId: entry.id, newKind: 'tracking_failure' }),
+    );
+  });
+
+  it('L on anything else says why and writes nothing', () => {
+    const video = harness.store.videos[0]!;
+    const before = entries(video.id);
+    press(harness.step, 'e');
+    press(harness.step, 'l');
+    expect(entries(video.id)).toBe(before);
+    expect(harness.said.at(-1)).toContain('Only an escape entry the tracker inferred can be reclassified');
   });
 
   it('names the count per video in the selector', () => {
@@ -790,6 +1091,81 @@ describe('confirming that a trial had no escape', () => {
     reason().value = '   ';
     reason().dispatchEvent(new Event('change'));
     expect(reason().value).toBe('nothing went in — checked again at 2x');
+  });
+
+  /** Shows test53, whose automatic escape entry runs from frame 851 to the end of the clip. */
+  function showTest53(): string {
+    const video = harness.store.videos[2]!;
+    const select = harness.step.body.querySelector<HTMLSelectElement>('.review-top select')!;
+    select.value = video.id;
+    select.dispatchEvent(new Event('change'));
+    return video.id;
+  }
+
+  it('is disabled beside an entry that ended the trial, and says so', () => {
+    showTest53();
+    expect(box().disabled).toBe(true);
+    expect(hint()).toContain('ended the trial');
+    expect(hint()).toContain('reclassify it as tracking loss (L)');
+  });
+
+  it('is enabled beside an entry too short to end the trial, and says the entry stays', () => {
+    const videoId = showTest53();
+    // The animal is seen again at the hole it was lost at, from frame 890: the entry (851–889,
+    // about 1.3 s) is over the minimum duration and under the persist cutoff.
+    const track = harness.store.analysisFor(videoId)!.derived!.cleanedTrack;
+    const atHole = track[848]!.centroid;
+    let layer = harness.store.analysisFor(videoId)!.corrections;
+    for (let f = 890; f < track.length; f++) {
+      layer = setPoint(layer, f, 'centroid', { x: atHole.x, y: atHole.y, confidence: 1, valid: true }, { id: `seen-${f}`, timestamp: '2026-10-20T12:00:00.000Z' });
+    }
+    harness.store.setCorrections(videoId, layer);
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    const entry = harness.store.analysisFor(videoId)!.derived!.events.find((e) => e.kind === 'escape_entry');
+    expect(entry, 'the fixture no longer yields a short entry').toBeDefined();
+    expect(harness.store.analysisFor(videoId)!.derived!.metrics.escaped).toBe(false);
+
+    expect(box().disabled).toBe(false);
+    expect(hint()).toContain('too short to end the trial, so it stays');
+    expect(hint()).toContain('non_persistent_entry_noted');
+
+    confirm('it put its head in and came straight back out');
+    const derived = harness.store.analysisFor(videoId)!.derived!;
+    expect(derived.reviewFlags.map((flag) => flag.code)).toContain('non_persistent_entry_noted');
+    expect(derived.events.some((e) => e.kind === 'escape_entry')).toBe(true); // the entry stays
+  });
+
+  it('is disabled beside a persistent entry that did not end the trial, and says so', () => {
+    const videoId = showTest53();
+    // The second half of the engine's rule (derive.ts): a persistent entry outside the trial window.
+    // The detector drops an entry that starts outside it (a lowered cutoff loses test53's own
+    // entry), so, as derive.test.ts does, the entry is edited to start before the trial start —
+    // moved to frame 300, since test53's starts at 0. The entry still runs to the end of the clip,
+    // so it is persistent, and it cannot end a trial it starts before.
+    const before = analyseVideo(harness.store, videoId)!.analysis;
+    expect(before.trial.endReason).toBe('escape');
+    const auto = before.events.find((e) => e.kind === 'escape_entry')!;
+    const meta = (id: string) => ({ id, timestamp: '2026-10-21T12:00:00.000Z' });
+    let layer = harness.store.analysisFor(videoId)!.corrections;
+    layer = setTrialStart(layer, 300, meta('late-start'));
+    layer = editEvent(layer, auto.id, { startFrame: 250 }, meta('early-entry'));
+    harness.store.setCorrections(videoId, layer);
+    analyseAllVideos(harness.store);
+    harness.step.refresh();
+    const derived = harness.store.analysisFor(videoId)!.derived!;
+    const entry = derived.events.find((e) => e.kind === 'escape_entry');
+    expect(entry, 'the entry outside the trial window is still detected').toBeDefined();
+    expect(entry!.startFrame).toBe(250);
+    expect(derived.reviewFlags.map((flag) => flag.code)).toContain('correction_out_of_range');
+    expect(analyseVideo(harness.store, videoId)!.analysis.trial.endReason).not.toBe('escape');
+    const lastFrameIndex = derived.cleanedTrack[derived.cleanedTrack.length - 1]!.frameIndex;
+    expect(isPersistentEscape(entry!, lastFrameIndex, harness.store.parameters)).toBe(true);
+
+    expect(box().disabled).toBe(true);
+    expect(hint()).toContain('is persistent');
+    expect(hint()).not.toContain('ended the trial');
+    expect(hint()).toContain(`frame ${entry!.startFrame}`);
   });
 
   it('goes back to review when the confirmation is unticked', () => {

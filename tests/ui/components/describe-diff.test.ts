@@ -10,8 +10,10 @@ import type { DerivedAnalysis } from '../../../src/analysis/derive.js';
 import type { EventRecord } from '../../../src/contracts/events.js';
 import {
   NO_CHANGE,
+  countText,
   describeDiff,
   describeEventCounts,
+  escapedText,
   eventDeltas,
   retimedEvents,
 } from '../../../src/ui/components/describe-diff.js';
@@ -365,8 +367,27 @@ describe('describeDiff over a real re-derivation', () => {
       ...p,
       targetQuadrant: { holeSpan: 9.5 },
     }));
-    expect(after.metrics.targetQuadrantTime_s).toBeGreaterThan(before.metrics.targetQuadrantTime_s!);
+    // Both resolved trials, so both times exist; a null here would be a fixture change, not a pass.
+    const was = before.metrics.targetQuadrantTime_s;
+    const now = after.metrics.targetQuadrantTime_s;
+    expect(was).not.toBeNull();
+    expect(now).not.toBeNull();
+    expect(now ?? 0).toBeGreaterThan(was ?? Number.POSITIVE_INFINITY);
     expect(describeDiff(before, after)).toContain('target quadrant time 78.11 s → 178.27 s');
+  });
+
+  it('writes a null error count and a null escape out, never as "null" (D66)', () => {
+    const { before } = derivedPair('video-test50', (p) => p);
+    const unresolved: DerivedAnalysis = {
+      ...before,
+      metrics: { ...before.metrics, primaryErrors: null, totalErrors: null, escaped: null },
+    };
+    const badge = describeDiff(before, unresolved);
+    expect(badge).not.toContain('null');
+    expect(badge).toContain(`primary errors ${before.metrics.primaryErrors} → not computable`);
+    expect(badge).toContain('escaped no → not applicable');
+    expect(countText(null)).toBe('not computable');
+    expect(escapedText(null)).toBe('not applicable');
   });
 
   it('reports the smoothed path and the mean speed, which only the filter width moves', () => {

@@ -21,6 +21,7 @@ export {
   eventSummary,
   flagLabel,
   flagsForEvent,
+  keepRefusal,
   shadowClauses,
 } from './event-card.js';
 export type { EventCardProps } from './event-card.js';
@@ -46,6 +47,6 @@ export type { QualityPanelOptions, QualityPanelProps } from './quality-panel.js'
 export { wholeClipStateFractions } from './quality-summary.js';
 
 export { positionToFrame } from './types.js';
-export type { AnnounceCallback, Component, SeekCallbacks, StrategyCallbacks } from './types.js';
+export type { AnnounceCallback, Component, EventCallbacks, SeekCallbacks, StrategyCallbacks } from './types.js';
 
 export * from './format.js';

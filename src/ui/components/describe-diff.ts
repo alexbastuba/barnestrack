@@ -151,6 +151,16 @@ function measureText(value: number | null, format: (value: number | null) => str
   return isRecorded(value) ? format(value) : 'not computable';
 }
 
+/** An error count in the badge: the number, or "not computable" with no trial window (D66). */
+export function countText(value: number | null): string {
+  return isRecorded(value) ? String(value) : 'not computable';
+}
+
+/** `escaped` in the badge: a probe trial's null is "not applicable", never "no" (D66, D68). */
+export function escapedText(value: boolean | null): string {
+  return value === null ? 'not applicable' : value ? 'yes' : 'no';
+}
+
 /**
  * The continuous per-trial measures, with the unit each is written in. Every
  * one of them is `number | null` in the contract, because a trial with no
@@ -193,13 +203,15 @@ export function describeDiff(
   const a = previous.metrics;
   const b = next.metrics;
 
+  // A count can be null where there is no trial window (D66): written out, like
+  // the measures below, never as "null" and never as 0.
   if (a.primaryErrors !== b.primaryErrors) {
     clauses.push(
-      `primary errors ${formatChange(String(a.primaryErrors), String(b.primaryErrors))}`,
+      `primary errors ${formatChange(countText(a.primaryErrors), countText(b.primaryErrors))}`,
     );
   }
   if (a.totalErrors !== b.totalErrors) {
-    clauses.push(`total errors ${formatChange(String(a.totalErrors), String(b.totalErrors))}`);
+    clauses.push(`total errors ${formatChange(countText(a.totalErrors), countText(b.totalErrors))}`);
   }
   if (a.primaryLatency_s !== b.primaryLatency_s) {
     clauses.push(
@@ -212,7 +224,7 @@ export function describeDiff(
     );
   }
   if (a.escaped !== b.escaped) {
-    clauses.push(`escaped ${formatChange(a.escaped ? 'yes' : 'no', b.escaped ? 'yes' : 'no')}`);
+    clauses.push(`escaped ${formatChange(escapedText(a.escaped), escapedText(b.escaped))}`);
   }
   // The continuous measures. They are floats recomputed from scratch, so they
   // are compared as the card prints them rather than by identity — see

@@ -29,7 +29,7 @@ import {
 } from '../viz/index.js';
 import type { SessionFile } from '../contracts/session.js';
 import type { Component } from './components/index.js';
-import { button, disclosure, el, replaceChildren } from './dom.js';
+import { button, disclosure, el, replaceChildren, scrollRegion } from './dom.js';
 import { downloadBlob } from './download.js';
 
 /**
@@ -220,7 +220,7 @@ export function createReviewFigures(
     const canvas = el('canvas', { class: 'figure-canvas' });
     const caption = el('figcaption', { class: 'figure-caption' });
     const note = el('p', { class: 'hint figure-note' });
-    const table = el('div', { class: 'table-scroll' });
+    const table = scrollRegion(`${figure.title}: the data drawn`, []);
     const save = button(`Save PNG (${exportScale}×)`, () => {
       void savePng(figure);
     }, { class: 'btn-secondary' });
@@ -351,9 +351,17 @@ export function createReviewFigures(
 
   function renderTable(card: Card, columns: string[], rows: (string | number | null)[][]): void {
     replaceChildren(card.table, [
-      el('table', { class: 'mirror-table' }, [
+      el('table', { class: 'mirror-table has-num' }, [
         el('caption', { text: `${card.figure.title}, as a table.` }),
-        el('thead', {}, [el('tr', {}, columns.map((text) => el('th', { text, attrs: { scope: 'col' } })))]),
+        el('thead', {}, [
+          el(
+            'tr',
+            {},
+            columns.map((text, i) =>
+              el('th', { text, class: rows.some((row) => typeof row[i] === 'number') ? 'num' : undefined, attrs: { scope: 'col' } }),
+            ),
+          ),
+        ]),
         el(
           'tbody',
           {},
@@ -364,7 +372,10 @@ export function createReviewFigures(
               row.map((cell, index) =>
                 index === 0
                   ? el('th', { text: String(cell ?? '—'), attrs: { scope: 'row' } })
-                  : el('td', { text: cell === null || cell === undefined ? '—' : String(cell) }),
+                  : el('td', {
+                      class: typeof cell === 'number' ? 'num' : undefined,
+                      text: cell === null || cell === undefined ? '—' : String(cell),
+                    }),
               ),
             ),
           ),

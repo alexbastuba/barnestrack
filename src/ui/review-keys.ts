@@ -41,6 +41,7 @@ export type ReviewAction =
   | 'add-event'
   | 'delete-event'
   | 'keep-event'
+  | 'reclassify-event'
   | 'edge-start'
   | 'edge-end'
   | 'retime-back'
@@ -110,6 +111,7 @@ export const REVIEW_KEYS: readonly KeyBinding[] = [
   { keys: ['a'], shift: false, when: 'always', action: 'add-event', legend: 'A', description: 'Add an investigation: press at the first frame, then again at the last' },
   { keys: ['delete', 'backspace'], shift: false, when: 'always', action: 'delete-event', legend: 'Delete', description: 'Delete the selected event' },
   { keys: ['k'], shift: false, when: 'always', action: 'keep-event', legend: 'K', description: 'Keep the selected event as it is: confirmed, no change, and off the list to check' },
+  { keys: ['l'], shift: false, when: 'always', action: 'reclassify-event', legend: 'L', description: 'Lost, not in: reclassify the selected inferred escape entry as tracking loss' },
   { keys: ['h'], shift: false, when: 'always', action: 'relabel-event', legend: 'H', description: 'Change the hole of the selected event' },
   { keys: ['s'], shift: false, when: 'always', action: 'edge-start', legend: 'S', description: 'Select the start edge of the selected event, for Shift + ← / →' },
   { keys: ['d'], shift: false, when: 'always', action: 'edge-end', legend: 'D', description: 'Select the end edge of the selected event, for Shift + ← / →' },

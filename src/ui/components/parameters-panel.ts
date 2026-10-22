@@ -31,6 +31,7 @@
  */
 import {
   DEFAULT_PARAMETERS,
+  ESCAPE_ENTRY_STATE_DEFINITIONS,
   PARAMETER_DEFINITIONS,
   canonicalJson,
   PARAMETER_UNITS,
@@ -43,6 +44,7 @@ import type { DerivedAnalysis } from '../../analysis/derive.js';
 import { clampToBound } from '../../analysis/tracker/params.js';
 import type { Parameters } from '../../contracts/parameters.js';
 import { append, button, disclosure, el, uniqueId } from '../dom.js';
+import { CONFIRMED_ENTRY, INFERRED_ENTRY, MARKED_ENTRY, RECLASSIFIED_LOSS } from '../event-wording.js';
 import { ANALYSIS_PARAMETER_BOUNDS, hasSlider } from './analysis-parameter-bounds.js';
 import { describeDiff } from './describe-diff.js';
 import { formatParameterValue } from './format.js';
@@ -502,8 +504,35 @@ export function createParametersPanel(
         rows.push(row);
         fieldset.append(row.element);
       }
+      if (block === 'escapeEntry') fieldset.append(escapeEntryStates());
       return fieldset;
     });
+  }
+
+  /**
+   * D67: the five states an escape entry can be in, and how each enters the
+   * latency and the error counts, under the thresholds that make the inference.
+   * The sentences are the analysis module's own, shown verbatim.
+   */
+  function escapeEntryStates(): HTMLElement {
+    // The names the card, the table and the timeline use (`event-wording.ts`).
+    const words: Record<keyof typeof ESCAPE_ENTRY_STATE_DEFINITIONS, string> = {
+      inferred: INFERRED_ENTRY,
+      confirmed: CONFIRMED_ENTRY,
+      asserted: MARKED_ENTRY,
+      reclassified: RECLASSIFIED_LOSS,
+      rejected: 'Rejected (deleted)',
+    };
+    return disclosure('What an escape entry can be', [
+      el(
+        'dl',
+        { class: 'escape-entry-states' },
+        (Object.keys(words) as (keyof typeof words)[]).flatMap((state) => [
+          el('dt', { text: words[state] }),
+          el('dd', { text: ESCAPE_ENTRY_STATE_DEFINITIONS[state] }),
+        ]),
+      ),
+    ]);
   }
 
   append(root, buildBlocks());

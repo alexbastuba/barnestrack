@@ -101,7 +101,15 @@ export function createVideosStep(context: AppContext): Step {
   notLoaded.hidden = true;
   const rejectionList = notLoaded.querySelector('ul') as HTMLUListElement;
 
+  /*
+   * D72: the intake is the step's primary until a video is in, then Next step is. Both live in
+   * the action bar; only one of them is filled at a time (D70: one primary per view).
+   */
   const nextStep = createNextStepButton(context, 'maze', 'Maze');
+  const intakeButton = button('Choose videos to load…', () => fileInput.click(), {
+    class: 'btn-primary intake-button',
+  });
+  nextStep.bar.place([], [intakeButton, nextStep.control]);
   body.append(pickers, listEmpty, list, notesBox, notLoaded, nextStep.element);
 
   // ---- drag and drop --------------------------------------------------------
@@ -221,7 +229,10 @@ export function createVideosStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
-    nextStep.update(videosMissing(store));
+    const missing = videosMissing(store);
+    nextStep.update(missing);
+    intakeButton.className = `${missing === null ? 'btn-secondary' : 'btn-primary'} intake-button`;
+    intakeButton.textContent = missing === null ? 'Add more videos…' : 'Choose videos to load…';
     if (store.epoch !== lastEpoch) {
       // Reset, load or restore replaced the session; "Not loaded" and the
       // duplicate notes described the one before it.
@@ -301,6 +312,77 @@ export function createVideosStep(context: AppContext): Step {
       }),
     ]);
 
+    /*
+     * The trial descriptor (D68): an acquisition or a probe trial, and this video's target when
+     * the platform was rotated for it. Both re-analyse the video; neither touches the shared map.
+     */
+    const trialType = el('select', { id: `trial-type-${videoId}`, class: 'trial-type' });
+    for (const [value, label] of [
+      ['acquisition', 'Acquisition'],
+      ['probe', 'Probe (no escape box)'],
+    ] as const) {
+      trialType.append(el('option', { text: label, attrs: { value } }));
+    }
+    trialType.addEventListener('change', () => {
+      const value = trialType.value === 'probe' ? 'probe' : 'acquisition';
+      store.setTrialType(videoId, value);
+      context.announce(`${descriptor.filename}: trial type set to ${value}.`);
+    });
+    const probeNote = el('p', {
+      class: 'hint probe-note',
+      text: 'A probe trial has no escape box: no escape entry is looked for, so Escaped and the escape latency are blank, and primary latency, errors and strategy run to the trial cutoff.',
+    });
+
+    const targetHole = el('input', { id: `target-hole-${videoId}`, class: 'meta-input target-hole' });
+    targetHole.type = 'number';
+    targetHole.step = '1';
+    targetHole.min = '0';
+    targetHole.inputMode = 'numeric';
+    const targetHint = el('span', { id: `target-hole-hint-${videoId}`, class: 'hint' });
+    const targetProblem = el('p', { id: `target-hole-problem-${videoId}`, class: 'error', attrs: { role: 'alert' } });
+    targetProblem.hidden = true;
+    targetHole.setAttribute('aria-describedby', `${targetHint.id} ${targetProblem.id}`);
+    /** The override this card last showed, to notice the store clearing it on a new map. */
+    let shownTarget: number | null = descriptor.targetHole;
+    targetHole.addEventListener('change', () => {
+      const text = targetHole.value.trim();
+      const holes = store.current.mazeMap?.holes.n ?? null;
+      if (text === '') {
+        store.setTargetHole(videoId, null);
+        targetProblem.hidden = true;
+        context.announce(`${descriptor.filename}: target is the map's target again.`);
+        return;
+      }
+      const hole = Number(text);
+      store.setTargetHole(videoId, hole);
+      // The store refuses a hole that is not on the ring, silently; say so here.
+      const stored = store.videoById(videoId)?.targetHole ?? null;
+      if (stored !== hole) {
+        targetProblem.hidden = false;
+        targetProblem.textContent =
+          holes === null
+            ? `Hole ${text} cannot be this video's target: a hole number is a whole number from 0.`
+            : `Hole ${text} is not on this map: holes are numbered 0 to ${holes - 1}. The target was not changed.`;
+        targetHole.value = stored === null ? '' : String(stored);
+        context.announce(targetProblem.textContent);
+        return;
+      }
+      targetProblem.hidden = true;
+      context.announce(`${descriptor.filename}: target set to hole ${hole} for this video only.`);
+    });
+
+    const trialFields = el('div', { class: 'metadata trial-descriptor' }, [
+      el('span', { class: 'label-like', text: 'Trial' }),
+      el('div', { class: 'field' }, [el('label', { text: 'Trial type', attrs: { for: trialType.id } }), trialType]),
+      el('div', { class: 'field' }, [
+        el('label', { text: 'Target hole', attrs: { for: targetHole.id } }),
+        targetHole,
+        targetHint,
+      ]),
+      targetProblem,
+      probeNote,
+    ]);
+
     const remove = button(
       'Remove',
       () => {
@@ -319,6 +401,7 @@ export function createVideosStep(context: AppContext): Step {
       el('p', { class: 'privacy-note', text: PRIVACY_NOTE }),
       detachedNote,
       metadata,
+      trialFields,
     ]);
 
     function update(): void {
@@ -341,6 +424,28 @@ export function createVideosStep(context: AppContext): Step {
       for (const [key, input] of inputs) {
         if (document.activeElement === input) continue;
         input.value = video.metadata[key] ?? '';
+      }
+
+      if (document.activeElement !== trialType) trialType.value = video.trialType;
+      probeNote.hidden = video.trialType !== 'probe';
+      const map = store.current.mazeMap;
+      const holes = map?.holes.n ?? null;
+      if (holes !== null) targetHole.max = String(holes - 1);
+      else targetHole.removeAttribute('max');
+      targetHole.placeholder = map ? `map's target (hole ${map.target.holeIndex})` : "map's target";
+      targetHint.textContent =
+        holes === null
+          ? "Blank uses the map's target. Holes are numbered once the maze is set."
+          : `Blank uses the map's target; a number from 0 to ${holes - 1} overrides it for this video only.`;
+      // `setMazeMap` clears an override the new map no longer has, and says nothing (D68); the
+      // card notices the override it was showing go, and says so until the user sets another.
+      if (shownTarget !== null && video.targetHole === null && holes !== null && shownTarget >= holes) {
+        targetProblem.hidden = false;
+        targetProblem.textContent = `Target override cleared — hole ${shownTarget} no longer exists on this map.`;
+      }
+      shownTarget = video.targetHole;
+      if (document.activeElement !== targetHole) {
+        targetHole.value = video.targetHole === null ? '' : String(video.targetHole);
       }
     }
 

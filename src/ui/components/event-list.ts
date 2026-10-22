@@ -14,15 +14,17 @@ import type { EventKind, EventRecord } from '../../contracts/events.js';
 import type { ReviewFlag } from '../../analysis/types.js';
 import { el, replaceChildren, uniqueId } from '../dom.js';
 import { describeEventCounts } from './describe-diff.js';
-import { createEventCard } from './event-card.js';
-import type { Component, SeekCallbacks } from './types.js';
+import { createEventCard, type EventCardProps } from './event-card.js';
+import type { Component, EventCallbacks } from './types.js';
 import { pluralise } from './format.js';
 
 export interface EventListProps {
   events: readonly EventRecord[];
   flags: readonly ReviewFlag[];
-  /** The ids of the events the user has confirmed as they stand (`Keep`). */
-  confirmed?: ReadonlySet<string>;
+  /** The step's selected event, drawn as selected on its card. */
+  selectedId?: string | null;
+  /** The ids of the escape entries a correction reclassified as tracking loss. */
+  reclassified?: ReadonlySet<string>;
 }
 
 const KINDS: readonly EventKind[] = ['investigation', 'escape_entry', 'tracking_failure'];
@@ -36,7 +38,7 @@ const KIND_LABELS: Record<EventKind, string> = {
 export function createEventList(
   container: HTMLElement,
   props: EventListProps,
-  callbacks: SeekCallbacks,
+  callbacks: EventCallbacks,
 ): Component<EventListProps> {
   let current = props;
   const shown = new Set<EventKind>(KINDS);
@@ -51,7 +53,7 @@ export function createEventList(
     el('h3', { id: headingId, text: 'Events' }),
     el('p', {
       class: 'what',
-      text: 'Each event with the evidence it was decided on: where the animal was, how long it stayed, which point the distance was judged on, and — for a loss of detection — what happened either side of it. Selecting an event moves the video to its first frame.',
+      text: 'Each event with the evidence it was decided on: where the animal was, how long it stayed, which point the distance was judged on, and — for a loss of detection — what happened either side of it. Clicking an event selects it — the same selection the timeline and the events table make — and moves the video to its first frame; the correction tools beside the video then act on it.',
     }),
   );
 
@@ -95,6 +97,17 @@ export function createEventList(
     return `${base} · ${pluralise(hidden, 'event')} hidden by the filter`;
   }
 
+  // Everything a card shows, from the list's props — the same object on create
+  // and on update, so an update can never drop a field the create set.
+  function cardProps(event: EventRecord): EventCardProps {
+    return {
+      event,
+      flags: current.flags,
+      selected: current.selectedId === event.id,
+      reclassified: current.reclassified?.has(event.id) === true,
+    };
+  }
+
   function render(): void {
     counts.textContent = countLine();
 
@@ -116,13 +129,13 @@ export function createEventList(
     const sameOrder = order.length === wanted.length && order.every((id, i) => id === wanted[i]);
 
     if (sameOrder) {
-      for (const event of events) cards.get(event.id)!.update({ event, flags: current.flags });
+      for (const event of events) cards.get(event.id)!.update(cardProps(event));
     } else {
       replaceChildren(list, []);
       for (const event of events) {
         const existing = cards.get(event.id);
         if (existing) existing.destroy();
-        cards.set(event.id, createEventCard(list, { event, flags: current.flags, confirmed: current.confirmed?.has(event.id) === true }, callbacks));
+        cards.set(event.id, createEventCard(list, cardProps(event), callbacks));
       }
       order = wanted;
     }

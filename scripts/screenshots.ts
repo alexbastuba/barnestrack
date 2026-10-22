@@ -8,8 +8,15 @@
  *
  * Serves `dist/` with `vite preview` on a port of its own (so it never reuses a
  * dev server another checkout left running), drives the installed Google
- * Chrome, and writes `notes/screens/chunk-13/<step>-<w>x<h>-<zoom>.png` and a
+ * Chrome, and writes `notes/screens/chunk-15/<step>-<w>x<h>-<zoom>.png` and a
  * `summary.json` beside them. `notes/` is untracked; nothing here is committed.
+ *
+ * Chunk 15 adds a Review shot taken after `]` selects the first queued event,
+ * with the bounding boxes of the regions a decision needs on one screen: the
+ * video, the selected event's card, its evidence, the correction toolbar, the
+ * queue's previous / next and the clip selector. It then focuses the selected
+ * card and its Keep in turn and reports any side of the focus ring a scroll box
+ * clips.
  *
  * 200 % is emulated the way browser zoom works: the layout viewport is half the
  * window in CSS pixels and every CSS pixel is two device pixels, so the PNG is
@@ -26,7 +33,27 @@ import { LOAD_BUTTON_LABEL } from '../src/demo/example-cohort-ui.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4317;
 const BASE_URL = `http://localhost:${PORT}/`;
-const OUT_DIR = join(ROOT, 'notes/screens/chunk-13');
+const OUT_DIR = join(ROOT, 'notes/screens/chunk-15');
+/** The regions of the selected-event Review shot, by selector. */
+const REVIEW_REGIONS = {
+  video: '#panel-review .viewport',
+  card: '#review-selected .event-card',
+  evidence: '#review-selected .event-evidence',
+  actions: '#review-selected .event-actions',
+  toolbar: '#panel-review .review-tools',
+  queueNav: '#review-current-event .current-event-actions',
+  clipSelector: '#panel-review .review-top select',
+} as const;
+
+interface Box {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  inViewport: boolean;
+  /** Pixels of the box actually visible after its scrolling ancestors and the window clip it. */
+  shownPx: number;
+}
 const SIZES = [
   { width: 1366, height: 768 },
   { width: 1400, height: 866 },
@@ -85,10 +112,8 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
         (node.getAttribute('aria-label') ?? node.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
       const tierCount = (node: Element): number => tiers.filter((tier) => node.classList.contains(tier)).length;
       const panel = document.getElementById(`panel-${step}`);
-      const buttons = [...document.querySelectorAll('button')].filter(visible);
-      // The example cohort's panel is built in src/demo/, outside this chunk's
-      // files; its buttons are reported separately in the chunk record.
-      const ours = buttons.filter((node) => node.closest('.example-cohort, .example-dialog') === null);
+      // Every visible button, the example cohort's panel included now that it is tiered.
+      const ours = [...document.querySelectorAll('button')].filter(visible);
       const root = document.documentElement;
       return {
         horizontalScroll: root.scrollWidth > root.clientWidth,
@@ -129,6 +154,112 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
   };
 }
 
+/** The bounding box of each region in viewport pixels, and whether it is wholly on screen. */
+async function regionBoxes(page: Page): Promise<Record<keyof typeof REVIEW_REGIONS, Box | null>> {
+  return page.evaluate((regions) => {
+    const out: Record<string, Box | null> = {};
+    for (const [key, selector] of Object.entries(regions)) {
+      const node = document.querySelector(selector);
+      if (!node || !(node as HTMLElement).checkVisibility()) {
+        out[key] = null;
+        continue;
+      }
+      const rect = node.getBoundingClientRect();
+      // What is actually shown: the box clipped by every scrolling ancestor and by the window.
+      let top = Math.max(rect.top, 0);
+      let bottom = Math.min(rect.bottom, window.innerHeight);
+      for (let up = node.parentElement; up; up = up.parentElement) {
+        const overflow = getComputedStyle(up).overflowY;
+        if (overflow !== 'auto' && overflow !== 'scroll') continue;
+        const clip = up.getBoundingClientRect();
+        top = Math.max(top, clip.top);
+        bottom = Math.min(bottom, clip.bottom);
+      }
+      out[key] = {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        left: Math.round(rect.left),
+        right: Math.round(rect.right),
+        inViewport: rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth,
+        shownPx: Math.max(0, Math.round(bottom - top)),
+      };
+    }
+    return out as Record<keyof typeof regions, Box | null>;
+  }, REVIEW_REGIONS);
+}
+
+/** The selected card and its Keep, focused in turn: which sides of the 2 px focus ring a clipping ancestor cuts off. */
+const RING_TARGETS = {
+  card: '#review-selected .event-card',
+  keep: '#review-selected .event-actions button:first-of-type',
+} as const;
+
+interface Ring {
+  /** `rendered` when the element matched :focus-visible; otherwise the ring is sized from the `--focus` tokens. */
+  measured: 'rendered' | 'tokens';
+  /** The ring is taller than a scroll box it sits in, so that box cannot show all of it at once. */
+  tallerThanBox: boolean;
+  clippedSides: string[];
+  file: string | null;
+}
+
+async function focusRings(page: Page, prefix: string): Promise<Record<keyof typeof RING_TARGETS, Ring | null>> {
+  const out: Record<string, Ring | null> = {};
+  for (const [key, selector] of Object.entries(RING_TARGETS)) {
+    const facts = await page.evaluate((selector) => {
+      const node = document.querySelector<HTMLElement>(selector);
+      if (!node || !node.checkVisibility() || (node as HTMLButtonElement).disabled) return null;
+      // `focusVisible` asks for the keyboard ring even when a click came last.
+      node.focus({ focusVisible: true } as FocusOptions);
+      const visible = node.matches(':focus-visible');
+      const px = (value: string): number => Number.parseFloat(value) || 0;
+      let reach: number;
+      if (visible) {
+        const style = getComputedStyle(node);
+        reach = px(style.outlineWidth) + px(style.outlineOffset);
+      } else {
+        const root = getComputedStyle(document.documentElement);
+        reach = px(root.getPropertyValue('--focus')) + px(root.getPropertyValue('--focus-offset'));
+      }
+      const rect = node.getBoundingClientRect();
+      const ring = { top: rect.top - reach, bottom: rect.bottom + reach, left: rect.left - reach, right: rect.right + reach };
+      // Each clipped side and by how many pixels; a box shorter than the element must clip one end.
+      const sides = new Map<string, number>();
+      const clipped = (side: string, by: number): void => {
+        if (by > 0.5) sides.set(side, Math.max(sides.get(side) ?? 0, Math.round(by)));
+      };
+      let tallerThanBox = false;
+      for (let up = node.parentElement; up; up = up.parentElement) {
+        const style = getComputedStyle(up);
+        if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+        // An overflow box clips at its padding box.
+        const box = up.getBoundingClientRect();
+        const clip = {
+          top: box.top + up.clientTop,
+          left: box.left + up.clientLeft,
+          bottom: box.top + up.clientTop + up.clientHeight,
+          right: box.left + up.clientLeft + up.clientWidth,
+        };
+        if (ring.bottom - ring.top > clip.bottom - clip.top) tallerThanBox = true;
+        clipped('top', clip.top - ring.top);
+        clipped('bottom', ring.bottom - clip.bottom);
+        clipped('left', clip.left - ring.left);
+        clipped('right', ring.right - clip.right);
+      }
+      const measured: Ring['measured'] = visible ? 'rendered' : 'tokens';
+      return { measured, tallerThanBox, clippedSides: [...sides].map(([side, by]) => `${side} ${by}px`) };
+    }, selector);
+    if (facts === null) {
+      out[key] = null;
+      continue;
+    }
+    const file = `${prefix}-focus-${key}.png`;
+    await page.screenshot({ path: join(OUT_DIR, file) });
+    out[key] = { ...facts, file };
+  }
+  return out as Record<keyof typeof RING_TARGETS, Ring | null>;
+}
+
 async function showStep(page: Page, step: Step): Promise<void> {
   await page.locator(`#tab-${step}`).click();
   await page.locator(`#panel-${step}`).waitFor({ state: 'visible' });
@@ -150,6 +281,14 @@ async function main(): Promise<void> {
     detached: true,
   });
   const results: Measurement[] = [];
+  const selections: {
+    size: string;
+    zoom: string;
+    file: string;
+    scrollY: number;
+    boxes: Record<string, Box | null>;
+    rings: Record<string, Ring | null>;
+  }[] = [];
   const consoleErrors: string[] = [];
   try {
     await waitForServer(BASE_URL, 30_000);
@@ -186,6 +325,53 @@ async function main(): Promise<void> {
             await page.screenshot({ path: join(OUT_DIR, file) });
             results.push(await measure(page, step, size, zoomLabel, file));
           }
+
+          // Review with the first queued event selected from the keyboard, as a reviewer starts.
+          await page.locator('#panel-review .timeline-surface').focus();
+          await page.keyboard.press(']');
+          await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
+          await page.waitForTimeout(400);
+          const selectedFile = `review-selected-${size}-${zoomLabel}.png`;
+          await page.screenshot({ path: join(OUT_DIR, selectedFile) });
+          // The boxes first: focusing the card and Keep may scroll them.
+          const selectedScrollY = await page.evaluate(() => Math.round(window.scrollY));
+          const selectedBoxes = await regionBoxes(page);
+          selections.push({
+            size,
+            zoom: zoomLabel,
+            file: selectedFile,
+            scrollY: selectedScrollY,
+            boxes: selectedBoxes,
+            rings: await focusRings(page, `review-selected-${size}-${zoomLabel}`),
+          });
+
+          // An escape entry, whose card (evidence, flag, three actions) is the longest there is:
+          // the first video that has one, selected by clicking its card in the events list.
+          const videoSelect = page.locator('#panel-review .review-top select');
+          for (const value of await videoSelect.locator('option').evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value))) {
+            await videoSelect.selectOption(value);
+            const entryCard = page
+              .locator('#review-events li.event-item')
+              .filter({ has: page.locator('.event-kind', { hasText: /escape entry/i }) })
+              .first();
+            if ((await entryCard.count()) === 0) continue;
+            await entryCard.locator('.event-card').click();
+            await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
+            await page.waitForTimeout(400);
+            const entryFile = `review-entry-${size}-${zoomLabel}.png`;
+            await page.screenshot({ path: join(OUT_DIR, entryFile) });
+            const entryScrollY = await page.evaluate(() => Math.round(window.scrollY));
+            const entryBoxes = await regionBoxes(page);
+            selections.push({
+              size,
+              zoom: `${zoomLabel} entry`,
+              file: entryFile,
+              scrollY: entryScrollY,
+              boxes: entryBoxes,
+              rings: await focusRings(page, `review-entry-${size}-${zoomLabel}`),
+            });
+            break;
+          }
           await context.close();
         }
       }
@@ -196,7 +382,26 @@ async function main(): Promise<void> {
     if (server.pid !== undefined) process.kill(-server.pid, 'SIGTERM');
   }
 
-  writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, consoleErrors }, null, 2)}\n`);
+  writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, selections, consoleErrors }, null, 2)}\n`);
+  for (const s of selections) {
+    const boxes = Object.entries(s.boxes)
+      .map(([key, box]) =>
+        box === null
+          ? `${key} —`
+          : `${key} y ${box.top}–${box.bottom} (${box.shownPx} px shown)${box.inViewport ? '' : ' OFF-SCREEN'}`,
+      )
+      .join(' · ');
+    const all = Object.values(s.boxes).every((box) => box?.inViewport === true);
+    console.log(`review selected ${s.size} ${s.zoom.padEnd(3)} scrollY ${s.scrollY} · all on screen: ${all ? 'yes' : 'NO '} · ${boxes}`);
+    const rings = Object.entries(s.rings)
+      .map(([key, ring]) =>
+        ring === null
+          ? `${key} — (absent or disabled)`
+          : `${key} ${ring.clippedSides.length === 0 ? 'not clipped' : `CLIPPED ${ring.clippedSides.join(', ')}`}${ring.tallerThanBox ? ' (taller than its scroll box)' : ''} (${ring.measured})`,
+      )
+      .join(' · ');
+    console.log(`  focus ring: ${rings}`);
+  }
   for (const r of results) {
     const primaries = r.primaries
       .map((p) => `${p.text}${p.disabled ? ' (disabled)' : ''}${p.inViewport ? '' : ` @${p.top}px`}`)
