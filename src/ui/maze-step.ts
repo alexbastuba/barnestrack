@@ -1101,12 +1101,6 @@ export function createMazeStep(context: AppContext): Step {
   });
 
   const modeStatus = el('p', { class: 'mode-status' });
-  /**
-   * How far through the cohort the maze is. Per-video confirmation is session
-   * state and is not built here, so this counts the videos the map has actually
-   * been placed in rather than the ones a user has signed off.
-   */
-  const mazeProgress = el('p', { class: 'maze-progress', attrs: { role: 'status' } });
   const nextStep = createNextStepButton(context, 'track', 'Track');
   // A status chip, not a button: it reports, it is not pressed (D70).
   const clickBadge = el('p', { class: 'status-chip', attrs: { 'aria-live': 'off' } });
@@ -1173,10 +1167,13 @@ export function createMazeStep(context: AppContext): Step {
     ]),
   ]);
 
-  // The stage (D69): the selector and the chip, the frame, the controls. In
-  // source order they stack; from 1200 px the stylesheet puts the frame in a
-  // left column and the other two, selector first, in a scrolling right
-  // column, so the frame and every control are on screen together.
+  // The stage (D69): the selector and the chip, the prompt and the scrubber,
+  // the frame, the controls. In source order they stack; from 1200 px the
+  // stylesheet lays them in two rows of two — the prompt and the scrubber
+  // beside the selector, the frame beside the scrolling controls — so the
+  // frame and the Platform fieldset start on the same line and every control
+  // is on screen with the frame. The step's status line lives in the action
+  // bar after the mirror, which stays the last thing in the step (D72).
   body.append(
     el('div', { class: 'maze-stage' }, [
       el('div', { class: 'maze-stage-top' }, [
@@ -1187,9 +1184,9 @@ export function createMazeStep(context: AppContext): Step {
           ]),
           clickBadge,
         ]),
-        mazeProgress,
       ]),
-      el('div', { class: 'maze-stage-view' }, [modeStatus, scrubber.element, canvasView.element]),
+      el('div', { class: 'maze-stage-head' }, [modeStatus, scrubber.element]),
+      el('div', { class: 'maze-stage-view' }, [canvasView.element]),
       controls,
     ]),
     mirror,
@@ -1204,9 +1201,17 @@ export function createMazeStep(context: AppContext): Step {
 
   function render(): void {
     const total = store.videos.length;
-    mazeProgress.textContent =
-      total === 0 ? '' : `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
-    nextStep.update(mazeMissing(store));
+    const missing = mazeMissing(store);
+    nextStep.update(missing);
+    // The bar's status line (D72): while the step is unfinished it is the
+    // button's reason, which carries the count; once every video is set it
+    // says how far the cohort is, so the line never goes blank while there is
+    // one. Per-video confirmation is session state and is not built here, so
+    // the count is of videos the map has been placed in, not signed off on.
+    if (missing === null && total > 0) {
+      nextStep.bar.status.textContent = `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+      nextStep.bar.status.hidden = false;
+    }
     if (store.epoch !== lastEpoch) {
       // Load, reset or restore replaced the whole session: nothing cached here
       // refers to it any more.

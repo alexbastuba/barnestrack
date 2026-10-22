@@ -582,3 +582,50 @@ describe('dragging a handle (D69)', () => {
     expect(step.body.querySelector('.click-badge')).toBeNull();
   });
 });
+
+describe('the stage and the action bar (D69, D72)', () => {
+  it('stacks the selector, the prompt and the scrubber, the frame and the controls, in that order, with the bar last', () => {
+    const { step } = mount();
+    const stage = step.body.querySelector('.maze-stage')!;
+    expect([...stage.children].map((child) => child.className)).toEqual([
+      'maze-stage-top',
+      'maze-stage-head',
+      'maze-stage-view',
+      'maze-controls',
+    ]);
+    expect(stage.querySelector('.maze-stage-top #maze-video')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-top .status-chip')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-head .mode-status')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-head .scrubber')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-view .canvas-view')).not.toBeNull();
+    // Tab order (D72): the stage, the mirror, then the bar as the last thing in the step.
+    const last = step.body.lastElementChild!;
+    expect(last.classList.contains('next-step')).toBe(true);
+    expect(last.previousElementSibling?.classList.contains('mirror')).toBe(true);
+    expect(last.previousElementSibling?.previousElementSibling).toBe(stage);
+  });
+
+  it('says how far the cohort is in the action bar once every video is set', () => {
+    const { step } = mount();
+    expect(step.body.querySelector('.maze-progress')).toBeNull();
+    const status = step.body.querySelector<HTMLElement>('.next-step .action-bar-status')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe('Maze set on 1 of 1 video.');
+    expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(false);
+  });
+
+  it('leaves the reason, which carries the count, in the bar while a video is still unset', () => {
+    // A second video of another size with the identity transform: the map has not been placed in it.
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const { step } = mount(session([video(), second]));
+    const status = step.body.querySelector<HTMLElement>('.next-step .action-bar-status')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toContain('set on 1 of 2 videos');
+    expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(true);
+  });
+});
