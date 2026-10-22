@@ -1177,9 +1177,12 @@ label {
     --maze-column: 23rem;
     /*
      * The bar as it stands under that column, measured at 1366 × 768 in
-     * Chrome: two 13 px status lines (39 px) over the 32.5 px button, the
-     * 8 px gap between the two rows, 8 px of padding above and below and the
-     * 1 px rule — 96.5 px. With one status line it is 77 px, with none 49.5 px.
+     * Chrome on macOS: two 13 px status lines (39 px) over the 32.5 px button,
+     * the 8 px gap between the two rows, 8 px of padding above and below and
+     * the 1 px rule — 96.5 px. With one status line it is 77 px, with none
+     * 49.5 px. System fonts (D2) give other platforms line metrics a pixel or
+     * so apart; the gutter in the reserve below absorbs that, and the spec's
+     * "bar below the controls column" check runs on Linux in CI.
      */
     --maze-bar: 6.03125rem;
     /*

@@ -444,7 +444,11 @@ session it is found (D39).
   transform, or when its resolution matches the map's reference resolution and so needs none. A
   second video of the same size as the first is counted as set the moment it is loaded, before
   anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
-  gated on this count, so it can enable a step early; it never blocks one wrongly.
+  gated on this count, so it can enable a step early; it never blocks one wrongly. A ring turn
+  (the "Ring angle of hole 0" field, the alignment click, or a target click that turns the ring)
+  on a video of another size gives it a non-identity transform and so counts it as set, though
+  nothing has placed the platform in its frame; since chunk 14b every action that can move the
+  count says the new count at the end of its announcement, so the step at least says it.
 
 - **The timeline is below the fold once an event is selected.** Chunk 15 fits the decision onto
   one screen at 1366 × 768 and 1400 × 866 (100 %): selecting an event scrolls the stage to the top,

@@ -222,9 +222,16 @@ export function createMazeStep(context: AppContext): Step {
     return `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
   }
 
-  /** `message` with the cohort's progress after it, for an action that can change the count. */
+  /**
+   * `message` with the cohort's progress after it, for an action that can
+   * change the count: placing the platform, entering the diameter that
+   * finishes the map, applying or importing a map, turning a ring. Only once
+   * the map is calibrated — before that the count is 0 of N by definition
+   * ("Platform set … Maze set on 0 of 2" would read as a contradiction) and
+   * the bar's reason already says what is missing.
+   */
   function withProgress(message: string): string {
-    const progress = progressText();
+    const progress = calibrated() ? progressText() : null;
     return progress === null ? message : `${message} ${progress}`;
   }
 
@@ -528,7 +535,9 @@ export function createMazeStep(context: AppContext): Step {
         ? ` ${corrections} event correction${corrections === 1 ? '' : 's'} on this video name holes by their old numbers and will be listed as no longer matching — check them on the Review step.`
         : '';
     context.announce(
-      `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.${warning}`,
+      withProgress(
+        `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.${warning}`,
+      ),
     );
   }
 
@@ -564,8 +573,11 @@ export function createMazeStep(context: AppContext): Step {
     if (!video || degrees === 0) return;
     turnRing(degrees);
     const after = videoMap();
+    // A turn gives this video its own transform, which the count reads as "set" — so say where it stands.
     context.announce(
-      `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
+      withProgress(
+        `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
+      ),
     );
   }
 
@@ -1115,7 +1127,8 @@ export function createMazeStep(context: AppContext): Step {
     },
     (v) => {
       updateMap((m) => withHoleRadius({ ...m, calibration: { platformDiameter_cm: v } }, currentHoleDiameterCm()));
-      context.announce(`Platform diameter set to ${v} cm.`);
+      // The diameter is what finishes the map (D14, D44): this is where the count leaves 0 of N.
+      context.announce(withProgress(`Platform diameter set to ${v} cm.`));
       render();
     },
   );

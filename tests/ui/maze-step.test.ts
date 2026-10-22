@@ -662,6 +662,53 @@ describe('the stage and the action bar (D69, D72)', () => {
     expect(announced.at(-1)).toMatch(/^Maze map applied from test53\.mp4\. .* Maze set on 2 of 2 videos\.$/);
     expect(store.videoById('video-test50')!.mazeTransform).not.toEqual(video().mazeTransform);
   });
+
+  it('says where the cohort stands when the diameter finishes the first map, and not while the map is a draft', () => {
+    // Two videos of the map's size and no map yet: the count is 0 of 2 until the diameter lands, then 2 of 2 at once.
+    const second: VideoDescriptor = { ...video(), id: 'video-test50', filename: 'test50.mp4' };
+    const announced: string[] = [];
+    const { step, store } = mount(
+      { ...createSessionFile('maze test', TOOL_VERSION), videos: [video(), second], mazeMap: null },
+      (message) => announced.push(message),
+    );
+    expect(store.current.mazeMap).toBeNull();
+
+    const radius = fieldNamed(step, 'Radius (px)');
+    radius.value = '200';
+    radius.dispatchEvent(new Event('change'));
+    // The map is a draft: "Platform set … Maze set on 0 of 2" would contradict itself, so no tail yet.
+    expect(announced.at(-1)).toMatch(/^Platform set: .* Enter the platform diameter to finish\.$/);
+    expect(announced.at(-1)).not.toContain('Maze set on');
+    expect(store.current.mazeMap).toBeNull();
+
+    const diameter = fieldNamed(step, 'Platform diameter (cm)');
+    diameter.value = '92';
+    diameter.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toBe('Platform diameter set to 92 cm. Maze set on 2 of 2 videos.');
+    expect(store.current.mazeMap).not.toBeNull();
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+  });
+
+  it('says where the cohort stands when a ring turn gives a video its own transform, which the count reads as set', () => {
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const announced: string[] = [];
+    const { step } = mount(session([video(), second]), (message) => announced.push(message));
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toContain('set on 1 of 2 videos');
+
+    const angle = fieldNamed(step, 'Ring angle of hole 0 (°)');
+    angle.value = '30';
+    angle.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toMatch(/^Ring aligned on test50\.mp4: hole 0 is now at 30\.0° in this video\. Other videos are unchanged\. Maze set on 2 of 2 videos\.$/);
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+  });
 });
 
 describe('the mirror table', () => {
