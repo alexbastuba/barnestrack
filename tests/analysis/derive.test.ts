@@ -2046,4 +2046,55 @@ describe('D73: what counts as a removal, and the auto-only pass to its own end o
     expect(flags[0]).toMatchObject({ eventId: autoEntry.id, frameIndex: autoEntry.startFrame });
     expect(d.metrics.correctionCount).toBe(2);
   });
+
+  it('applies a trial end an event correction moved to both detections: the stay beside the moved entry stays untouched', () => {
+    // an automatic entry after a 1 s stay at the target; the entry's start is edited ten frames
+    // earlier, into the stay, and one unrelated centroid nudge at frame 2 is what makes the
+    // auto-only pass run at all. The moved end is the human's end for both detections, so the stay
+    // is clipped the same way on both sides and reads untouched — not evidence-corrected by a
+    // correction that never touched it (chunk-16b review)
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 1 },
+      { kind: 'lost', seconds: 3.5 },
+    ];
+    const { input: plain } = inputFor(script);
+    const before = derive(plain);
+    const entry = before.events.find((e) => e.kind === 'escape_entry')!;
+    const stay = before.events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(entry).toBeDefined();
+    expect(stay).toBeDefined();
+    const frame2 = plain.auto.frames[2]!;
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'p1',
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: 2,
+        point: 'centroid',
+        value: { x: frame2.centroid.x + 0.5, y: frame2.centroid.y, confidence: 1, valid: true },
+      },
+      {
+        id: 'e1',
+        kind: 'event',
+        timestamp: at(2),
+        source: 'user',
+        action: 'edit',
+        eventId: entry.id,
+        holeIndex: 7,
+        startFrame: entry.startFrame - 10,
+        endFrame: entry.endFrame,
+      },
+    ];
+    const { input } = inputFor(script, { corrections });
+    const d = derive(input);
+    const clipped = d.events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(clipped).toBeDefined();
+    expect(clipped).toMatchObject({ source: 'auto', evidenceCorrected: false, correctionIds: [] });
+    expect(clipped.autoShadow).toBeUndefined();
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+  });
 });

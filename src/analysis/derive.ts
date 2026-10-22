@@ -162,7 +162,11 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   // merged event can carry the id of the visit it absorbed
   let removedAutoEvents: EventRecord[] = [];
   let detectedById = new Map<string, EventRecord>();
-  const withProvenance = (detected: AutoEvents): EventRecord[] => {
+  const withProvenance = (
+    detected: AutoEvents,
+    /** A trial end that an event correction moved: the human's end, shared by both detections. */
+    endOverride?: { endFrame: number; endReason: AutoEvents['endReason'] },
+  ): EventRecord[] => {
     detectedById = new Map(detected.events.map((ev) => [ev.id, ev]));
     if (ctxAuto === null || proposal.startFrame === null || detected.endFrame === null) {
       removedAutoEvents = [];
@@ -172,9 +176,15 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     // never shorter than its own, so a range that turned an automatic investigation into the entry
     // ending the trial still sees the investigation it replaced; never shorter than the corrected
     // one, so investigations a removed entry uncovers are found on the automatic side and never
-    // read as human claims. A trial end that an event correction moved is the corrected end here.
-    let autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame);
-    if (autoOnly.endFrame !== null && autoOnly.endFrame < detected.endFrame) {
+    // read as human claims. A trial end that an event correction moved (a deleted or edited entry)
+    // applies to both detections as it stands, later or earlier, so nothing beside the moved entry
+    // reads evidence-corrected for the move alone.
+    let autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, endOverride);
+    if (
+      endOverride === undefined &&
+      autoOnly.endFrame !== null &&
+      autoOnly.endFrame < detected.endFrame
+    ) {
       autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
         endFrame: detected.endFrame,
         endReason: detected.endReason,
@@ -224,13 +234,11 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       }
       const end = resolveTrialEnd(a, proposal.startFrame, autoEvents.cutoffFrame, escapePosition);
       if (end.endFrame === autoEvents.endFrame && end.endReason === autoEvents.endReason) break;
-      autoEvents = detectAutoEvents(ctx, proposal.startFrame, {
-        endFrame: end.endFrame!,
-        endReason: end.endReason,
-      });
+      const endOverride = { endFrame: end.endFrame!, endReason: end.endReason };
+      autoEvents = detectAutoEvents(ctx, proposal.startFrame, endOverride);
       correctedEvents = applyEventCorrections(
         ctx,
-        withProvenance(autoEvents),
+        withProvenance(autoEvents, endOverride),
         corrections,
         autoEvents.endFrame,
       );
