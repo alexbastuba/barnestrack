@@ -1,8 +1,9 @@
 /**
- * Event provenance as the difference between two detections (D65, D71).
+ * Event provenance as the difference between two detections (D65, D71, D73).
  *
- * `derive()` runs event detection twice under the same parameters and over
- * the same trial window: once over the automatic frames alone, and once over
+ * `derive()` runs event detection twice under the same parameters from the
+ * same trial start: once over the automatic frames alone, to the later of its
+ * own trial end and the corrected one (D73), and once over
  * `auto ⊕ corrections` (point and range corrections applied to the frames).
  * This module matches the two lists and labels every corrected-detection
  * event with where it came from:
@@ -21,20 +22,33 @@
  *   investigation) → a human claim: `source: 'corrected'`, `correctionIds`
  *   over the union of the two spans, `autoShadow` = the automatic hole, frames
  *   and kind, and the evidence sentence names the automatic kind (D71);
- * - present only in the automatic detection → removed by a correction: it is
- *   returned in `removedAutoEvents` so `derive()` can flag it and count it as
- *   an event delete is counted; it gets no row (D71).
+ * - present only in the automatic detection → a leftover, read by D73 (3): an
+ *   automatic tracking failure (a loss the corrections repaired) is dropped
+ *   silently; an investigation or escape entry lying entirely after the
+ *   corrected trial end, or before its start, is dropped (the corrected trial
+ *   never reached it); any other was removed by a correction and is returned
+ *   in `removedAutoEvents` so `derive()` can flag it and count it as an event
+ *   delete is counted; it gets no row (D71).
  *
- * Matching runs in two passes, each largest overlap first and each event
- * matched at most once: by kind and hole, then — over what is left — by hole
- * alone. A pair left to the second pass always differs in kind, because a
- * same-kind pair with both sides free would have been taken in the first.
- * Ids are not stable across corrections (they carry the start frame), which
- * is why spans are matched and not ids. Pure: no DOM, no video, no clock.
+ * Matching runs in two passes over everything both detections produced, each
+ * largest overlap first and each event matched at most once: by kind and
+ * hole, then — over what is left — by hole alone. A pair left to the second
+ * pass always differs in kind, because a same-kind pair with both sides free
+ * would have been taken in the first. The window plays no part in matching:
+ * an automatic entry five frames after a range-created one is that range
+ * moving the entry, and pass 1 reads it so. Ids are not stable across
+ * corrections (they carry the start frame), which is why spans are matched
+ * and not ids. Pure: no DOM, no video, no clock.
  */
 import type { EventKind, EventRecord } from '../contracts/events.js';
 import type { CorrectionEntry } from '../contracts/session.js';
 import { sortedCorrections } from './corrections.js';
+
+/** The corrected trial's first and last frame indices, inclusive (D73: the leftover rule's window). */
+export interface FrameWindow {
+  startFrame: number;
+  endFrame: number;
+}
 
 /** The frames one point or range correction touches, inclusive. */
 export interface FrameCorrectionSpan {
@@ -162,11 +176,14 @@ export interface MatchedEvents {
   /** The corrected-detection events with their provenance filled in, in the order of `corrected`. */
   events: EventRecord[];
   /**
-   * Automatic events with no counterpart in the corrected detection, by start
-   * frame: a correction removed their evidence (D71). Each carries the ids of
-   * the point and range corrections inside its span, and inside any corrected
-   * event that overlaps it, as `correctionIds`, so a reader can see what erased
-   * it; `source` stays `auto`.
+   * Automatic investigations and escape entries with no counterpart in the
+   * corrected detection that begin at or before the corrected trial end and
+   * end at or after its start, by start frame: a correction removed their
+   * evidence (D71, D73). A leftover tracking failure, or an event the
+   * corrected trial never reached, is not here. Each carries the ids of the
+   * point and range corrections inside its span, and inside any corrected
+   * event that overlaps it, as `correctionIds`, so a reader can see what
+   * erased it; `source` stays `auto`.
    */
   removedAutoEvents: EventRecord[];
 }
@@ -174,12 +191,15 @@ export interface MatchedEvents {
 /**
  * The corrected-detection events with their provenance filled in from the
  * auto-only detection, and the automatic events that no longer have a
- * counterpart. The order of `corrected` is kept.
+ * counterpart. The order of `corrected` is kept. Without a `window` no
+ * leftover is dropped for lying outside the corrected trial; `derive()`
+ * always passes one.
  */
 export function matchEvents(
   autoOnly: readonly EventRecord[],
   corrected: readonly EventRecord[],
   spans: readonly FrameCorrectionSpan[],
+  window?: FrameWindow,
 ): MatchedEvents {
   // pass 1 (D65): by kind and hole
   const sameKind = pairByOverlap(
@@ -269,9 +289,15 @@ export function matchEvents(
     };
   });
 
+  // D73 (3): a leftover is a removal only if it is an investigation or an escape entry — a loss
+  // the corrections repaired is a repaired track, not an erased event — and only if the corrected
+  // trial reached it: one entirely after the corrected end (a range ended the trial first) or
+  // before its start was never in the corrected analysis to be removed from
+  const inWindow = (ev: EventRecord): boolean =>
+    window === undefined || (ev.startFrame <= window.endFrame && ev.endFrame >= window.startFrame);
   const removedAutoEvents = autoOnly
     .map((ev, ai) => ({ ev, ai }))
-    .filter(({ ai }) => !usedAuto.has(ai))
+    .filter(({ ev, ai }) => !usedAuto.has(ai) && ev.kind !== 'tracking_failure' && inWindow(ev))
     .map(({ ev }): EventRecord => {
       // the corrections inside its span and inside any corrected event that overlaps it: the
       // nudge that merged two visits sits between them, outside the visit it erased

@@ -309,3 +309,91 @@ describe('matchEvents (D71): a kind change is a human claim; a vanished automati
     expect(removedAutoEvents.map((e) => e.holeIndex)).toEqual([4]);
   });
 });
+
+describe('matchEvents (D73): what a leftover automatic event is', () => {
+  const entry = (startFrame: number, endFrame: number): EventRecord =>
+    ev({
+      id: `auto-escape_entry-h7-f${startFrame}`,
+      kind: 'escape_entry',
+      holeIndex: 7,
+      isTarget: true,
+      startFrame,
+      endFrame,
+      evidence: 'In the escape box at the target hole 7.',
+    });
+  const investigation = (hole: number, startFrame: number, endFrame: number): EventRecord =>
+    ev({ id: `auto-investigation-h${hole}-f${startFrame}`, holeIndex: hole, isTarget: hole === 7, startFrame, endFrame });
+
+  it('drops an automatic tracking failure the corrections repaired: not removed, not reported', () => {
+    // a 1.5 s loss in the open, repaired with one centroid point per lost frame
+    const points: CorrectionEntry[] = [];
+    for (let f = 10; f <= 54; f++) points.push(point(`p${f}`, f, 1));
+    const { events, removedAutoEvents } = matchEvents(
+      [ev({ id: 'auto-tracking_failure-hx-f10', kind: 'tracking_failure', holeIndex: null, startFrame: 10, endFrame: 54 })],
+      [],
+      frameCorrectionSpans(points),
+    );
+    expect(events).toEqual([]);
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('reads a range-created entry beside an automatic one five frames later as the range moving the entry, and leaves what the corrected trial never reached alone', () => {
+    const window = { startFrame: 0, endFrame: 900 };
+    const spans = frameCorrectionSpans([range('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(905, 2000), investigation(3, 1050, 1065), investigation(5, 1200, 1215)],
+      [entry(900, 2000)],
+      spans,
+      window,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      source: 'auto',
+      evidenceCorrected: true,
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 905, endFrame: 2000 },
+    });
+    expect(events[0]!.autoShadow).not.toHaveProperty('kind');
+    // the investigations at 1050 and 1200 lie entirely after the corrected end: not removed
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('pairs a range-created entry with the automatic investigation it replaced as a kind change, window or not', () => {
+    const window = { startFrame: 0, endFrame: 900 };
+    const spans = frameCorrectionSpans([range('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [investigation(7, 905, 930), investigation(3, 1050, 1065), investigation(5, 1200, 1215)],
+      [entry(900, 2000)],
+      spans,
+      window,
+    );
+    expect(events[0]).toMatchObject({
+      source: 'corrected',
+      evidenceCorrected: false,
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 905, endFrame: 930, kind: 'investigation' },
+    });
+    expect(events[0]!.evidence).toContain('Was an automatic investigation at hole 7, frames 905–930');
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('keeps a leftover that straddles the corrected end as a removal, and drops one before the start', () => {
+    const window = { startFrame: 100, endFrame: 900 };
+    const { removedAutoEvents } = matchEvents(
+      [investigation(3, 50, 80), investigation(4, 890, 950), investigation(5, 901, 950)],
+      [],
+      [],
+      window,
+    );
+    expect(removedAutoEvents.map((e) => e.startFrame)).toEqual([890]);
+  });
+
+  it('drops nothing for the window when none is given', () => {
+    const { removedAutoEvents } = matchEvents(
+      [investigation(3, 50, 80), investigation(5, 1200, 1215)],
+      [],
+      [],
+    );
+    expect(removedAutoEvents.map((e) => e.startFrame)).toEqual([50, 1200]);
+  });
+});
