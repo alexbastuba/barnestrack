@@ -105,6 +105,22 @@ session it is found (D39).
   from the pointer holding it. The fix for the reflow itself is a fixed minimum height on the
   banner (`#app-status` in `src/ui/app.ts` and its rule in `src/styles/app.css`), outside chunk
   14's boundary.
+- **Below 1200 px the Maze step's action bar can cover the frame at the fold.** From 1200 px the
+  bar (D72) is the controls column's footer — the column's width, at the right, still stuck to
+  the bottom of the window (`src/styles/app.css`, the Maze stage block) — so the frame, in the
+  left column, is never under it however the page is scrolled; `tests/browser/maze.spec.ts`
+  checks every handle at 1366 × 768, 1400 × 866 and 1920 × 1080. Below 1200 px the stage stacks
+  and the bar is the full-width strip every step has, so a frame that crosses the bottom of the
+  window has its lowest 50 px under the bar until the page is scrolled. Not fixed here (chunk 14b);
+  the Review and Track steps' bars are full-width at every size and have the same property.
+- **At 1200 px and up, scrolling the frame to the top of the window puts the stage's first row
+  above it.** The video selector, the click chip, the mode prompt and the scrubber share the
+  stage's first row; the frame and the controls share the second, so the two start on one line.
+  Scrolling the frame to the top — what `tests/browser/maze.spec.ts` does, and what a person does
+  to see the frame and the controls together — moves that first row above the window (measured
+  at 1366 × 768: y −133 to −4 px), while the bar's reason for a disabled Next step still says
+  "Choose each remaining video above". A sticky first row, or a shorter one, would keep the
+  selector in view; not in chunk 14b.
 - **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a
   similarity from circle correspondences, whose true rotation is exactly zero; the least-squares
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
@@ -424,7 +440,7 @@ session it is found (D39).
   the selector does not make it yet (chunk 15).
 - **"Maze set on k of N videos" cannot tell a confirmed video from an unconfirmed one.** Per-video
   maze confirmation is session state and was deliberately not built. The count in
-  `src/ui/next-step.ts` therefore treats a video as set when it carries a fitted (non-identity)
+  `src/ui/next-step.ts`, shown in the Maze step's action bar, therefore treats a video as set when it carries a fitted (non-identity)
   transform, or when its resolution matches the map's reference resolution and so needs none. A
   second video of the same size as the first is counted as set the moment it is loaded, before
   anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
