@@ -14,6 +14,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
 import {
+  HANDLE_KINDS,
   handlePositions,
   PLATFORM_HANDLE_BEARING_DEG,
   RING_HANDLE_BEARING_DEG,
@@ -21,6 +22,8 @@ import {
 } from '../../src/maze/handles.js';
 
 const APP_URL = '/';
+/** How `elementUnder` names the maze canvas: the overlay layer is what receives every press. */
+const CANVAS = 'canvas.overlay-layer';
 
 /** D69's breakpoint is 1200 px; D70 checks every step at this size. */
 test.use({ viewport: { width: 1366, height: 768 } });
@@ -86,6 +89,45 @@ interface Point {
 
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 
+/**
+ * What a press at `at` would land on, as `tag.class.class`, or "nothing" when
+ * the point is outside the window. Since chunk 15 the step's action bar is
+ * stuck to the bottom of the window (D72), so a handle that crosses the fold
+ * could be under it rather than under the pointer.
+ */
+async function elementUnder(page: Page, at: Point): Promise<string> {
+  return page.evaluate(([x, y]) => {
+    const node = document.elementFromPoint(x!, y!);
+    if (!node) return 'nothing';
+    const classes = [...node.classList].map((name) => `.${name}`).join('');
+    return `${node.tagName.toLowerCase()}${classes}`;
+  }, [at.x, at.y]);
+}
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The frame, the controls column and the action bar on screen, with the scroll position. */
+async function layout(page: Page): Promise<{ canvas: Box; controls: Box; bar: Box; scrollY: number }> {
+  const box = async (selector: string): Promise<Box> => {
+    const found = await page.locator(selector).boundingBox();
+    expect(found, `${selector} has a box`).not.toBeNull();
+    return found!;
+  };
+  return {
+    canvas: await box('#panel-maze .viewport'),
+    controls: await box('#panel-maze .maze-stage > .maze-controls'),
+    bar: await box('#panel-maze .next-step'),
+    scrollY: await page.evaluate(() => window.scrollY),
+  };
+}
+
+const span = (box: Box): string => `y ${box.y.toFixed(1)}–${(box.y + box.height).toFixed(1)}, x ${box.x.toFixed(0)}–${(box.x + box.width).toFixed(0)}`;
+
 interface Drag {
   /** The press and the release, in whole screen pixels. */
   start: Point;
@@ -114,6 +156,11 @@ async function drag(page: Page, kind: HandleKind, dx: number, dy: number): Promi
   const end = { x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
   const before = await frameBox(page);
   await page.mouse.move(start.x, start.y);
+  // At press time the pointer must be over the canvas, not over the bar stuck
+  // to the bottom of the window, or the press selects nothing and no drag starts.
+  const under = await elementUnder(page, start);
+  console.log(`maze handles: the ${kind} press at (${start.x}, ${start.y}) lands on ${under}`);
+  expect(under, 'the press lands on the maze canvas').toBe(CANVAS);
   await page.mouse.down();
   const held = await frameBox(page);
   await page.mouse.move(end.x, end.y, { steps: 8 });
@@ -275,6 +322,52 @@ test('a centre drag on an unscrolled 1920 × 1080 page lands where the pointer w
   expect(shift).toBe(0);
 });
 
+test('every handle is under the pointer, never under the action bar, at 1366 × 768, 1400 × 866 and 1920 × 1080, unscrolled and scrolled to the frame', async ({
+  page,
+}) => {
+  // Chunk 14b: the bar is stuck to the bottom of the window (D72). At 1200 px
+  // and up it is the controls column's footer, so the frame's column is never
+  // under it, whatever is scrolled; the controls column ends above it too.
+  const sizes = [
+    { width: 1366, height: 768 },
+    { width: 1400, height: 866 },
+    { width: 1920, height: 1080 },
+  ];
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    for (const scrolled of [false, true]) {
+      if (scrolled) {
+        await page.locator('#panel-maze .canvas-view').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+      } else {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+      }
+      const state = scrolled ? 'scrolled to the frame' : 'unscrolled';
+      const boxes = await layout(page);
+      const seen: string[] = [];
+      for (const kind of HANDLE_KINDS) {
+        const raw = await handleOnScreen(page, kind);
+        const at = { x: Math.round(raw.x), y: Math.round(raw.y) };
+        const onScreen = at.x >= 0 && at.y >= 0 && at.x < size.width && at.y < size.height;
+        const under = await elementUnder(page, at);
+        seen.push(`${kind} at (${at.x}, ${at.y}) → ${onScreen ? under : `below the fold, ${under}`}`);
+        expect(under, `${kind}, ${size.width} × ${size.height} ${state}: never under the action bar`).not.toContain('next-step');
+        // A handle below the fold is pressable by nobody; one on screen must be the canvas's.
+        if (onScreen) expect(under, `${kind}, ${size.width} × ${size.height} ${state}`).toBe(CANVAS);
+      }
+      console.log(
+        `maze bar: ${size.width} × ${size.height}, ${state} (scrollY ${boxes.scrollY}): canvas ${span(boxes.canvas)}; ` +
+          `controls ${span(boxes.controls)}; bar ${span(boxes.bar)}, ${boxes.bar.height.toFixed(1)} px tall; ${seen.join('; ')}`,
+      );
+      // Stuck to the bottom of the window, beside the frame's column, never over the frame.
+      expect(boxes.bar.y + boxes.bar.height).toBeCloseTo(size.height, 0);
+      expect(boxes.bar.x).toBeGreaterThanOrEqual(boxes.canvas.x + boxes.canvas.width);
+      // With the frame at the top of the window the controls column ends above the bar: no overlap of the column either.
+      if (scrolled) expect(boxes.bar.y).toBeGreaterThanOrEqual(boxes.controls.y + boxes.controls.height);
+    }
+  }
+});
+
 test('a zoom made mid-drag keeps the pixel under the pointer as the one that lands', async ({ page }) => {
   const before = await geometry(page);
   const raw = await handleOnScreen(page, 'centre');
@@ -369,13 +462,16 @@ test('at 1366 × 768 the frame and the Platform controls are on screen together,
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }));
+  const { controls, bar } = await layout(page);
   await page.screenshot({ path: test.info().outputPath('maze-1366x768.png') });
 
   console.log(
     `maze stage: columns "${columns}"; canvas top ${canvas!.y.toFixed(0)} px, ` +
       `Platform fieldset ${platform!.y.toFixed(0)}–${(platform!.y + platform!.height).toFixed(0)} px of 768, ` +
       `x ${platform!.x.toFixed(0)}–${(platform!.x + platform!.width).toFixed(0)} px of 1366; ` +
-      `scrollWidth ${scroll.scrollWidth} ≤ clientWidth ${scroll.clientWidth}`,
+      `scrollWidth ${scroll.scrollWidth} ≤ clientWidth ${scroll.clientWidth}; ` +
+      `controls column ends at ${(controls.y + controls.height).toFixed(1)} px; ` +
+      `bar ${span(bar)}, ${bar.height.toFixed(1)} px tall`,
   );
   expect(canvas!.y).toBeGreaterThanOrEqual(0);
   expect(canvas!.y).toBeLessThan(120);
@@ -384,4 +480,8 @@ test('at 1366 × 768 the frame and the Platform controls are on screen together,
   expect(platform!.x).toBeGreaterThanOrEqual(0);
   expect(platform!.x + platform!.width).toBeLessThanOrEqual(1366);
   expect(scroll.scrollWidth).toBeLessThanOrEqual(scroll.clientWidth);
+  // The bar (D72) is stuck to the bottom of the window beside the frame, and the controls column ends above it.
+  expect(bar.y + bar.height).toBeCloseTo(768, 0);
+  expect(bar.x).toBeGreaterThanOrEqual(canvas!.x + canvas!.width);
+  expect(bar.y).toBeGreaterThanOrEqual(controls.y + controls.height);
 });
