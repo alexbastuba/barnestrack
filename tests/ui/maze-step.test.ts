@@ -629,3 +629,22 @@ describe('the stage and the action bar (D69, D72)', () => {
     expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(true);
   });
 });
+
+describe('the mirror table', () => {
+  it('right-aligns only the numbers (.num): the two coordinates, not the hole number that names the row', () => {
+    const { step } = mount();
+    const table = step.body.querySelector('.mirror table')!;
+    expect(table.classList.contains('has-num')).toBe(true);
+    const headers = [...table.querySelectorAll('thead th')].map((th) => [th.textContent, th.classList.contains('num')]);
+    expect(headers).toEqual([
+      ['Hole', false],
+      ['x (px)', true],
+      ['y (px)', true],
+      ['Nudged', false],
+      ['Target', false],
+    ]);
+    const row = table.querySelector('tbody tr')!;
+    expect(row.querySelector('th')!.classList.contains('num')).toBe(false);
+    expect([...row.querySelectorAll('td')].map((td) => td.classList.contains('num'))).toEqual([true, true, false, false]);
+  });
+});

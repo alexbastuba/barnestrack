@@ -1149,15 +1149,16 @@ export function createMazeStep(context: AppContext): Step {
     el('h3', { text: 'What the overlay is drawing' }),
     mirrorSummary,
     scrollRegion('Every hole in this video’s pixels', [
-      el('table', { class: 'mirror-table' }, [
+      // `has-num`: text cells read left, and only the two coordinates right-align on their figures.
+      el('table', { class: 'mirror-table has-num' }, [
         el('caption', {
           text: 'Every hole in this video’s pixels. An asterisk in "Nudged" marks a hole moved off the generated ring.',
         }),
         el('thead', {}, [
           el('tr', {}, [
             el('th', { text: 'Hole', attrs: { scope: 'col' } }),
-            el('th', { text: 'x (px)', attrs: { scope: 'col' } }),
-            el('th', { text: 'y (px)', attrs: { scope: 'col' } }),
+            el('th', { text: 'x (px)', class: 'num', attrs: { scope: 'col' } }),
+            el('th', { text: 'y (px)', class: 'num', attrs: { scope: 'col' } }),
             el('th', { text: 'Nudged', attrs: { scope: 'col' } }),
             el('th', { text: 'Target', attrs: { scope: 'col' } }),
           ]),
@@ -1345,8 +1346,8 @@ export function createMazeStep(context: AppContext): Step {
       holeCentres(map).map((hole) =>
         el('tr', { class: hole.holeIndex === map.target.holeIndex ? 'is-target' : '' }, [
           el('th', { text: String(hole.holeIndex), attrs: { scope: 'row' } }),
-          el('td', { text: hole.x.toFixed(1) }),
-          el('td', { text: hole.y.toFixed(1) }),
+          el('td', { class: 'num', text: hole.x.toFixed(1) }),
+          el('td', { class: 'num', text: hole.y.toFixed(1) }),
           el('td', { text: hole.nudged ? 'yes' : 'no' }),
           el('td', { text: hole.holeIndex === map.target.holeIndex ? 'target' : '' }),
         ]),
