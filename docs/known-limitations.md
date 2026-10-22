@@ -527,19 +527,6 @@ session it is found (D39).
   fragment's provenance is a human assertion it is not. `tests/analysis/match-events.test.ts` pins
   the at-most-once rule, which is the chunk's instruction; relaxing it to one-to-many on the
   automatic side would need a shadow per fragment and a decision.
-- **A kind change that ends the trial leaves no trace of the automatic event.** D71's second
-  matching pass (chunk 16) gives a kind-change pair a shadow and a sentence, but the auto-only
-  detection runs over the *corrected* trial window (D65). An `in_escape_box` range laid from the
-  start of an automatic investigation at the target to the end of the video produces a persistent
-  entry that ends the trial at the range start, so the auto-only pass is clipped there and never
-  sees the investigation: the entry exports as a plain `corrected` claim with blank `auto_*`
-  columns, nothing is reported removed, and `correction_count` adds 1 for the range alone. Measured
-  on a scripted track (automatic investigation at hole 7 over frames 43–149, range 43–end): trial
-  end 43 (`escape`), entry `source = corrected`, shadow null, `removedAutoEvents = []`,
-  `correction_count = 1`. The numbers are right; the provenance understates what the range
-  replaced. Smallest fix: run the auto-only pass to its own trial end (`resolveTrialEnd` over the
-  automatic frames) and match over the union of the two windows — a change to D65's same-window
-  rule, so a decision.
 - **A nudge that moves an automatic investigation to a neighbouring hole reads as a removal plus a
   claim, not a move.** Both matching passes require the same hole, so when nose corrections over a
   visit place it at hole 4 instead of hole 3, the hole-3 automatic event is reported removed
@@ -550,17 +537,23 @@ session it is found (D39).
   `correction_count = 18`. The count and the flag are honest about what the corrections erased; a
   third pass matching by span alone with the automatic hole in the shadow would read as a move,
   and whether a hole change is a move or an erasure is a decision.
-- **Repairing a tracking loss with hand-placed points reports and counts the loss as a removed
-  automatic event.** A `tracking_failure` is an automatic event, so under D71's rule a loss the
-  user repairs frame by frame (the commonest correction workflow) has no counterpart in the
-  corrected detection and is reported removed: one soft `auto_event_removed_by_correction`, and
-  `correction_count` adds 1 beside the point corrections themselves. Measured by the chunk-16
-  reviewer on a scripted 1.5 s loss in the open repaired with 45 centroid points:
-  `removedAutoEvents = [auto-tracking_failure-hx-f45]`, one flag, `correction_count = 46`. D71's
-  wording covers it literally and the numbers are honest, but whether a repaired loss is an
-  "erased event" or simply a repaired track is Alex's call (D67: a loss counts toward nothing); the
-  smallest change would exclude `tracking_failure` from the removal report and count, or word the
-  flag per kind. The flag's message names at most three correction ids and says "and N more".
+- **A repair that turns an automatic entry into one long investigation reads as a trim plus two
+  removals when the tracker also saw a short investigation beside the entry.** The matcher's
+  first pass (same kind and hole) runs before its second (kind change), so when the automatic
+  side holds a short investigation at the target next to the entry — the usual shape: seen small
+  at the hole, lost, back out at the hole — the corrected long investigation pairs with that
+  short one, and the entry and the back-out visit are leftovers inside the window: reported
+  removed and counted (D73). Measured on a scripted track (automatic investigation at hole 7 over
+  frames 1468–1484, entry 1485–1589, back-out investigation 1590–1604; 105 centroid points at the
+  hole over the lost frames): one investigation 1468–1604, `source = auto`,
+  `evidence_corrected = true`, shadow `{7, 1468, 1484}`;
+  `removedAutoEvents = [auto-escape_entry-h7-f1485, auto-investigation-h7-f1590]`, two soft
+  flags, `correction_count = 107` (105 points + 2). The count and the flags are honest about what
+  the points erased, but the better reading is one kind change (entry → investigation) with the
+  entry as the shadow. Smallest fix: let the two passes compete by overlap (one pass, largest
+  overlap first, same kind preferred only on a tie) — a change to D71's pass order and the tests
+  that pin it, so a decision. The D73 kind-change test in `tests/analysis/derive.test.ts` keeps
+  the stay before the loss under the investigation minimum, so the shape does not arise there.
 - **The shipped-UI smoke flow's identity-column list predates D68.** `TRIAL_IDENTITY_COLUMNS` in
   `tests/browser/app-smoke.spec.ts:432` expects `group` sixth, but `trials.csv` has carried
   `session_name` second since D68 (chunk 12), so `load, review, correct, retune, export, reload`

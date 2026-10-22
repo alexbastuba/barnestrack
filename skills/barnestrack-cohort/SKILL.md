@@ -129,10 +129,13 @@ Measures:
   say. `non_persistent_entry_noted` is a note, not a problem (a
   reviewer confirmed a non-escape and the tool had seen a short head-in-hole at the target), so a
   row can read `ok` with it. And `auto_event_removed_by_correction` is also a note: a reviewer's
-  point or range correction removed an automatic event (a "not visible" range over an
-  investigation, a nudge that merged two visits into one), which has no `events.csv` row of its
-  own and is counted in `correction_count` exactly as a deletion is; a row can read `ok` with it,
-  and the flag is the only trace of that event in the export. (After a merge the surviving row
+  point or range correction removed an automatic investigation or escape entry inside the trial
+  (a "not visible" range over an investigation, a nudge that merged two visits into one), which
+  has no `events.csv` row of its own and is counted in `correction_count` exactly as a deletion
+  is; a row can read `ok` with it, and the flag is the only trace of that event in the export.
+  Two things are never such a removal: a tracking loss the reviewer repaired frame by frame (the
+  points count, the loss does not), and an automatic event after a trial end the reviewer set
+  with an escape-box range (the trial never reached it). (After a merge the surviving row
   can carry the removed visit's `event_id`, because automatic ids encode the start frame; it is
   still a different event.)
   `stale_auto_layer` matters most for comparisons: the track was produced under other
@@ -142,11 +145,12 @@ Measures:
   `tracked` state only, so it reads lower than "frames with a usable position", which is
   `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
   breakdown.
-- `correction_count` (count) — human corrections affecting this trial. An automatic event that a
-  point or range correction removed counts here exactly as a deletion does, beside the correction
-  itself, so one "not visible" range over a visit adds 2 (the row then carries
-  `auto_event_removed_by_correction`); when a delete or an edit already names that event, the
-  removal is not counted a second time.
+- `correction_count` (count) — human corrections affecting this trial. An automatic investigation
+  or escape entry that a point or range correction removed counts here exactly as a deletion does,
+  beside the correction itself, so one "not visible" range over a visit adds 2 (the row then
+  carries `auto_event_removed_by_correction`); when a delete or an edit already names that event,
+  the removal is not counted a second time. A repaired tracking loss adds only its points, and a
+  visit after a trial end set by an escape-box range adds nothing.
 
 Threshold columns, carried so the numbers can be reconciled later:
 `hole_investigation_radius_factor` (× hole radius), `hole_investigation_min_duration_s` (s),
