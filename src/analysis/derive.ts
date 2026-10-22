@@ -181,11 +181,11 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       });
     }
     // the corrected trial as frame indices: D73 (3) reads the leftovers against it
-    const window = {
+    const trialWindow = {
       startFrame: cleaned.track[proposal.startFrame]!.frameIndex,
       endFrame: cleaned.track[detected.endFrame]!.frameIndex,
     };
-    const matched = matchEvents(autoOnly.events, detected.events, spans, window);
+    const matched = matchEvents(autoOnly.events, detected.events, spans, trialWindow);
     removedAutoEvents = matched.removedAutoEvents;
     return matched.events;
   };

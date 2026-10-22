@@ -171,7 +171,8 @@ describe('migration to version 2 (D68)', () => {
   it('labels the demo take’s range-asserted entry as the person’s claim, and the investigation it trimmed as evidence-corrected', () => {
     // vid_02 carries one correction: an "in the escape box" range. Under D65 the entry it produces
     // is a human claim, and the investigation at the same hole that the range cut short is the
-    // tool's, measured over corrected frames, with the auto-only end as its shadow.
+    // tool's, measured over corrected frames, with the whole automatic stay as its shadow — the
+    // auto-only pass runs to its own trial end (D73), so the shadow is not clipped at the range.
     const session = migrated();
     const withRange = session.videos.find((video) =>
       session.analyses[video.id]!.corrections.entries.some((e) => e.kind === 'range'),
@@ -204,10 +205,23 @@ describe('migration to version 2 (D68)', () => {
     expect(trimmed.holeIndex).toBe(entry.holeIndex);
     expect(trimmed.source).toBe('auto');
     expect(trimmed.correctionIds).toEqual([range.id]);
+    const stay = derive({
+      videoId: withRange.id,
+      auto: analysis.auto,
+      corrections: { entries: [] },
+      mazeMap: session.mazeMap!,
+      mazeTransform: withRange.mazeTransform,
+      trialType: withRange.trialType,
+      targetHole: withRange.targetHole,
+      index: withRange.referenceResolution,
+      parameters: session.parameters!,
+    }).events.find((e) => e.kind === 'investigation' && e.startFrame === trimmed.startFrame)!;
+    expect(stay).toBeDefined();
+    expect(stay.endFrame).toBeGreaterThan(trimmed.endFrame);
     expect(trimmed.autoShadow).toEqual({
       holeIndex: trimmed.holeIndex,
       startFrame: trimmed.startFrame,
-      endFrame: trimmed.endFrame + 1,
+      endFrame: stay.endFrame,
     });
     // and nothing else on that video is touched
     const others = fresh.events.filter((e) => e !== entry && e !== trimmed);

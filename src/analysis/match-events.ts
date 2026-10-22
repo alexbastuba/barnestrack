@@ -191,7 +191,7 @@ export interface MatchedEvents {
 /**
  * The corrected-detection events with their provenance filled in from the
  * auto-only detection, and the automatic events that no longer have a
- * counterpart. The order of `corrected` is kept. Without a `window` no
+ * counterpart. The order of `corrected` is kept. Without a `trialWindow` no
  * leftover is dropped for lying outside the corrected trial; `derive()`
  * always passes one.
  */
@@ -199,7 +199,7 @@ export function matchEvents(
   autoOnly: readonly EventRecord[],
   corrected: readonly EventRecord[],
   spans: readonly FrameCorrectionSpan[],
-  window?: FrameWindow,
+  trialWindow?: FrameWindow,
 ): MatchedEvents {
   // pass 1 (D65): by kind and hole
   const sameKind = pairByOverlap(
@@ -294,7 +294,8 @@ export function matchEvents(
   // trial reached it: one entirely after the corrected end (a range ended the trial first) or
   // before its start was never in the corrected analysis to be removed from
   const inWindow = (ev: EventRecord): boolean =>
-    window === undefined || (ev.startFrame <= window.endFrame && ev.endFrame >= window.startFrame);
+    trialWindow === undefined ||
+    (ev.startFrame <= trialWindow.endFrame && ev.endFrame >= trialWindow.startFrame);
   const removedAutoEvents = autoOnly
     .map((ev, ai) => ({ ev, ai }))
     .filter(({ ev, ai }) => !usedAuto.has(ai) && ev.kind !== 'tracking_failure' && inWindow(ev))
