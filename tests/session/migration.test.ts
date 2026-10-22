@@ -218,6 +218,7 @@ describe('migration to version 2 (D68)', () => {
     }).events.find((e) => e.kind === 'investigation' && e.startFrame === trimmed.startFrame)!;
     expect(stay).toBeDefined();
     expect(stay.endFrame).toBeGreaterThan(trimmed.endFrame);
+    expect(stay.endFrame).toBe(740); // the demo take's stay at hole 2, pinned
     expect(trimmed.autoShadow).toEqual({
       holeIndex: trimmed.holeIndex,
       startFrame: trimmed.startFrame,

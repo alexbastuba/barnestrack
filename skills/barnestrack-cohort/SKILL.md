@@ -133,9 +133,10 @@ Measures:
   (a "not visible" range over an investigation, a nudge that merged two visits into one), which
   has no `events.csv` row of its own and is counted in `correction_count` exactly as a deletion
   is; a row can read `ok` with it, and the flag is the only trace of that event in the export.
-  Two things are never such a removal: a tracking loss the reviewer repaired frame by frame (the
-  points count, the loss does not), and an automatic event after a trial end the reviewer set
-  with an escape-box range (the trial never reached it). (After a merge the surviving row
+  Two things are never such a removal: a tracking loss that point or range corrections made
+  disappear (the corrections count, the loss does not), and an automatic event lying entirely
+  after the corrected trial end, whatever ended it (the trial never reached it). (After a merge
+  the surviving row
   can carry the removed visit's `event_id`, because automatic ids encode the start frame; it is
   still a different event.)
   `stale_auto_layer` matters most for comparisons: the track was produced under other
@@ -149,8 +150,8 @@ Measures:
   or escape entry that a point or range correction removed counts here exactly as a deletion does,
   beside the correction itself, so one "not visible" range over a visit adds 2 (the row then
   carries `auto_event_removed_by_correction`); when a delete or an edit already names that event,
-  the removal is not counted a second time. A repaired tracking loss adds only its points, and a
-  visit after a trial end set by an escape-box range adds nothing.
+  the removal is not counted a second time. A tracking loss that corrections made disappear adds
+  only those corrections, and a visit lying entirely after the corrected trial end adds nothing.
 
 Threshold columns, carried so the numbers can be reconciled later:
 `hole_investigation_radius_factor` (× hole radius), `hole_investigation_min_duration_s` (s),

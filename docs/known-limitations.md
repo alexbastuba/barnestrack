@@ -537,23 +537,54 @@ session it is found (D39).
   `correction_count = 18`. The count and the flag are honest about what the corrections erased; a
   third pass matching by span alone with the automatic hole in the shadow would read as a move,
   and whether a hole change is a move or an erasure is a decision.
-- **A repair that turns an automatic entry into one long investigation reads as a trim plus two
-  removals when the tracker also saw a short investigation beside the entry.** The matcher's
-  first pass (same kind and hole) runs before its second (kind change), so when the automatic
-  side holds a short investigation at the target next to the entry — the usual shape: seen small
-  at the hole, lost, back out at the hole — the corrected long investigation pairs with that
-  short one, and the entry and the back-out visit are leftovers inside the window: reported
-  removed and counted (D73). Measured on a scripted track (automatic investigation at hole 7 over
-  frames 1468–1484, entry 1485–1589, back-out investigation 1590–1604; 105 centroid points at the
-  hole over the lost frames): one investigation 1468–1604, `source = auto`,
-  `evidence_corrected = true`, shadow `{7, 1468, 1484}`;
+- **A repair that turns an automatic entry into one long investigation reads as a trim plus one
+  or two removals when the tracker also saw a short investigation beside the entry.** The
+  matcher's first pass (same kind and hole) runs before its second (kind change), so when the
+  automatic side holds a short investigation at the target next to the entry — the usual shape:
+  seen small at the hole, lost, back out at the hole — the corrected long investigation pairs with
+  that short one, and the entry (and the back-out visit, when there is one) are leftovers inside
+  the window: reported removed and counted (D73). Measured on a scripted track (automatic
+  investigation at hole 7 over frames 1468–1484, entry 1485–1589, back-out investigation
+  1590–1604; 105 centroid points at the hole over the lost frames): one investigation 1468–1604,
+  `source = auto`, `evidence_corrected = true`, shadow `{7, 1468, 1484}`;
   `removedAutoEvents = [auto-escape_entry-h7-f1485, auto-investigation-h7-f1590]`, two soft
-  flags, `correction_count = 107` (105 points + 2). The count and the flags are honest about what
-  the points erased, but the better reading is one kind change (entry → investigation) with the
-  entry as the shadow. Smallest fix: let the two passes compete by overlap (one pass, largest
-  overlap first, same kind preferred only on a tie) — a change to D71's pass order and the tests
-  that pin it, so a decision. The D73 kind-change test in `tests/analysis/derive.test.ts` keeps
-  the stay before the loss under the investigation minimum, so the shape does not arise there.
+  flags, `correction_count = 107` (105 points + 2); lost to the end of the clip instead, one
+  removal and `correction_count = 106`. The count and the flags are honest about what the points
+  erased, but the better reading is one kind change (entry → investigation) with the entry as the
+  shadow — the shadow D73 (4) aims for does not happen in this, the commonest, shape. Smallest
+  fix: let the two passes compete by overlap (one pass, largest overlap first, same kind preferred
+  only on a tie) — a change to D71's pass order and the tests that pin it, so a decision; it
+  would also change the shipped demo take (test51), where the entry's 40-frame overlap with the
+  automatic investigation beats the trimmed investigation's 28, so the entry would take the
+  kind-change shadow and the trimmed investigation would become a claim. The D73 kind-change
+  test in `tests/analysis/derive.test.ts` keeps the stay before the loss under the investigation
+  minimum, so the shape does not arise there.
+- **Editing an escape entry's start earlier orphans the edit and ends the trial without an entry
+  row.** Measured by the chunk-16b reviewer at this chunk's head and, identically, at its base
+  `2e60c56`: automatic entry at hole 7 over frames 720–869 after a stay 688–719; an event edit
+  moving its start to 710 gives `trial.endFrame = 710` (`escape`), `escaped = true`,
+  `total_latency_s = 23.67`, no `escape_entry` row, `orphaned_correction`, `correction_count = 1`.
+  Moving the start later works (start 730: the entry reads `corrected` with shadow
+  `{7, 720, 869}`). Cause: the trial-end loop re-detects with the moved end, the automatic entry
+  begins after it and is not emitted (`src/analysis/events.ts` emits only events that begin within
+  the trial), so the edit finds no event with its id and is reported orphaned, while the end it
+  set stands. Smallest fix: when an edit names an entry, resolve the trial end from the edited
+  entry instead of re-detecting past it, or keep an edited entry that begins after a moved end;
+  a decision, since it touches D21's rule that an entry ends the trial only inside it.
+- **A user's escape-box range that an automatic entry at the same hole overlaps reads
+  `source = auto`, evidence-corrected, and enters the review queue.** Matching runs over
+  everything both detections produced (D73, chunk 16b), so the first pass pairs the range-created
+  entry with any automatic entry at the same hole whose span overlaps it, however far apart the
+  two starts are. Measured by the chunk-16b reviewer: `in_escape_box` range from frame 900 to the
+  end, the tracker's own entry at 1473–1622 → `escape_entry 900–1622`, `source = auto`,
+  `evidence_corrected = true`, `correction_ids = r1`, shadow `{7, 1473, 1622}`, listed by the
+  Review step's queue; at the base `2e60c56` it read `corrected` and was not queued. The base
+  already read a range starting at or after the automatic entry as `auto` (offsets 0 and +5
+  frames; −5 and −2 read `corrected` there and `auto` now), so this widens an existing class.
+  D67 says a range-asserted entry carries `source: corrected` and needs no confirmation; neither
+  it nor §5 says where "the range moved the entry" ends and "the user asserted an entry the tracker
+  found later" begins. Options for Alex: accept; never pair a range-created entry in the first
+  pass; require a minimum overlap fraction before reading the pair as a move.
 - **The shipped-UI smoke flow's identity-column list predates D68.** `TRIAL_IDENTITY_COLUMNS` in
   `tests/browser/app-smoke.spec.ts:432` expects `group` sixth, but `trials.csv` has carried
   `session_name` second since D68 (chunk 12), so `load, review, correct, retune, export, reload`

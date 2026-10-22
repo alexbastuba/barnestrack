@@ -24,8 +24,8 @@ export type ReviewFlagCode =
    * corrected detection no longer finds it. It has no row, is counted in
    * `correctionCount` as an event delete is, and the in-memory analysis lists
    * it; one flag per removed event, at its start frame (D71). A tracking
-   * failure the corrections repaired, and an automatic event lying after the
-   * corrected trial end, are not removals (D73).
+   * failure the corrections repaired, and an automatic event lying entirely
+   * after the corrected trial end, are not removals (D73).
    */
   | 'auto_event_removed_by_correction';
 

@@ -44,7 +44,8 @@ finds is flagged `auto_event_removed_by_correction` (soft) and counted in `corre
 is asserted only for a resolved acquisition trial with no escape entry; `parameters.json` carries
 `toolVersion` and `parametersHash` beside the set (§7). D73 then settled what a removal is — an
 automatic investigation or escape entry inside the corrected trial window; a tracking failure the
-corrections repaired and an automatic event lying after the corrected trial end are not removals —
+corrections repaired and an automatic event lying entirely after the corrected trial end are not
+removals —
 and ran the auto-only pass to the later of its own trial end and the corrected one, so a
 trial-ending kind change keeps its shadow and the visits a removed entry uncovers stay automatic.
 
