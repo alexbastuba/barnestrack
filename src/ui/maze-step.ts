@@ -208,6 +208,33 @@ export function createMazeStep(context: AppContext): Step {
     return holeDiameterCm(map.holes.holeRadius_px, scale);
   }
 
+  /**
+   * "Maze set on N of M videos." — the bar's status line once the step is
+   * finished (D72), and the tail of every announcement of an action that can
+   * change the count, so a screen reader hears where the cohort stands the
+   * moment it moves. Null while there is no cohort. Per-video confirmation is
+   * session state and is not built here, so the count is of videos the map
+   * has been placed in, not of videos anyone has signed off.
+   */
+  function progressText(): string | null {
+    const total = store.videos.length;
+    if (total === 0) return null;
+    return `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
+  }
+
+  /**
+   * `message` with the cohort's progress after it, for an action that can
+   * change the count: placing the platform, entering the diameter that
+   * finishes the map, applying or importing a map, turning a ring. Only once
+   * the map is calibrated — before that the count is 0 of N by definition
+   * ("Platform set … Maze set on 0 of 2" would read as a contradiction) and
+   * the bar's reason already says what is missing.
+   */
+  function withProgress(message: string): string {
+    const progress = calibrated() ? progressText() : null;
+    return progress === null ? message : `${message} ${progress}`;
+  }
+
   // ---- edits ----------------------------------------------------------------
 
   function countClick(): void {
@@ -255,7 +282,9 @@ export function createMazeStep(context: AppContext): Step {
       // next target click names the shared number instead of turning the ring.
       targetChosen = false;
       context.announce(
-        `Platform set: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px. Twenty holes generated. Enter the platform diameter to finish.`,
+        withProgress(
+          `Platform set: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px. Twenty holes generated. Enter the platform diameter to finish.`,
+        ),
       );
       return;
     }
@@ -263,7 +292,9 @@ export function createMazeStep(context: AppContext): Step {
     if (!placed) return;
     store.setMazeTransform(video.id, placed);
     context.announce(
-      `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
+      withProgress(
+        `Platform for ${video.filename}: centre ${circle.cx.toFixed(1)}, ${circle.cy.toFixed(1)}, radius ${circle.r.toFixed(1)} px.`,
+      ),
     );
   }
 
@@ -504,7 +535,9 @@ export function createMazeStep(context: AppContext): Step {
         ? ` ${corrections} event correction${corrections === 1 ? '' : 's'} on this video name holes by their old numbers and will be listed as no longer matching — check them on the Review step.`
         : '';
     context.announce(
-      `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.${warning}`,
+      withProgress(
+        `Hole numbers in ${video.filename} now count from this hole as the target (turned ${holes} hole${holes === 1 ? '' : 's'}); other videos are unchanged.${warning}`,
+      ),
     );
   }
 
@@ -540,8 +573,11 @@ export function createMazeStep(context: AppContext): Step {
     if (!video || degrees === 0) return;
     turnRing(degrees);
     const after = videoMap();
+    // A turn gives this video its own transform, which the count reads as "set" — so say where it stands.
     context.announce(
-      `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
+      withProgress(
+        `Ring aligned on ${video.filename}: hole 0 is now at ${(after?.holes.phase_deg ?? 0).toFixed(1)}° in this video. Other videos are unchanged.`,
+      ),
     );
   }
 
@@ -611,7 +647,9 @@ export function createMazeStep(context: AppContext): Step {
     const problem = adoptMapDocument(await file.text());
     context.announce(
       problem ??
-        `Maze map loaded from ${file.name} and scaled onto every video in this session. Check each one and use "Adjust" where the platform sits differently.`,
+        withProgress(
+          `Maze map loaded from ${file.name} and scaled onto every video in this session. Check each one and use "Adjust" where the platform sits differently.`,
+        ),
     );
     render();
   }
@@ -654,7 +692,9 @@ export function createMazeStep(context: AppContext): Step {
     mode = 'idle';
     rimPoints = [];
     context.announce(
-      `Maze map applied from ${source.filename}. If the platform sits differently in this video, choose "Adjust" and click 3 rim points.`,
+      withProgress(
+        `Maze map applied from ${source.filename}. If the platform sits differently in this video, choose "Adjust" and click 3 rim points.`,
+      ),
     );
     render();
   }
@@ -1087,7 +1127,8 @@ export function createMazeStep(context: AppContext): Step {
     },
     (v) => {
       updateMap((m) => withHoleRadius({ ...m, calibration: { platformDiameter_cm: v } }, currentHoleDiameterCm()));
-      context.announce(`Platform diameter set to ${v} cm.`);
+      // The diameter is what finishes the map (D14, D44): this is where the count leaves 0 of N.
+      context.announce(withProgress(`Platform diameter set to ${v} cm.`));
       render();
     },
   );
@@ -1101,12 +1142,6 @@ export function createMazeStep(context: AppContext): Step {
   });
 
   const modeStatus = el('p', { class: 'mode-status' });
-  /**
-   * How far through the cohort the maze is. Per-video confirmation is session
-   * state and is not built here, so this counts the videos the map has actually
-   * been placed in rather than the ones a user has signed off.
-   */
-  const mazeProgress = el('p', { class: 'maze-progress', attrs: { role: 'status' } });
   const nextStep = createNextStepButton(context, 'track', 'Track');
   // A status chip, not a button: it reports, it is not pressed (D70).
   const clickBadge = el('p', { class: 'status-chip', attrs: { 'aria-live': 'off' } });
@@ -1155,15 +1190,16 @@ export function createMazeStep(context: AppContext): Step {
     el('h3', { text: 'What the overlay is drawing' }),
     mirrorSummary,
     scrollRegion('Every hole in this video’s pixels', [
-      el('table', { class: 'mirror-table' }, [
+      // `has-num`: text cells read left, and only the two coordinates right-align on their figures.
+      el('table', { class: 'mirror-table has-num' }, [
         el('caption', {
           text: 'Every hole in this video’s pixels. An asterisk in "Nudged" marks a hole moved off the generated ring.',
         }),
         el('thead', {}, [
           el('tr', {}, [
             el('th', { text: 'Hole', attrs: { scope: 'col' } }),
-            el('th', { text: 'x (px)', attrs: { scope: 'col' } }),
-            el('th', { text: 'y (px)', attrs: { scope: 'col' } }),
+            el('th', { text: 'x (px)', class: 'num', attrs: { scope: 'col' } }),
+            el('th', { text: 'y (px)', class: 'num', attrs: { scope: 'col' } }),
             el('th', { text: 'Nudged', attrs: { scope: 'col' } }),
             el('th', { text: 'Target', attrs: { scope: 'col' } }),
           ]),
@@ -1173,10 +1209,13 @@ export function createMazeStep(context: AppContext): Step {
     ]),
   ]);
 
-  // The stage (D69): the selector and the chip, the frame, the controls. In
-  // source order they stack; from 1200 px the stylesheet puts the frame in a
-  // left column and the other two, selector first, in a scrolling right
-  // column, so the frame and every control are on screen together.
+  // The stage (D69): the selector and the chip, the prompt and the scrubber,
+  // the frame, the controls. In source order they stack; from 1200 px the
+  // stylesheet lays them in two rows of two — the prompt and the scrubber
+  // beside the selector, the frame beside the scrolling controls — so the
+  // frame and the Platform fieldset start on the same line and every control
+  // is on screen with the frame. The step's status line lives in the action
+  // bar after the mirror, which stays the last thing in the step (D72).
   body.append(
     el('div', { class: 'maze-stage' }, [
       el('div', { class: 'maze-stage-top' }, [
@@ -1187,9 +1226,9 @@ export function createMazeStep(context: AppContext): Step {
           ]),
           clickBadge,
         ]),
-        mazeProgress,
       ]),
-      el('div', { class: 'maze-stage-view' }, [modeStatus, scrubber.element, canvasView.element]),
+      el('div', { class: 'maze-stage-head' }, [modeStatus, scrubber.element]),
+      el('div', { class: 'maze-stage-view' }, [canvasView.element]),
       controls,
     ]),
     mirror,
@@ -1203,10 +1242,18 @@ export function createMazeStep(context: AppContext): Step {
   let lastEpoch = store.epoch;
 
   function render(): void {
-    const total = store.videos.length;
-    mazeProgress.textContent =
-      total === 0 ? '' : `Maze set on ${mazeSetCount(store)} of ${total} video${total === 1 ? '' : 's'}.`;
-    nextStep.update(mazeMissing(store));
+    const missing = mazeMissing(store);
+    nextStep.update(missing);
+    // The bar's status line (D72): while the step is unfinished it is the
+    // button's reason, which carries the count; once every video is set it
+    // says how far the cohort is, so the line never goes blank while there is
+    // one. The line is not a live region — the count is spoken by the action
+    // that changes it, through `withProgress`.
+    const progress = missing === null ? progressText() : null;
+    if (progress !== null) {
+      nextStep.bar.status.textContent = progress;
+      nextStep.bar.status.hidden = false;
+    }
     if (store.epoch !== lastEpoch) {
       // Load, reset or restore replaced the whole session: nothing cached here
       // refers to it any more.
@@ -1340,8 +1387,8 @@ export function createMazeStep(context: AppContext): Step {
       holeCentres(map).map((hole) =>
         el('tr', { class: hole.holeIndex === map.target.holeIndex ? 'is-target' : '' }, [
           el('th', { text: String(hole.holeIndex), attrs: { scope: 'row' } }),
-          el('td', { text: hole.x.toFixed(1) }),
-          el('td', { text: hole.y.toFixed(1) }),
+          el('td', { class: 'num', text: hole.x.toFixed(1) }),
+          el('td', { class: 'num', text: hole.y.toFixed(1) }),
           el('td', { text: hole.nudged ? 'yes' : 'no' }),
           el('td', { text: hole.holeIndex === map.target.holeIndex ? 'target' : '' }),
         ]),

@@ -1110,53 +1110,102 @@ label {
 }
 
 /*
- * The stage. Below 1200 px its three parts stack in source order — the video
- * selector with the click chip, the frame, then the controls — which is how
- * the step was laid out before. From 1200 px the frame takes the left column
- * and the controls a fixed right column that scrolls within the viewport, so
- * the frame and every control are on screen together (the Review step's
- * `.review-stage` is the same pattern); the selector keeps its place at the
- * top of that column. The mirror table stays below both.
+ * The stage. Below 1200 px its four parts stack in source order — the video
+ * selector with the click chip, the prompt with the scrubber, the frame, then
+ * the controls — which is how the step was laid out before. From 1200 px they
+ * make two rows of two: the prompt and the scrubber beside the selector, then
+ * the frame beside a fixed-width controls column that scrolls within the
+ * window, so the frame and the Platform fieldset start on the same line and
+ * every control is on screen with the frame (the Review step's `.review-stage`
+ * is the same pattern). The mirror table stays below both.
  */
 .maze-stage {
   display: grid;
   grid-template-areas:
     'top'
+    'head'
     'view'
     'controls';
   gap: var(--s3);
 }
 
+.maze-stage-top,
+.maze-stage-head,
+.maze-stage-view,
+.maze-stage > .maze-controls {
+  min-width: 0;
+}
+
 .maze-stage-top {
   grid-area: top;
-  min-width: 0;
+}
+
+.maze-stage-head {
+  grid-area: head;
 }
 
 .maze-stage-view {
   grid-area: view;
-  min-width: 0;
 }
 
 .maze-stage > .maze-controls {
   grid-area: controls;
-  min-width: 0;
+}
+
+/* The row gap under the scrubber stands in for its own margin. */
+.maze-stage-head > .scrubber {
+  margin-bottom: 0;
+}
+
+/*
+ * Scrolled to the top of the window — by a focus, by a script — the frame
+ * keeps a small margin above it. The page above the stage is a fraction of a
+ * pixel tall (the header's 19.5 px hint line, the 21.25 px step heading, the
+ * 45.75 px stepper) and the scroll offset snaps to a whole pixel, so without
+ * the margin the frame's top edge lands half a pixel above the window. The
+ * margin would be right on a whole-pixel page too: a border flush with the
+ * window's edge reads as cut off.
+ */
+.maze-stage .canvas-view,
+.maze-stage .viewport {
+  scroll-margin-top: var(--s1);
 }
 
 @media (min-width: 1200px) {
-  .maze-stage {
+  .maze-step {
+    /* The controls column, and the action bar that is its footer: one value, so the two cannot drift. */
+    --maze-column: 23rem;
     /*
-     * What the controls column leaves free at the bottom of the viewport: the
-     * page gutter and the step's action bar (D72), whose height is added here
-     * when it lands.
+     * The bar as it stands under that column, measured at 1366 × 768 in
+     * Chrome on macOS: two 13 px status lines (39 px) over the 32.5 px button,
+     * the 8 px gap between the two rows, 8 px of padding above and below and
+     * the 1 px rule — 96.5 px. With one status line it is 77 px, with none
+     * 49.5 px. System fonts (D2) give other platforms line metrics a pixel or
+     * so apart; the gutter in the reserve below absorbs that, and the spec's
+     * "bar below the controls column" check runs on Linux in CI.
      */
-    --maze-reserve: 6rem;
-    grid-template-columns: minmax(0, 1fr) 23rem;
+    --maze-bar: 6.03125rem;
+    /*
+     * What the controls column leaves free at the bottom of the window: the
+     * bar at its tallest, the frame's scroll margin (the column starts on the
+     * frame's line) and a gutter — 116.5 px.
+     */
+    --maze-reserve: calc(var(--maze-bar) + var(--s1) + var(--s4));
+  }
+
+  .maze-stage {
+    grid-template-columns: minmax(0, 1fr) var(--maze-column);
     grid-template-rows: auto 1fr;
     grid-template-areas:
-      'view top'
+      'head top'
       'view controls';
     gap: var(--s3) var(--s4);
     align-items: start;
+  }
+
+  /* The selector and the chip sit on the controls, level with the scrubber. */
+  .maze-stage-top {
+    align-self: end;
   }
 
   .maze-stage > .maze-controls {
@@ -1166,12 +1215,24 @@ label {
     padding-right: var(--s1);
   }
 
-  /* The frame no longer shares the viewport's height with the controls, so it may use more of it. */
+  /* The frame fits the window on its own: the bar is beside it, never over it. */
   .maze-stage .viewport {
-    max-height: calc(100vh - var(--maze-reserve) - 6rem);
+    max-height: calc(100vh - var(--maze-reserve));
   }
 
-  /* Three number fields on one row of a 23rem column. */
+  /*
+   * The step's action bar (D72) is the controls column's footer at this
+   * width — the column's width, at the right, still stuck to the bottom of
+   * the window and still the last thing in the step — so the frame, in the
+   * left column, is never under it whatever is scrolled. Below 1200 px it is
+   * the full-width bar every step has, and can cover the frame at the fold.
+   */
+  .maze-step > .next-step {
+    width: var(--maze-column);
+    margin-left: auto;
+  }
+
+  /* Three number fields on one row of the controls column. */
   .maze-stage .number-input {
     width: 6rem;
   }

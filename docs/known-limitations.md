@@ -105,6 +105,22 @@ session it is found (D39).
   from the pointer holding it. The fix for the reflow itself is a fixed minimum height on the
   banner (`#app-status` in `src/ui/app.ts` and its rule in `src/styles/app.css`), outside chunk
   14's boundary.
+- **Below 1200 px the Maze step's action bar can cover the frame at the fold.** From 1200 px the
+  bar (D72) is the controls column's footer — the column's width, at the right, still stuck to
+  the bottom of the window (`src/styles/app.css`, the Maze stage block) — so the frame, in the
+  left column, is never under it however the page is scrolled; `tests/browser/maze.spec.ts`
+  checks every handle at 1366 × 768, 1400 × 866 and 1920 × 1080. Below 1200 px the stage stacks
+  and the bar is the full-width strip every step has, so a frame that crosses the bottom of the
+  window has its lowest 50 px under the bar until the page is scrolled. Not fixed here (chunk 14b);
+  the Review and Track steps' bars are full-width at every size and have the same property.
+- **At 1200 px and up, scrolling the frame to the top of the window puts the stage's first row
+  above it.** The video selector, the click chip, the mode prompt and the scrubber share the
+  stage's first row; the frame and the controls share the second, so the two start on one line.
+  Scrolling the frame to the top — what `tests/browser/maze.spec.ts` does, and what a person does
+  to see the frame and the controls together — moves that first row above the window (measured
+  at 1366 × 768: y −133 to −4 px), while the bar's reason for a disabled Next step still says
+  "Choose each remaining video above". A sticky first row, or a shorter one, would keep the
+  selector in view; not in chunk 14b.
 - **A fitted transform can carry floating-point rotation noise.** "Adjust" and "Apply from" fit a
   similarity from circle correspondences, whose true rotation is exactly zero; the least-squares
   fit returns values around 1e-15 degrees instead. Nothing measurable depends on it and no
@@ -424,11 +440,15 @@ session it is found (D39).
   the selector does not make it yet (chunk 15).
 - **"Maze set on k of N videos" cannot tell a confirmed video from an unconfirmed one.** Per-video
   maze confirmation is session state and was deliberately not built. The count in
-  `src/ui/next-step.ts` therefore treats a video as set when it carries a fitted (non-identity)
+  `src/ui/next-step.ts`, shown in the Maze step's action bar, therefore treats a video as set when it carries a fitted (non-identity)
   transform, or when its resolution matches the map's reference resolution and so needs none. A
   second video of the same size as the first is counted as set the moment it is loaded, before
   anyone has looked at where the ring falls in its frame. The Next-step button on the Maze step is
-  gated on this count, so it can enable a step early; it never blocks one wrongly.
+  gated on this count, so it can enable a step early; it never blocks one wrongly. A ring turn
+  (the "Ring angle of hole 0" field, the alignment click, or a target click that turns the ring)
+  on a video of another size gives it a non-identity transform and so counts it as set, though
+  nothing has placed the platform in its frame; since chunk 14b every action that can move the
+  count says the new count at the end of its announcement, so the step at least says it.
 
 - **The timeline is below the fold once an event is selected.** Chunk 15 fits the decision onto
   one screen at 1366 × 768 and 1400 × 866 (100 %): selecting an event scrolls the stage to the top,
@@ -479,7 +499,10 @@ session it is found (D39).
   a 384 px window). Once the step is scrolled into view the bar stays at the foot of the window.
   At 100 % every step's primary is on the first screen at 1366 × 768 and 1400 × 866
   (`scripts/screenshots.ts`). A collapsing header at narrow heights would close the gap; that is a
-  layout decision for Alex.
+  layout decision for Alex. Since chunk 14b the Maze step's finished-state count ("Maze set on 3 of
+  3 videos.") lives in the bar's status line, so at 200 % it is hidden with the rest of that line;
+  the enabled Next step and the tab's "✓ maze set" say the same, and the count is spoken at the
+  end of every announcement of an action that changes it.
 - **The export still states an inferred escape entry's evidence as a fact (D67).** The interface
   names the detector's entry "Inferred escape entry" and prefixes its evidence "Inferred — "
   (`src/ui/event-wording.ts`), but `events.csv` carries the engine's sentence verbatim ("Escape-box

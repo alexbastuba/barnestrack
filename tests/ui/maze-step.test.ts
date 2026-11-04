@@ -56,13 +56,16 @@ function session(videos: VideoDescriptor[] = [video()]): SessionFile {
   };
 }
 
-function mount(file: SessionFile = session()): { step: Step; store: SessionStore } {
+function mount(
+  file: SessionFile = session(),
+  announce: (message: string) => void = () => {},
+): { step: Step; store: SessionStore } {
   const store = new SessionStore(new MemorySessionStorage(), TOOL_VERSION, { autosaveDelayMs: 0 });
   store.replaceSession(file);
   const context: AppContext = {
     store,
     toolVersion: TOOL_VERSION,
-    announce: () => {},
+    announce,
     showStep: () => {},
   };
   const step = createMazeStep(context);
@@ -580,5 +583,149 @@ describe('dragging a handle (D69)', () => {
     expect(chip?.tagName).toBe('P');
     expect(chip?.textContent).toBe('0 clicks on the image');
     expect(step.body.querySelector('.click-badge')).toBeNull();
+  });
+});
+
+describe('the stage and the action bar (D69, D72)', () => {
+  it('stacks the selector, the prompt and the scrubber, the frame and the controls, in that order, with the bar last', () => {
+    const { step } = mount();
+    const stage = step.body.querySelector('.maze-stage')!;
+    expect([...stage.children].map((child) => child.className)).toEqual([
+      'maze-stage-top',
+      'maze-stage-head',
+      'maze-stage-view',
+      'maze-controls',
+    ]);
+    expect(stage.querySelector('.maze-stage-top #maze-video')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-top .status-chip')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-head .mode-status')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-head .scrubber')).not.toBeNull();
+    expect(stage.querySelector('.maze-stage-view .canvas-view')).not.toBeNull();
+    // Tab order (D72): the stage, the mirror, then the bar as the last thing in the step.
+    const last = step.body.lastElementChild!;
+    expect(last.classList.contains('next-step')).toBe(true);
+    expect(last.previousElementSibling?.classList.contains('mirror')).toBe(true);
+    expect(last.previousElementSibling?.previousElementSibling).toBe(stage);
+  });
+
+  it('says how far the cohort is in the action bar once every video is set', () => {
+    const { step } = mount();
+    expect(step.body.querySelector('.maze-progress')).toBeNull();
+    const status = step.body.querySelector<HTMLElement>('.next-step .action-bar-status')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toBe('Maze set on 1 of 1 video.');
+    expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(false);
+  });
+
+  it('leaves the reason, which carries the count, in the bar while a video is still unset', () => {
+    // A second video of another size with the identity transform: the map has not been placed in it.
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const { step } = mount(session([video(), second]));
+    const status = step.body.querySelector<HTMLElement>('.next-step .action-bar-status')!;
+    expect(status.hidden).toBe(false);
+    expect(status.textContent).toContain('set on 1 of 2 videos');
+    expect(step.body.querySelector<HTMLButtonElement>('.next-step-button')!.disabled).toBe(true);
+  });
+
+  it('says where the cohort stands at the end of every announcement that changes the count', () => {
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const announced: string[] = [];
+    const { step, store } = mount(session([video(), second]), (message) => announced.push(message));
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toBe('Maze step now showing test50.mp4.');
+
+    // Typing a radius places the platform in the second video, which is what sets the maze on it.
+    const radius = fieldNamed(step, 'Radius (px)');
+    radius.value = '200';
+    radius.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toMatch(/^Platform for test50\.mp4: centre .* radius 200\.0 px\. Maze set on 2 of 2 videos\.$/);
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+
+    // Applying the first video's map to it again changes nothing in the count, and still says so.
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    const applyFrom = step.body.querySelector<HTMLSelectElement>('#maze-apply-from')!;
+    applyFrom.value = 'video-test53';
+    pressButton(step, 'Apply map from this video');
+    expect(announced.at(-1)).toMatch(/^Maze map applied from test53\.mp4\. .* Maze set on 2 of 2 videos\.$/);
+    expect(store.videoById('video-test50')!.mazeTransform).not.toEqual(video().mazeTransform);
+  });
+
+  it('says where the cohort stands when the diameter finishes the first map, and not while the map is a draft', () => {
+    // Two videos of the map's size and no map yet: the count is 0 of 2 until the diameter lands, then 2 of 2 at once.
+    const second: VideoDescriptor = { ...video(), id: 'video-test50', filename: 'test50.mp4' };
+    const announced: string[] = [];
+    const { step, store } = mount(
+      { ...createSessionFile('maze test', TOOL_VERSION), videos: [video(), second], mazeMap: null },
+      (message) => announced.push(message),
+    );
+    expect(store.current.mazeMap).toBeNull();
+
+    const radius = fieldNamed(step, 'Radius (px)');
+    radius.value = '200';
+    radius.dispatchEvent(new Event('change'));
+    // The map is a draft: "Platform set … Maze set on 0 of 2" would contradict itself, so no tail yet.
+    expect(announced.at(-1)).toMatch(/^Platform set: .* Enter the platform diameter to finish\.$/);
+    expect(announced.at(-1)).not.toContain('Maze set on');
+    expect(store.current.mazeMap).toBeNull();
+
+    const diameter = fieldNamed(step, 'Platform diameter (cm)');
+    diameter.value = '92';
+    diameter.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toBe('Platform diameter set to 92 cm. Maze set on 2 of 2 videos.');
+    expect(store.current.mazeMap).not.toBeNull();
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+  });
+
+  it('says where the cohort stands when a ring turn gives a video its own transform, which the count reads as set', () => {
+    const second: VideoDescriptor = {
+      ...video(),
+      id: 'video-test50',
+      filename: 'test50.mp4',
+      referenceResolution: { width: 1280, height: 720 },
+    };
+    const announced: string[] = [];
+    const { step } = mount(session([video(), second]), (message) => announced.push(message));
+    const select = step.body.querySelector<HTMLSelectElement>('#maze-video')!;
+    select.value = 'video-test50';
+    select.dispatchEvent(new Event('change'));
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toContain('set on 1 of 2 videos');
+
+    const angle = fieldNamed(step, 'Ring angle of hole 0 (°)');
+    angle.value = '30';
+    angle.dispatchEvent(new Event('change'));
+    expect(announced.at(-1)).toMatch(/^Ring aligned on test50\.mp4: hole 0 is now at 30\.0° in this video\. Other videos are unchanged\. Maze set on 2 of 2 videos\.$/);
+    expect(step.body.querySelector('.next-step .action-bar-status')!.textContent).toBe('Maze set on 2 of 2 videos.');
+  });
+});
+
+describe('the mirror table', () => {
+  it('right-aligns only the numbers (.num): the two coordinates, not the hole number that names the row', () => {
+    const { step } = mount();
+    const table = step.body.querySelector('.mirror table')!;
+    expect(table.classList.contains('has-num')).toBe(true);
+    const headers = [...table.querySelectorAll('thead th')].map((th) => [th.textContent, th.classList.contains('num')]);
+    expect(headers).toEqual([
+      ['Hole', false],
+      ['x (px)', true],
+      ['y (px)', true],
+      ['Nudged', false],
+      ['Target', false],
+    ]);
+    const row = table.querySelector('tbody tr')!;
+    expect(row.querySelector('th')!.classList.contains('num')).toBe(false);
+    expect([...row.querySelectorAll('td')].map((td) => td.classList.contains('num'))).toEqual([true, true, false, false]);
   });
 });
