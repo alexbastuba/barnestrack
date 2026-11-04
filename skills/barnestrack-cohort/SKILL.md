@@ -25,7 +25,7 @@ keeps the cohort name as it was typed. The six files:
 | `trials.csv`                      | trial                         | 41 columns; the headline numbers                                                                            |
 | `events.csv`                      | event of any kind             | 28 columns; what the latencies and errors are made of                                                       |
 | `quality.csv`                     | video                         | 21 columns; whether to trust the video at all                                                               |
-| `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns                                       |
+| `parameters.json`                 | —                             | the full parameter set, including thresholds that are not CSV columns, with `toolVersion` and `parametersHash` beside it |
 | `<session name>.barnestrack.json` | —                             | the session file: tracks, corrections, maze map. Large. Read it only if the CSVs cannot answer the question |
 | `barnestrack_export.xlsx`         | —                             | the same three tables as sheets, plus `parameters` and `readme`                                             |
 
@@ -98,7 +98,10 @@ Measures:
   strategy cross-tabulation; count it separately and say how many.
 - `strategy_source` — `auto` or `corrected`. An override on an `unclassified` trial is honoured
   and reads `corrected`.
-- `escaped` — `true` or `false`.
+- `escaped` — `true`, `false` or blank. Blank on a probe trial (no escape box) and on an
+  `unresolved` row (no trial window to say anything over); `false` is asserted only for a resolved
+  acquisition trial with no escape entry. Never pool a blank with `false`: one is a
+  non-measurement, the other a measured non-escape.
 - `no_escape_confirmed` — `true` when a person reviewed the video and recorded that the animal
   never entered the escape box, which is what lets a trial with no entry read `ok`; blank on a
   probe trial. It says the confirmation is on file, not that it still holds: if the tool later
@@ -115,15 +118,27 @@ Measures:
   this is what attributes an `ok` that rests on a person's word.
 - `status` — `ok`, `review` or `unresolved`. See Rules.
 - `review_flags` — the codes of every review flag the analysis raised on this trial, `;`-joined,
-  unique and alphabetical; blank when none. The vocabulary: `confirmation_contradicted`,
-  `correction_out_of_range`, `no_escape_contradicted`, `non_persistent_entry_noted`,
-  `orphaned_correction`, `oversized_in_trial`, `physically_unlikely_entry`, `stale_auto_layer`,
-  `tracking_failure_at_hole`. This is *why* a row reads `review`, so quote it when triaging — with
-  two exceptions. A `review` row with **blank** `review_flags` is the commonest case and has no
-  code: an acquisition trial that never escaped and was not confirmed as a non-escape
-  (`escaped = false`, `no_escape_confirmed = false`), which the two columns beside it already say.
-  And `non_persistent_entry_noted` is a note, not a problem (a reviewer confirmed a non-escape and
-  the tool had seen a short head-in-hole at the target), so a row can read `ok` with it.
+  unique and alphabetical; blank when none. The vocabulary: `auto_event_removed_by_correction`,
+  `confirmation_contradicted`, `correction_out_of_range`, `no_escape_contradicted`,
+  `non_persistent_entry_noted`, `orphaned_correction`, `oversized_in_trial`,
+  `physically_unlikely_entry`, `stale_auto_layer`, `tracking_failure_at_hole`. This is *why* a row
+  reads `review`, so quote it when triaging — with three exceptions. A `review` row with **blank**
+  `review_flags`, or with only the two notes below, is the commonest case and has no code of its
+  own: an acquisition trial that never escaped and was not confirmed as a non-escape
+  (`escaped = false`, `no_escape_confirmed = false`), which the two columns beside it already
+  say. `non_persistent_entry_noted` is a note, not a problem (a
+  reviewer confirmed a non-escape and the tool had seen a short head-in-hole at the target), so a
+  row can read `ok` with it. And `auto_event_removed_by_correction` is also a note: a reviewer's
+  point or range correction removed an automatic investigation or escape entry inside the trial
+  (a "not visible" range over an investigation, a nudge that merged two visits into one), which
+  has no `events.csv` row of its own and is counted in `correction_count` exactly as a deletion
+  is; a row can read `ok` with it, and the flag is the only trace of that event in the export.
+  Two things are never such a removal: a tracking loss that point or range corrections made
+  disappear (the corrections count, the loss does not), and an automatic event lying entirely
+  after the corrected trial end, whatever ended it (the trial never reached it). (After a merge
+  the surviving row
+  can carry the removed visit's `event_id`, because automatic ids encode the start frame; it is
+  still a different event.)
   `stale_auto_layer` matters most for comparisons: the track was produced under other
   tracking parameters than the ones `parameters_hash` names, so that row's hash does not describe
   how its track was made.
@@ -131,7 +146,12 @@ Measures:
   `tracked` state only, so it reads lower than "frames with a usable position", which is
   `quality.csv`'s `positioned_fraction`. Judge a video on that one; `quality.csv` has the full
   breakdown.
-- `correction_count` (count) — human corrections affecting this trial.
+- `correction_count` (count) — human corrections affecting this trial. An automatic investigation
+  or escape entry that a point or range correction removed counts here exactly as a deletion does,
+  beside the correction itself, so one "not visible" range over a visit adds 2 (the row then
+  carries `auto_event_removed_by_correction`); when a delete or an edit already names that event,
+  the removal is not counted a second time. A tracking loss that corrections made disappear adds
+  only those corrections, and a visit lying entirely after the corrected trial end adds nothing.
 
 Threshold columns, carried so the numbers can be reconciled later:
 `hole_investigation_radius_factor` (× hole radius), `hole_investigation_min_duration_s` (s),
@@ -179,8 +199,14 @@ session_id,session_name,video_id,trial_label,event_id,kind,hole_index,is_target,
   tool detects events once over the automatic track alone and once over the track with the
   reviewer's point and range corrections applied. `corrected` means the event is a human claim —
   it exists only in the second detection (a reviewer's "in the escape box from here" range, a
-  nudged point that produced it), or a reviewer edited or added it. `auto` means the automatic
-  detection found it too; a kept ("confirmed") event is `auto`.
+  nudged point that produced it), or a reviewer edited or added it, or the corrections changed
+  its *kind* (an investigation that an "in the escape box" range turned into an escape entry, a
+  loss that a nudge turned into an investigation). `auto` means the automatic detection found it
+  too; a kept ("confirmed") event is `auto`. A `corrected` row with filled `auto_*` columns is
+  either an event a reviewer edited or one whose kind the corrections changed; in the second case
+  its `evidence_summary` ends with "Was an automatic investigation at hole 7, frames 1100–1129,
+  before the corrections changed its kind." — the only place the automatic kind travels, since
+  the `auto_*` columns carry hole and frames only.
 - `evidence_corrected` — `true` when both detections found the event but a point or range
   correction inside its span changed what was measured (its frames, its distances, which point it
   was judged on). The row is still the tool's event, measured over frames a human touched; the
@@ -198,9 +224,9 @@ session_id,session_name,video_id,trial_label,event_id,kind,hole_index,is_target,
   was named. `is_target` is judged against the row's effective target hole (`target_hole` in
   `trials.csv`), which can differ between videos.
 - `auto_hole_index`, `auto_start_frame`, `auto_end_frame` — what the automatic pass had said.
-  Populated when `source = corrected` (a reviewer changed the event) or `evidence_corrected =
-  true` (a correction changed what was measured); blank otherwise, including on a plain confirmed
-  row. A row where these differ from the live columns is a visible disagreement between the tool
+  Populated when `source = corrected` (a reviewer changed the event, or the corrections changed
+  its kind) or `evidence_corrected = true` (a correction changed what was measured); blank
+  otherwise, including on a plain confirmed row and on a claim the automatic pass never saw. A row where these differ from the live columns is a visible disagreement between the tool
   and a reviewer, and is worth surfacing.
 
 ## `quality.csv`
@@ -239,8 +265,17 @@ session_id,session_name,video_id,tracked_fraction,not_detected_fraction,ambiguou
 
 ## `parameters.json`
 
-The full parameter set as a JSON object, exactly as the analysis used it — nothing added, no
-wrapper, no hash field. It contains everything `parameters_hash` covers, which is **more than the
+The full parameter set as a JSON object, exactly as the analysis used it, with two provenance
+fields first: `toolVersion` (the build that wrote the export, the same string as every row's
+`tool_version`) and `parametersHash` (what the rest of the file hashes to, the same string as every
+row's `parameters_hash`). Everything else in the object is the parameter set — no wrapper. The two
+provenance fields are not part of the hashed value, so hashing the file with the tool's own hasher
+reproduces `parametersHash`; a file whose `parametersHash` differs from the rows' `parameters_hash`
+was assembled from more than one export and must not be read as one. A `parameters.json` without
+the two fields was written by an earlier build (tool 0.1.0, or a 0.2.0 build before they were
+added); read `parameters_hash` from the rows instead.
+
+It contains everything `parameters_hash` covers, which is **more than the
 threshold columns in `trials.csv`**: the kinematics block (`speedWindowFrames`,
 `duplicateTimestampFactor`, `dropGapFactor`), `kinematicsSmoothingWindowFrames`,
 `gapFilling.enabled`, and the whole `tracking` subtree are hashed but are not columns. When two
@@ -271,8 +306,8 @@ number.
    could be detected. Nothing about it involves review, and a correction cannot produce it. On such
    a row every measure taken over the trial window is blank — `trial_start_s`, both latencies,
    `primary_errors`, `total_errors`, `path_length_cm`, `path_length_smoothed_cm`,
-   `mean_speed_cm_per_s`, `target_quadrant_time_s` and `tracked_fraction` — and `strategy` reads
-   `unclassified`. Nothing on it is a number that could be averaged in by mistake, but a reader
+   `mean_speed_cm_per_s`, `target_quadrant_time_s`, `tracked_fraction` and `escaped` — and
+   `strategy` reads `unclassified`. Nothing on it is a number that could be averaged in by mistake, but a reader
    who drops blanks silently still shrinks n without saying so. Exclude `unresolved` rows from
    every aggregate, and say that you did.
 

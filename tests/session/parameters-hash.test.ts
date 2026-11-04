@@ -6,9 +6,43 @@
  * imports it (chunk 6 removed the session-side copy).
  */
 import { describe, expect, it } from 'vitest';
-import { canonicalJson, hashTrackingParameters } from '../../src/analysis/parameters.js';
+import {
+  canonicalJson,
+  DEFAULT_PARAMETERS,
+  hashParameters,
+  hashTrackingParameters,
+  PARAMETERS_PROVENANCE_KEYS,
+} from '../../src/analysis/parameters.js';
 import { DEFAULT_TRACKING_PARAMETERS } from '../../src/analysis/tracker/params.js';
-import type { TrackingParameters } from '../../src/contracts/parameters.js';
+import type { Parameters, TrackingParameters } from '../../src/contracts/parameters.js';
+
+describe('hashParameters', () => {
+  it('is the hash of the canonical JSON of the whole parameter set', () => {
+    expect(hashParameters(DEFAULT_PARAMETERS)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashParameters({ ...DEFAULT_PARAMETERS, trialCutoff_s: 120 })).not.toBe(
+      hashParameters(DEFAULT_PARAMETERS),
+    );
+  });
+
+  it('ignores the two provenance keys a parameters.json carries beside the set (D71)', () => {
+    expect([...PARAMETERS_PROVENANCE_KEYS]).toEqual(['toolVersion', 'parametersHash']);
+    // what a parameters.json reads back as: the set plus the build and the hash it names
+    const readBack = {
+      toolVersion: 'barnestrack v0.2.0 (abc1234)',
+      parametersHash: hashParameters(DEFAULT_PARAMETERS),
+      ...DEFAULT_PARAMETERS,
+    } as Parameters;
+    expect(hashParameters(readBack)).toBe(hashParameters(DEFAULT_PARAMETERS));
+    // only those two: any other extra key is part of the value and changes the hash
+    expect(hashParameters({ ...DEFAULT_PARAMETERS, extra: 1 } as Parameters)).not.toBe(
+      hashParameters(DEFAULT_PARAMETERS),
+    );
+    // and the tracking hash is untouched by the rule
+    expect(hashTrackingParameters(readBack.tracking)).toBe(
+      hashTrackingParameters(DEFAULT_PARAMETERS.tracking),
+    );
+  });
+});
 
 describe('canonicalJson', () => {
   it('sorts object keys and emits no whitespace', () => {

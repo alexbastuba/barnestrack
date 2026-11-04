@@ -294,7 +294,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, string> = {
   strategySource:
     'Whether the strategy is the rule engine’s (auto) or the user’s override (corrected) (—).',
   escaped:
-    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box (yes/no).',
+    'Whether a persistent escape-box entry ended the trial; blank for a probe trial, which has no escape box, and for an unresolved trial, which has no window to say anything over; no is asserted only for a resolved trial with no entry (yes/no).',
   noEscapeConfirmed:
     'Whether a person has confirmed that this animal never entered the escape box, which is what lets a trial with no entry read ok; an escape entry that ended the trial found afterwards contradicts the confirmation and the entry wins, while a shorter one is noted beside it; blank for a probe trial (yes/no).',
   status:
@@ -450,8 +450,21 @@ function hashCanonical(value: unknown): string {
   return sha256Hex(new TextEncoder().encode(canonicalJson(value)));
 }
 
+/**
+ * The two keys a `parameters.json` carries beside the parameter set (D11, D71):
+ * the build that wrote it and the hash of the set. They are never part of the
+ * hashed value, so a `parameters.json` read back hashes to the hash it names;
+ * no `Parameters` value inside the app has them, so no stored hash changes.
+ */
+export const PARAMETERS_PROVENANCE_KEYS = ['toolVersion', 'parametersHash'] as const;
+
+const PROVENANCE_KEY_SET: ReadonlySet<string> = new Set(PARAMETERS_PROVENANCE_KEYS);
+
 export function hashParameters(parameters: Parameters): string {
-  return hashCanonical(parameters);
+  const set = Object.fromEntries(
+    Object.entries(parameters).filter(([key]) => !PROVENANCE_KEY_SET.has(key)),
+  );
+  return hashCanonical(set);
 }
 
 export function hashTrackingParameters(tracking: TrackingParameters): string {

@@ -31,7 +31,7 @@ import {
 } from './events.js';
 import { mazeGeometry, type MazeGeometry } from './geometry.js';
 import { computeKinematics, type KinematicsSummary } from './kinematics.js';
-import { frameCorrectionSpans, matchEvents } from './match-events.js';
+import { EVENT_KIND_LABEL, frameCorrectionSpans, matchEvents } from './match-events.js';
 import { computeMetrics, isPersistentEscape } from './metrics.js';
 import {
   ANALYSIS_MODEL,
@@ -50,6 +50,9 @@ import {
   type TrialBounds,
 } from './trial.js';
 import type { ReviewFlag } from './types.js';
+
+/** How many correction ids a removal flag's message names before saying "and N more"; a display cap, not a threshold. */
+const NAMED_CORRECTIONS_IN_MESSAGE = 3;
 
 export interface DeriveInput {
   videoId: string;
@@ -82,6 +85,17 @@ export interface DerivedAnalysis extends DerivedLayer {
   kinematics: KinematicsSummary;
   strategy: StrategyResult;
   reviewFlags: ReviewFlag[];
+  /**
+   * D71, D73: automatic investigations and escape entries inside the corrected
+   * trial window that the corrected detection no longer finds — a point or
+   * range correction removed their evidence. They have no row, are counted in
+   * `metrics.correctionCount` exactly as an event delete is, and each raises
+   * `auto_event_removed_by_correction`; kept here for the Review step, never
+   * persisted. Each carries the corrections inside its span as `correctionIds`.
+   * A tracking failure the corrections repaired, and an automatic event the
+   * corrected trial never reached, are never listed.
+   */
+  removedAutoEvents: EventRecord[];
   correctionsApplied: { point: number; range: number; event: number };
 }
 
@@ -123,9 +137,10 @@ export function derive(input: DeriveInput): DerivedAnalysis {
   /*
    * D65: provenance is the difference between two detections. When any point or range correction
    * is in force, detection also runs over the automatic frames alone — same parameters, same trial
-   * start, same trial window — and the corrected detection's events are labelled by matching the
-   * two lists. With no frame correction the two detections are identical, so the single pass is
-   * its own auto-only pass and every event is automatic and untouched.
+   * start, to the later of its own trial end and the corrected one (D73) — and the corrected
+   * detection's events are labelled by matching the two lists. With no frame correction the two
+   * detections are identical, so the single pass is its own auto-only pass and every event is
+   * automatic and untouched.
    */
   const spans = frameCorrectionSpans(corrections.entries);
   let ctxAuto: EventContext | null = null;
@@ -142,13 +157,47 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       escapeBox,
     };
   }
-  const withProvenance = (detected: AutoEvents): EventRecord[] => {
-    if (ctxAuto === null || detected.endFrame === null) return detected.events;
-    const autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
-      endFrame: detected.endFrame,
-      endReason: detected.endReason,
-    });
-    return matchEvents(autoOnly.events, detected.events, spans);
+  // D71: the automatic events the last detection pass no longer finds — the pass that stands —
+  // and that pass's own events by id, because an automatic id encodes the start frame and a
+  // merged event can carry the id of the visit it absorbed
+  let removedAutoEvents: EventRecord[] = [];
+  let detectedById = new Map<string, EventRecord>();
+  const withProvenance = (
+    detected: AutoEvents,
+    /** A trial end that an event correction moved: the human's end, shared by both detections. */
+    endOverride?: { endFrame: number; endReason: AutoEvents['endReason'] },
+  ): EventRecord[] => {
+    detectedById = new Map(detected.events.map((ev) => [ev.id, ev]));
+    if (ctxAuto === null || proposal.startFrame === null || detected.endFrame === null) {
+      removedAutoEvents = [];
+      return detected.events;
+    }
+    // D73 (4): the auto-only pass runs to the later of its own trial end and the corrected one —
+    // never shorter than its own, so a range that turned an automatic investigation into the entry
+    // ending the trial still sees the investigation it replaced; never shorter than the corrected
+    // one, so investigations a removed entry uncovers are found on the automatic side and never
+    // read as human claims. A trial end that an event correction moved (a deleted or edited entry)
+    // applies to both detections as it stands, later or earlier, so nothing beside the moved entry
+    // reads evidence-corrected for the move alone.
+    let autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, endOverride);
+    if (
+      endOverride === undefined &&
+      autoOnly.endFrame !== null &&
+      autoOnly.endFrame < detected.endFrame
+    ) {
+      autoOnly = detectAutoEvents(ctxAuto, proposal.startFrame, {
+        endFrame: detected.endFrame,
+        endReason: detected.endReason,
+      });
+    }
+    // the corrected trial as frame indices: D73 (3) reads the leftovers against it
+    const trialWindow = {
+      startFrame: cleaned.track[proposal.startFrame]!.frameIndex,
+      endFrame: cleaned.track[detected.endFrame]!.frameIndex,
+    };
+    const matched = matchEvents(autoOnly.events, detected.events, spans, trialWindow);
+    removedAutoEvents = matched.removedAutoEvents;
+    return matched.events;
   };
 
   let autoEvents: AutoEvents = detectAutoEvents(ctx, proposal.startFrame);
@@ -185,13 +234,11 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       }
       const end = resolveTrialEnd(a, proposal.startFrame, autoEvents.cutoffFrame, escapePosition);
       if (end.endFrame === autoEvents.endFrame && end.endReason === autoEvents.endReason) break;
-      autoEvents = detectAutoEvents(ctx, proposal.startFrame, {
-        endFrame: end.endFrame!,
-        endReason: end.endReason,
-      });
+      const endOverride = { endFrame: end.endFrame!, endReason: end.endReason };
+      autoEvents = detectAutoEvents(ctx, proposal.startFrame, endOverride);
       correctedEvents = applyEventCorrections(
         ctx,
-        withProvenance(autoEvents),
+        withProvenance(autoEvents, endOverride),
         corrections,
         autoEvents.endFrame,
       );
@@ -221,6 +268,60 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     if (live === undefined) return false;
     return !(f.code === 'physically_unlikely_entry' && live.kind === 'tracking_failure');
   });
+  // D71: an automatic event the corrected detection no longer finds leaves a trace — no row, one
+  // soft flag per event at its start frame, and a count beside the deletes — so evidence a
+  // correction erased is never silently gone. An event correction that names the same id (a
+  // delete, an edit, a reclassification; never a confirmation, which is not counted) already
+  // counts the human act on that event, so the removal is not counted a second time, and the
+  // flag says which case it is. One exception: an automatic id encodes the start frame, so a
+  // merged event that starts where the removed visit did carries its id — that row is a
+  // different event, any correction naming the id addresses it, and the removal always counts.
+  const namingCorrections = (id: string) =>
+    corrections.entries.flatMap((entry) =>
+      entry.kind === 'event' && entry.confirmed !== true && entry.eventId === id ? [entry] : [],
+    );
+  let uncountedRemovals = 0;
+  for (const ev of removedAutoEvents) {
+    const where = ev.holeIndex === null ? 'away from any hole' : `at hole ${ev.holeIndex}`;
+    const ids = ev.correctionIds;
+    const named =
+      ids.length <= NAMED_CORRECTIONS_IN_MESSAGE
+        ? ids.join(', ')
+        : `${ids.slice(0, NAMED_CORRECTIONS_IN_MESSAGE).join(', ')} and ${ids.length - NAMED_CORRECTIONS_IN_MESSAGE} more`;
+    const once =
+      ids.length === 0
+        ? 'the corrections in force are applied: they removed its evidence'
+        : ids.length === 1
+          ? `correction ${ids[0]} is applied: the correction removed its evidence`
+          : `corrections ${named} are applied: the corrections removed its evidence`;
+    const carrier = detectedById.get(ev.id);
+    const naming = carrier === undefined ? namingCorrections(ev.id) : [];
+    const one = naming.length === 1;
+    const who = one
+      ? `Event correction ${naming[0]!.id}`
+      : `Event corrections ${naming.map((c) => c.id).join(', ')}`;
+    let standing: string;
+    if (carrier !== undefined) {
+      standing = `Its id now belongs to the event at frames ${carrier.startFrame}–${carrier.endFrame}, which absorbed it and is a different event, so that row is not this one; the removal is counted as a correction.`;
+    } else if (naming.length === 0) {
+      standing = 'It has no row in events.csv and is counted as a correction.';
+    } else if (liveEvents.has(ev.id)) {
+      uncountedRemovals++;
+      standing = `${who} ${one ? 'names' : 'name'} it, so its values stand as a pinned row with that id; the removal is not counted again.`;
+    } else if (naming.some((c) => c.action === 'delete')) {
+      uncountedRemovals++;
+      standing = `${who} already deleted it and ${one ? 'counts' : 'count'} for it; the removal is not counted again.`;
+    } else {
+      uncountedRemovals++;
+      standing = `${who} ${one ? 'names' : 'name'} it but no longer ${one ? 'applies and is' : 'apply and are'} reported as orphaned; ${one ? 'it counts' : 'they count'} for it, so the removal is not counted again.`;
+    }
+    reviewFlags.push({
+      code: 'auto_event_removed_by_correction',
+      eventId: ev.id,
+      frameIndex: ev.startFrame,
+      message: `The automatic ${EVENT_KIND_LABEL[ev.kind]} ${where}, frames ${ev.startFrame}–${ev.endFrame} (${ev.startTime_s.toFixed(2)}–${ev.endTime_s.toFixed(2)} s), is not found once ${once}. ${standing}`,
+    });
+  }
   // D51: the automatic layer is keyed by the hash of the tracking parameters that produced it.
   // A tracking threshold changed after the pass leaves the track as it was; the parameters hash
   // stamped on this analysis would then name a configuration that never ran, so say so.
@@ -337,9 +438,13 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     // tool was right, so counting it as a correction would report a hand edit
     // that never happened — a queue of thirty good events walked with K would
     // export `correction_count = 30` (D11, D26).
-    correctionCount: corrections.entries.filter(
-      (entry) => !(entry.kind === 'event' && entry.confirmed === true),
-    ).length,
+    correctionCount:
+      corrections.entries.filter((entry) => !(entry.kind === 'event' && entry.confirmed === true))
+        .length +
+      // D71: an automatic event a correction removed is counted exactly as an event delete is —
+      // once: a delete or edit that already names it counts for it
+      removedAutoEvents.length -
+      uncountedRemovals,
     parameters,
   });
   const quality = qualityReport({
@@ -368,6 +473,7 @@ export function derive(input: DeriveInput): DerivedAnalysis {
     kinematics,
     strategy,
     reviewFlags,
+    removedAutoEvents,
     correctionsApplied: {
       point: corrected.pointCorrections,
       range: corrected.rangeCorrections,

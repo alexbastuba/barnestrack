@@ -179,7 +179,13 @@ describe('derive', () => {
     );
     expect(moved.events.map((e) => `${e.kind}@${e.holeIndex}`)).toEqual(['investigation@7']);
     expect(moved.metrics.primaryErrors).toBe(0);
-    expect(moved.metrics.correctionCount).toBe(1);
+    // D71: the investigation the nudge removed has no row, but it is reported, flagged (soft) and
+    // counted beside the nudge exactly as a delete would be — one nudge, one removal
+    expect(moved.removedAutoEvents.map((e) => `${e.kind}@${e.holeIndex}`)).toEqual(['investigation@3']);
+    expect(moved.removedAutoEvents[0]!.correctionIds).toEqual(['n1']);
+    expect(moved.reviewFlags.map((f) => f.code)).toEqual(['auto_event_removed_by_correction']);
+    expect(moved.metrics.status).toBe(base.metrics.status);
+    expect(moved.metrics.correctionCount).toBe(2);
   });
 
   it('decrements the errors when an event is deleted, and keeps a strategy override through a parameter change', () => {
@@ -1124,7 +1130,8 @@ describe('the escape entry as an inference (D67)', () => {
     expect(failure.source).toBe('corrected');
     expect(failure.holeIndex).toBe(entry.holeIndex);
     expect(failure.startFrame).toBe(entry.startFrame);
-    expect(failure.autoShadow).toEqual({ holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame });
+    // D71: the shadow names the automatic kind, since the live kind no longer is it
+    expect(failure.autoShadow).toEqual({ holeIndex: entry.holeIndex, startFrame: entry.startFrame, endFrame: entry.endFrame, kind: 'escape_entry' });
     expect(failure.evidence).toContain('Reclassified by the user');
     // the lost frames are still a gap in the cleaned track
     const lost = d.cleanedTrack.filter((f) => f.frameIndex >= entry.startFrame && f.frameIndex <= entry.endFrame && !f.centroid.valid);
@@ -1331,5 +1338,763 @@ describe('probe trials and per-video target holes (D68)', () => {
     expect(() => derive({ ...input, targetHole: 20 })).toThrow(/target hole/);
     expect(() => derive({ ...input, targetHole: -1 })).toThrow(/target hole/);
     expect(() => derive({ ...input, targetHole: 1.5 })).toThrow(/target hole/);
+  });
+});
+
+/*
+ * D71 (2): the two detections are matched in two passes. A pair that differs in kind is a human
+ * claim carrying the automatic event, kind included, as its shadow; an automatic event with no
+ * counterpart after both passes was removed by a correction and leaves a trace — no row, a soft
+ * flag at its start frame, a count beside the deletes, and a list on the in-memory result.
+ */
+describe('D71 (2): a kind change is a human claim; a removed automatic event leaves a trace', () => {
+  it('exports a range that turned an automatic investigation into an escape entry as a claim carrying the investigation, kind included', () => {
+    // an investigation at hole 3, a 1.5 s stay at the target the tracker reads as an investigation,
+    // and the animal back in the open afterwards, so the entry does not end the trial
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 1.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 1 },
+    ];
+    const { input: plain } = inputFor(script);
+    const stay = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(stay).toBeDefined();
+    // "in the escape box" over exactly the frames the tracker called an investigation
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'r1',
+        kind: 'range',
+        timestamp: at(1),
+        source: 'user',
+        rangeType: 'in_escape_box',
+        startFrame: stay.startFrame,
+        endFrame: stay.endFrame,
+      },
+    ];
+    const { input } = inputFor(script, { corrections });
+    const d = derive(input);
+    const entry = d.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry).toBeDefined();
+    expect(d.events.some((e) => e.kind === 'investigation' && e.holeIndex === 7)).toBe(false);
+    expect(entry).toMatchObject({
+      source: 'corrected',
+      evidenceCorrected: false,
+      correctionIds: ['r1'],
+      confirmed: false,
+      autoShadow: { holeIndex: 7, startFrame: stay.startFrame, endFrame: stay.endFrame, kind: 'investigation' },
+    });
+    expect(entry.evidence).toContain(
+      `Was an automatic investigation at hole 7, frames ${stay.startFrame}–${stay.endFrame}, before the corrections changed its kind.`,
+    );
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(d.reviewFlags.some((f) => f.code === 'auto_event_removed_by_correction')).toBe(false);
+    expect(d.metrics.correctionCount).toBe(1);
+
+    // the row: a claim with the automatic hole and frames beside it, and the kind in the sentence
+    const row = rowFor(input, d, entry.id);
+    expect(row).toMatchObject({
+      kind: 'escape_entry',
+      source: 'corrected',
+      evidence_corrected: 'false',
+      correction_ids: 'r1',
+      auto_hole_index: '7',
+      auto_start_frame: String(stay.startFrame),
+      auto_end_frame: String(stay.endFrame),
+    });
+    expect(row['evidence_summary']).toContain('Was an automatic investigation at hole 7');
+  });
+
+  it('reports the automatic visit a nudge merged away: no row, one flag at its start frame, counted beside the nudge (the measured case)', () => {
+    // two visits to hole 3 separated by an excursion longer than the merge gap: two automatic investigations
+    const script: Segment[] = [
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.3 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.3 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ];
+    const { input: plain } = inputFor(script);
+    const before = derive(plain);
+    const visits = before.events.filter((e) => e.kind === 'investigation' && e.holeIndex === 3);
+    expect(visits).toHaveLength(2);
+    const [first, second] = visits;
+    // the nose placed at the hole in the middle of the excursion (the event point, as in D65's
+    // test b): both halves of the gap are now under the merge gap, so the corrected detection
+    // sees one visit
+    const mid = Math.floor((first!.endFrame + second!.startFrame) / 2);
+    const nudge: CorrectionEntry = {
+      id: 'p',
+      kind: 'point',
+      timestamp: at(1),
+      source: 'user',
+      frameIndex: mid,
+      point: 'nose',
+      value: { x: g.holeX[3]!, y: g.holeY[3]!, confidence: 1, valid: true },
+    };
+    const { input } = inputFor(script, { corrections: [nudge] });
+    const d = derive(input);
+    const merged = d.events.filter((e) => e.kind === 'investigation' && e.holeIndex === 3);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      startFrame: first!.startFrame,
+      endFrame: second!.endFrame,
+      source: 'auto',
+      evidenceCorrected: true,
+      correctionIds: ['p'],
+    });
+    const shadow = merged[0]!.autoShadow!;
+    expect(shadow).not.toHaveProperty('kind');
+    // the larger visit is the shadow; the other has no counterpart in the corrected detection
+    const removed = [first!, second!].find((v) => v.startFrame !== shadow.startFrame)!;
+    expect(d.removedAutoEvents.map((e) => [e.id, e.startFrame, e.endFrame, e.source])).toEqual([
+      [removed.id, removed.startFrame, removed.endFrame, 'auto'],
+    ]);
+    const flags = d.reviewFlags.filter((f) => f.code === 'auto_event_removed_by_correction');
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({ eventId: removed.id, frameIndex: removed.startFrame });
+    expect(flags[0]!.message).toContain(`frames ${removed.startFrame}–${removed.endFrame}`);
+    expect(flags[0]!.message).toContain('once correction p is applied');
+    // the merged event starts where the first visit did, so when the first is the removed one
+    // the merged row carries its id and the flag says so instead of "no row"
+    expect(flags[0]!.message).toContain(
+      removed.id === merged[0]!.id ? 'Its id now belongs to the event' : 'no row in events.csv',
+    );
+    // counted exactly as a delete would be: one for the nudge, one for the removal
+    expect(d.metrics.correctionCount).toBe(2);
+    // informational: the status is what it was without the correction
+    expect(d.metrics.status).toBe(before.metrics.status);
+    const trial = trialRowFor(input, d);
+    expect(trial['review_flags']).toBe('auto_event_removed_by_correction');
+    expect(trial['correction_count']).toBe('2');
+    // and the removed visit is in no row
+    expect(eventRows(sessionAround(input, d)).some((r) => r.eventId === removed.id)).toBe(false);
+    // the persisted layer carries the flag, not the list (D55: the derived layer is a cache)
+    expect(toDerivedLayer(d)).not.toHaveProperty('removedAutoEvents');
+  });
+
+  it('counts a removal exactly as an event delete, and writes the flag on the trial row', () => {
+    const script: Segment[] = [...visitHoles([3, 5]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    const deleted = derive(
+      inputFor(script, {
+        corrections: [
+          { id: 'd', kind: 'event', timestamp: at(1), source: 'user', action: 'delete', eventId: visit5.id },
+        ],
+      }).input,
+    );
+    expect(deleted.events.map((e) => e.holeIndex)).toEqual([3]);
+    expect(deleted.metrics.correctionCount).toBe(1);
+    expect(deleted.removedAutoEvents).toEqual([]);
+
+    // "not visible here" over the visit: an unpositioned run too short to be a loss, so the
+    // corrected detection simply has no event there
+    const { input } = inputFor(script, {
+      corrections: [
+        {
+          id: 'r',
+          kind: 'range',
+          timestamp: at(1),
+          source: 'user',
+          rangeType: 'not_visible',
+          startFrame: visit5.startFrame,
+          endFrame: visit5.endFrame,
+        },
+      ],
+    });
+    const removed = derive(input);
+    expect(removed.events.map((e) => e.holeIndex)).toEqual([3]);
+    expect(removed.removedAutoEvents.map((e) => [e.id, e.correctionIds])).toEqual([[visit5.id, ['r']]]);
+    expect(removed.reviewFlags.filter((f) => f.code === 'auto_event_removed_by_correction')).toMatchObject([
+      { eventId: visit5.id, frameIndex: visit5.startFrame },
+    ]);
+    expect(removed.reviewFlags[0]!.message).toContain('once correction r is applied');
+    // one for the range, one for the removal: the removal adds what a delete adds
+    expect(removed.metrics.correctionCount - 1).toBe(deleted.metrics.correctionCount);
+    expect(removed.metrics.totalErrors).toBe(deleted.metrics.totalErrors);
+    expect(trialRowFor(input, removed)['review_flags']).toBe('auto_event_removed_by_correction');
+  });
+});
+
+/*
+ * D71 (3): `escaped` is null when nothing can be said — on a probe trial, which has no escape
+ * box, and on an unresolved trial, which has no window — and `false` only for a resolved
+ * acquisition trial with no escape entry. The cell is blank for null.
+ */
+describe('D71 (3): escaped is null when nothing can be said', () => {
+  it('writes escaped blank on an unresolved row and a probe row, and false only on a resolved trial with no entry', () => {
+    // unresolved: nothing was ever tracked, so there is no trial window
+    const { input: unresolved } = inputFor([
+      { kind: 'empty', seconds: 1 },
+      { kind: 'ambiguous', seconds: 1 },
+    ]);
+    const u = derive(unresolved);
+    expect(u.metrics.status).toBe('unresolved');
+    expect(u.metrics.escaped).toBeNull();
+    expect(trialRowFor(unresolved, u)).toMatchObject({ status: 'unresolved', escaped: '', total_latency_s: '' });
+
+    // resolved with no entry: the one case in which false is asserted
+    const script: Segment[] = [...visitHoles([3, 7]), { kind: 'moveToCentre', seconds: 0.5 }];
+    const { input: resolved } = inputFor(script);
+    const r = derive(resolved);
+    expect(r.metrics.status).toBe('review');
+    expect(r.metrics.escaped).toBe(false);
+    expect(trialRowFor(resolved, r)).toMatchObject({ status: 'review', escaped: 'false', no_escape_confirmed: 'false' });
+
+    // a probe trial has no escape box: nothing about escaping is a measurement of it (D68)
+    const probeInput: DeriveInput = { ...resolved, trialType: 'probe' };
+    const p = derive(probeInput);
+    expect(p.metrics.escaped).toBeNull();
+    expect(trialRowFor(probeInput, p)).toMatchObject({ trial_type: 'probe', escaped: '', status: 'ok' });
+  });
+});
+
+/*
+ * D71 (2), after review: a removal is counted once. A delete or an edit that already names the
+ * removed event's id counts for it; the flag says which, and an edit keeps a pinned row with
+ * that id. And an edit of a kind-change event keeps the automatic kind in its rebuilt evidence.
+ */
+describe('D71 (2): a removal is counted once, and an edit keeps the automatic kind', () => {
+  const script: Segment[] = [...visitHoles([3, 5]), { kind: 'moveToCentre', seconds: 0.5 }];
+  const notVisibleOver = (
+    visit: { startFrame: number; endFrame: number },
+    i: number,
+  ): CorrectionEntry => ({
+    id: 'r',
+    kind: 'range',
+    timestamp: at(i),
+    source: 'user',
+    rangeType: 'not_visible',
+    startFrame: visit.startFrame,
+    endFrame: visit.endFrame,
+  });
+
+  it('does not count a removal again when a delete already names the event', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    const { input } = inputFor(script, {
+      corrections: [
+        { id: 'd', kind: 'event', timestamp: at(1), source: 'user', action: 'delete', eventId: visit5.id },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    expect(d.events.map((e) => e.holeIndex)).toEqual([3]);
+    expect(d.removedAutoEvents.map((e) => e.id)).toEqual([visit5.id]);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction d already deleted it');
+    expect(flag.message).not.toContain('no row');
+    // the delete and the range — not the delete, the range and the removal
+    expect(d.metrics.correctionCount).toBe(2);
+    // the delete now names an event the range removed, which the orphan flag reports as before
+    expect(d.reviewFlags.map((f) => f.code).sort()).toEqual([
+      'auto_event_removed_by_correction',
+      'orphaned_correction',
+    ]);
+  });
+
+  it('does not count a removal again when an edit already names the event, whose pinned row stands', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    const { input } = inputFor(script, {
+      corrections: [
+        {
+          id: 'e',
+          kind: 'event',
+          timestamp: at(1),
+          source: 'user',
+          action: 'edit',
+          eventId: visit5.id,
+          holeIndex: 5,
+          startFrame: visit5.startFrame,
+          endFrame: visit5.endFrame - 2,
+        },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    // the pinned edit keeps the automatic id, so there is a row with it
+    const pinned = d.events.find((e) => e.id === visit5.id)!;
+    expect(pinned).toMatchObject({ source: 'corrected', holeIndex: 5, endFrame: visit5.endFrame - 2 });
+    expect(eventRows(sessionAround(input, d)).filter((r) => r.eventId === visit5.id)).toHaveLength(1);
+    expect(d.removedAutoEvents.map((e) => e.id)).toEqual([visit5.id]);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction e names it, so its values stand as a pinned row');
+    expect(flag.message).not.toContain('no row');
+    expect(d.metrics.correctionCount).toBe(2);
+  });
+
+  it('always counts a removal whose id a merged event now carries, whatever the user then does to the merged event', () => {
+    // two visits to hole 3, the second longer, merged by a nose nudge between them: the merged
+    // event starts where the first visit did and so carries its id, while the longer second visit
+    // is the one matched — the first is removed under the very id the live row carries
+    const twoVisits: Segment[] = [
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.3 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.3 },
+      { kind: 'dwell', hole: 3, seconds: 1 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ];
+    const { input: plain } = inputFor(twoVisits);
+    const [first, second] = derive(plain).events.filter(
+      (e) => e.kind === 'investigation' && e.holeIndex === 3,
+    );
+    const mid = Math.floor((first!.endFrame + second!.startFrame) / 2);
+    const nudge: CorrectionEntry = {
+      id: 'p',
+      kind: 'point',
+      timestamp: at(1),
+      source: 'user',
+      frameIndex: mid,
+      point: 'nose',
+      value: { x: g.holeX[3]!, y: g.holeY[3]!, confidence: 1, valid: true },
+    };
+    const merged = derive(inputFor(twoVisits, { corrections: [nudge] }).input);
+    const live = merged.events.find((e) => e.kind === 'investigation' && e.holeIndex === 3)!;
+    expect(live.id).toBe(first!.id);
+    expect(merged.removedAutoEvents.map((e) => e.id)).toEqual([first!.id]);
+    // the nudge sits inside the event that absorbed the visit, so it is named
+    expect(merged.removedAutoEvents[0]!.correctionIds).toEqual(['p']);
+    const flag = merged.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain(
+      `Its id now belongs to the event at frames ${live.startFrame}–${live.endFrame}`,
+    );
+    expect(flag.message).not.toContain('no row');
+    expect(merged.metrics.correctionCount).toBe(2);
+
+    // an edit of the merged event addresses the merged event, not the removed one: the nudge,
+    // the edit and the removal
+    const edited = derive(
+      inputFor(twoVisits, {
+        corrections: [
+          nudge,
+          {
+            id: 'e',
+            kind: 'event',
+            timestamp: at(2),
+            source: 'user',
+            action: 'edit',
+            eventId: live.id,
+            holeIndex: 3,
+            startFrame: live.startFrame,
+            endFrame: live.endFrame - 2,
+          },
+        ],
+      }).input,
+    );
+    expect(edited.events.find((e) => e.id === live.id)!.endFrame).toBe(live.endFrame - 2);
+    expect(edited.metrics.correctionCount).toBe(3);
+    // a delete of the merged event: the same three
+    const deleted = derive(
+      inputFor(twoVisits, {
+        corrections: [
+          nudge,
+          { id: 'd', kind: 'event', timestamp: at(2), source: 'user', action: 'delete', eventId: live.id },
+        ],
+      }).input,
+    );
+    expect(deleted.events.some((e) => e.id === live.id)).toBe(false);
+    expect(deleted.metrics.correctionCount).toBe(3);
+  });
+
+  it('says that an edit which no longer applies counts for the event, without calling it a delete', () => {
+    const { input: plain } = inputFor(script);
+    const visit5 = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 5)!;
+    // an edit naming only a hole has no span once its event is gone: ignored as orphaned
+    const { input } = inputFor(script, {
+      corrections: [
+        { id: 'e', kind: 'event', timestamp: at(1), source: 'user', action: 'edit', eventId: visit5.id, holeIndex: 4 },
+        notVisibleOver(visit5, 2),
+      ],
+    });
+    const d = derive(input);
+    expect(d.events.some((e) => e.id === visit5.id)).toBe(false);
+    const flag = d.reviewFlags.find((f) => f.code === 'auto_event_removed_by_correction')!;
+    expect(flag.message).toContain('Event correction e names it but no longer applies and is reported as orphaned');
+    expect(flag.message).not.toContain('deleted');
+    expect(d.reviewFlags.some((f) => f.code === 'orphaned_correction')).toBe(true);
+    expect(d.metrics.correctionCount).toBe(2);
+  });
+
+  it('keeps the automatic kind in the evidence of a kind-change event the user then edits', () => {
+    const stay: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 1.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 1 },
+    ];
+    const { input: plain } = inputFor(stay);
+    const investigation = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: investigation.startFrame,
+      endFrame: investigation.endFrame,
+    };
+    const entry = derive(inputFor(stay, { corrections: [range] }).input).events.find(
+      (e) => e.kind === 'escape_entry',
+    )!;
+    const { input } = inputFor(stay, {
+      corrections: [
+        range,
+        {
+          id: 'e1',
+          kind: 'event',
+          timestamp: at(2),
+          source: 'user',
+          action: 'edit',
+          eventId: entry.id,
+          holeIndex: 7,
+          startFrame: entry.startFrame,
+          endFrame: entry.endFrame - 1,
+        },
+      ],
+    });
+    const d = derive(input);
+    const edited = d.events.find((e) => e.id === entry.id)!;
+    expect(edited).toMatchObject({
+      kind: 'escape_entry',
+      source: 'corrected',
+      endFrame: entry.endFrame - 1,
+      autoShadow: {
+        holeIndex: 7,
+        startFrame: investigation.startFrame,
+        endFrame: investigation.endFrame,
+        kind: 'investigation',
+      },
+    });
+    expect(edited.evidence).toContain('Corrected by the user (correction e1)');
+    expect(edited.evidence).toContain(
+      `Was an automatic investigation at hole 7, frames ${investigation.startFrame}–${investigation.endFrame}, before the corrections changed its kind.`,
+    );
+    const row = rowFor(input, d, entry.id);
+    expect(row).toMatchObject({
+      source: 'corrected',
+      auto_hole_index: '7',
+      auto_start_frame: String(investigation.startFrame),
+    });
+    expect(row['evidence_summary']).toContain('Was an automatic investigation at hole 7');
+  });
+});
+
+describe('D73: what counts as a removal, and the auto-only pass to its own end or later', () => {
+  /** A distinct timestamp per correction: many points land in one test. */
+  const stamp = (i: number): string => `2026-09-06T10:01:00.${String(i).padStart(3, '0')}Z`;
+  /** One hand-placed centroid per frame of [from, to]: the commonest repair. */
+  const centroidPoints = (
+    frames: readonly { frameIndex: number }[],
+    from: number,
+    to: number,
+    xy: { x: number; y: number },
+  ): CorrectionEntry[] => {
+    const out: CorrectionEntry[] = [];
+    for (let pos = from; pos <= to; pos++) {
+      out.push({
+        id: `p${pos}`,
+        kind: 'point',
+        timestamp: stamp(pos - from),
+        source: 'user',
+        frameIndex: frames[pos]!.frameIndex,
+        point: 'centroid',
+        value: { ...xy, confidence: 1, valid: true },
+      });
+    }
+    return out;
+  };
+  const removalFlags = (d: ReturnType<typeof derive>) =>
+    d.reviewFlags.filter((f) => f.code === 'auto_event_removed_by_correction');
+
+  it('counts a tracking loss repaired frame by frame as its points only: no removal, no flag (the 45-point case)', () => {
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'lost', seconds: 1.5 },
+      { kind: 'dwell', seconds: 1 },
+    ];
+    const { input: plain, segmentStarts } = inputFor(script);
+    const loss = derive(plain).events.find((e) => e.kind === 'tracking_failure')!;
+    expect(loss).toBeDefined();
+    expect(loss.holeIndex).toBeNull();
+    const from = segmentStarts[3]!;
+    const to = segmentStarts[4]! - 1;
+    expect(to - from + 1).toBe(45);
+    const points = centroidPoints(plain.auto.frames, from, to, { x: g.platform.cx, y: g.platform.cy });
+    const { input } = inputFor(script, { corrections: points });
+    const d = derive(input);
+    expect(d.events.some((e) => e.kind === 'tracking_failure')).toBe(false);
+    // a repaired track, not an erased event: the points count, the loss does not
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+    expect(d.metrics.correctionCount).toBe(45);
+    const trial = trialRowFor(input, d);
+    expect(trial['correction_count']).toBe('45');
+    expect(trial['review_flags']).toBe('');
+  });
+
+  it('ignores automatic investigations after a trial a range ended: the range counts, nothing is removed', () => {
+    // at the target from 29.5 s; the user marks the animal in the box from 30 s; the tracker went on
+    // to see visits at 35 s and 40 s that the corrected trial never reaches
+    const script: Segment[] = [
+      { kind: 'dwell', seconds: 29 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 4.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+      { kind: 'dwell', hole: 3, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 3.5 },
+      { kind: 'moveToHole', hole: 5, seconds: 0.5 },
+      { kind: 'dwell', hole: 5, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ];
+    const { input: plain } = inputFor(script);
+    const before = derive(plain);
+    expect(before.events.filter((e) => e.kind === 'investigation').map((e) => e.holeIndex)).toEqual([7, 3, 5]);
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: 900,
+      endFrame: 10_000,
+    };
+    const { input } = inputFor(script, { corrections: [range] });
+    const d = derive(input);
+    expect(d.trial.endReason).toBe('escape');
+    expect(d.trial.endTime_s).toBeCloseTo(30, 6);
+    const entry = d.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry).toMatchObject({ source: 'corrected', correctionIds: ['r1'] });
+    expect(entry.autoShadow).toBeUndefined();
+    expect(d.events.some((e) => e.holeIndex === 3 || e.holeIndex === 5)).toBe(false);
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+    expect(d.metrics.correctionCount).toBe(1);
+    const trial = trialRowFor(input, d);
+    expect(trial['correction_count']).toBe('1');
+    expect(trial['review_flags']).toBe('');
+  });
+
+  it('keeps the automatic investigation as the shadow of a range that turned it into the entry ending the trial (the measured case)', () => {
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 3.5 },
+    ];
+    const { input: plain } = inputFor(script);
+    const stay = derive(plain).events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(stay).toBeDefined();
+    // "in the escape box" from the first frame of the stay to the end: the entry ends the trial
+    // where the automatic investigation began
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'in_escape_box',
+      startFrame: stay.startFrame,
+      endFrame: 10_000,
+    };
+    const { input } = inputFor(script, { corrections: [range] });
+    const d = derive(input);
+    expect(d.trial.endReason).toBe('escape');
+    expect(d.trial.endFrame).toBe(stay.startFrame);
+    const entry = d.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry).toBeDefined();
+    expect(entry).toMatchObject({
+      source: 'corrected',
+      evidenceCorrected: false,
+      correctionIds: ['r1'],
+      autoShadow: { holeIndex: 7, startFrame: stay.startFrame, endFrame: stay.endFrame, kind: 'investigation' },
+    });
+    expect(entry.evidence).toContain(
+      `Was an automatic investigation at hole 7, frames ${stay.startFrame}–${stay.endFrame}, before the corrections changed its kind.`,
+    );
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+    expect(d.metrics.correctionCount).toBe(1);
+    expect(rowFor(input, d, entry.id)).toMatchObject({
+      source: 'corrected',
+      auto_hole_index: '7',
+      auto_start_frame: String(stay.startFrame),
+      auto_end_frame: String(stay.endFrame),
+    });
+  });
+
+  it('keeps the automatic escape entry as the shadow of the investigation the corrections turned it into (the trial now runs to the end)', () => {
+    // a visit at 1 s, the open platform until 48.5 s, then straight into the target: last seen at
+    // the hole, lost to the end of the clip — an automatic entry at ~49 s that ends the trial. The
+    // stay before the loss is too short for an investigation of its own, so the entry is the only
+    // automatic event at hole 7 and the kind change is read as one
+    const script: Segment[] = [
+      { kind: 'dwell', seconds: 1 },
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 46 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.1 },
+      { kind: 'lost', seconds: 3.5 },
+    ];
+    const { input: plain, segmentStarts } = inputFor(script);
+    const before = derive(plain);
+    const autoEntry = before.events.find((e) => e.kind === 'escape_entry')!;
+    expect(autoEntry).toBeDefined();
+    expect(before.trial.endReason).toBe('escape');
+    expect(before.events.filter((e) => e.holeIndex === 7)).toHaveLength(1);
+    // the reviewer places the animal at the hole on every lost frame: it never went in
+    const points = centroidPoints(plain.auto.frames, segmentStarts[7]!, plain.auto.frames.length - 1, holePoint(g, 7));
+    expect(points).toHaveLength(105);
+    const { input } = inputFor(script, { corrections: points });
+    const d = derive(input);
+    expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    expect(d.trial.endReason).toBe('end_of_video');
+    expect(d.metrics.escaped).toBe(false);
+    const claim = d.events.find((e) => e.autoShadow?.kind === 'escape_entry')!;
+    expect(claim, 'no event carries the automatic entry as its shadow').toBeDefined();
+    expect(claim).toMatchObject({
+      kind: 'investigation',
+      holeIndex: 7,
+      source: 'corrected',
+      evidenceCorrected: false,
+      autoShadow: { holeIndex: 7, startFrame: autoEntry.startFrame, endFrame: autoEntry.endFrame, kind: 'escape_entry' },
+    });
+    expect(claim.correctionIds).toEqual(points.map((p) => p.id));
+    expect(claim.evidence).toContain(
+      `Was an automatic escape entry at hole 7, frames ${autoEntry.startFrame}–${autoEntry.endFrame}, before the corrections changed its kind.`,
+    );
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+    expect(d.metrics.correctionCount).toBe(105);
+    const row = rowFor(input, d, claim.id);
+    expect(row).toMatchObject({
+      kind: 'investigation',
+      source: 'corrected',
+      auto_hole_index: '7',
+      auto_start_frame: String(autoEntry.startFrame),
+    });
+    expect(row['evidence_summary']).toContain('Was an automatic escape entry at hole 7');
+  });
+
+  it('finds the investigations a removed entry uncovers on the automatic side: automatic, untouched, no shadow', () => {
+    // an automatic entry at ~49 s (straight in, back out at the target 3.5 s later), then — had the
+    // trial gone on — visits at ~60 s and ~70 s. The reviewer marks the approach and the loss "not
+    // visible": no entry, the trial runs to the end
+    const script: Segment[] = [
+      { kind: 'dwell', seconds: 1 },
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 46 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.1 },
+      { kind: 'lost', seconds: 3.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.5 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 5 },
+      ...visitHoles([4]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 8.5 },
+      ...visitHoles([5]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+    ];
+    const { input: plain, segmentStarts } = inputFor(script);
+    const before = derive(plain);
+    const autoEntry = before.events.find((e) => e.kind === 'escape_entry')!;
+    expect(autoEntry).toBeDefined();
+    expect(before.trial.endReason).toBe('escape');
+    expect(before.events.some((e) => e.holeIndex === 4 || e.holeIndex === 5)).toBe(false);
+    const range: CorrectionEntry = {
+      id: 'r1',
+      kind: 'range',
+      timestamp: at(1),
+      source: 'user',
+      rangeType: 'not_visible',
+      startFrame: plain.auto.frames[segmentStarts[5]!]!.frameIndex,
+      endFrame: plain.auto.frames[segmentStarts[8]! - 1]!.frameIndex,
+    };
+    const { input } = inputFor(script, { corrections: [range] });
+    const d = derive(input);
+    expect(d.events.some((e) => e.kind === 'escape_entry')).toBe(false);
+    expect(d.trial.endReason).toBe('end_of_video');
+    const uncovered = d.events.filter((e) => e.holeIndex === 4 || e.holeIndex === 5);
+    expect(uncovered.map((e) => [e.kind, e.holeIndex])).toEqual([
+      ['investigation', 4],
+      ['investigation', 5],
+    ]);
+    for (const ev of uncovered) {
+      expect(ev).toMatchObject({ source: 'auto', evidenceCorrected: false, correctionIds: [] });
+      expect(ev.autoShadow).toBeUndefined();
+      expect(rowFor(input, d, ev.id)).toMatchObject({
+        source: 'auto',
+        evidence_corrected: 'false',
+        correction_ids: '',
+        auto_start_frame: '',
+      });
+    }
+    // the entry itself was inside the corrected trial and is no longer found: that one is a
+    // removal (D73 (3)), counted beside the range; the uncovered visits are not
+    expect(d.removedAutoEvents.map((e) => e.id)).toEqual([autoEntry.id]);
+    const flags = removalFlags(d);
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({ eventId: autoEntry.id, frameIndex: autoEntry.startFrame });
+    expect(d.metrics.correctionCount).toBe(2);
+  });
+
+  it('applies a trial end an event correction moved to both detections: the stay beside the moved entry stays untouched', () => {
+    // an automatic entry after a 1 s stay at the target; the entry's start is edited ten frames
+    // earlier, into the stay, and one unrelated centroid nudge at frame 2 is what makes the
+    // auto-only pass run at all. The moved end is the human's end for both detections, so the stay
+    // is clipped the same way on both sides and reads untouched — not evidence-corrected by a
+    // correction that never touched it (chunk-16b review)
+    const script: Segment[] = [
+      ...visitHoles([3]),
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 1 },
+      { kind: 'lost', seconds: 3.5 },
+    ];
+    const { input: plain } = inputFor(script);
+    const before = derive(plain);
+    const entry = before.events.find((e) => e.kind === 'escape_entry')!;
+    const stay = before.events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(entry).toBeDefined();
+    expect(stay).toBeDefined();
+    const frame2 = plain.auto.frames[2]!;
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'p1',
+        kind: 'point',
+        timestamp: at(1),
+        source: 'user',
+        frameIndex: 2,
+        point: 'centroid',
+        value: { x: frame2.centroid.x + 0.5, y: frame2.centroid.y, confidence: 1, valid: true },
+      },
+      {
+        id: 'e1',
+        kind: 'event',
+        timestamp: at(2),
+        source: 'user',
+        action: 'edit',
+        eventId: entry.id,
+        holeIndex: 7,
+        startFrame: entry.startFrame - 10,
+        endFrame: entry.endFrame,
+      },
+    ];
+    const { input } = inputFor(script, { corrections });
+    const d = derive(input);
+    const clipped = d.events.find((e) => e.kind === 'investigation' && e.holeIndex === 7)!;
+    expect(clipped).toBeDefined();
+    expect(clipped).toMatchObject({ source: 'auto', evidenceCorrected: false, correctionIds: [] });
+    expect(clipped.autoShadow).toBeUndefined();
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
   });
 });

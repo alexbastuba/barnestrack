@@ -36,6 +36,19 @@ and in `examples/outputs/`.
 - `quality.csv`: new `session_name`.
 - Review flags: `confirmation_contradicted` (hard) and `non_persistent_entry_noted` (soft).
 
+**Changed after 0.2.0 without a version bump (D71, additive on D63's precedent).** `autoShadow`
+may carry `kind`; the two detections are matched in two passes (§5), so a kind change is a human
+claim with the automatic event as its shadow; an automatic event the corrected detection no longer
+finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`;
+`escaped` is `null` on an unresolved acquisition row as well as on every probe row, and `false`
+is asserted only for a resolved acquisition trial with no escape entry; `parameters.json` carries
+`toolVersion` and `parametersHash` beside the set (§7). D73 then settled what a removal is — an
+automatic investigation or escape entry inside the corrected trial window; a tracking failure the
+corrections repaired and an automatic event lying entirely after the corrected trial end are not
+removals —
+and ran the auto-only pass to the later of its own trial end and the corrected one, so a
+trial-ending kind change keeps its shadow and the visits a removed entry uncovers stay automatic.
+
 ## Conventions used throughout
 
 - **Never a bare `(x, y)`.** Every position estimate is a named point —
@@ -192,8 +205,7 @@ superseding the session-level "calibration" field named in D9's prose).
   eventId?, correctionId? }` — persisted so the reason a trial reads `review` travels with the
   row (`review_flags` in `trials.csv`, D66). It is the fifth field of a layer D55 described as
   four, and it is still only a cache: recomputed on load with the rest, never read as the truth.
-  That amendment to D55 was part of the plan Alex approved for chunk 12 and awaits its own entry
-  in `docs/decisions.md`.
+  That amendment to D55 is D71 (1).
   `null` for a video that has been tracked but not yet analysed (D52) — a placeholder or fabricated
   derived layer is forbidden (D16), so the honest value is a null.
 
@@ -309,25 +321,59 @@ so hole numbering stays consistent across a cohort.
 | `evidenceCorrected`    | boolean                                 | —       | D65: both detections found the event but a point or range correction inside its span changed what it measured; the auto-only values are in `autoShadow`. |
 | `correctionIds`        | string[]                                | —       | D65: ids of the point and range corrections inside the event's span (the union of its span and its shadow's span). Event corrections are not listed; `source` records them. |
 | `confirmed`            | boolean                                 | —       | D64, D67: a person kept the event as it stands; the values are the automatic ones and the event is excluded from `correctionCount`. |
-| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when an event correction changes them or when `evidenceCorrected` (the auto-only values). A plain confirmation carries none; a confirmation on an evidence-corrected event keeps the one it had. |
+| `autoShadow`           | partial event?                         | —       | The automatic `holeIndex`/`startFrame`/`endFrame`, kept when an event correction changes them, when `evidenceCorrected` (the auto-only values), or when the kind changed between the two detections (D71); `kind` is present only when the automatic kind differs from the event's (a kind-change match, a D67 reclassification). A plain confirmation carries none; a confirmation on an evidence-corrected event keeps the one it had. |
 
-**Provenance by two detections (D65).** `derive()` runs event detection twice under the same
-parameters and over the same trial window (the corrected analysis's start and end): once over the
-automatic frames alone, once over `auto ⊕ corrections` (point and range corrections applied to the
-frames). The two lists are matched by kind and hole on overlapping spans, largest overlap first,
-each event matched at most once (ids are not stable across corrections, since they carry the start
-frame). An event only the corrected detection found is a human claim (`source: corrected`,
-`correctionIds` = the corrections inside its span, no shadow); one both found with identical values
-is untouched (`auto`, `evidenceCorrected: false`, `correctionIds: []`); one both found with any
-measured value different keeps `source: auto` with `evidenceCorrected: true`, the corrections inside
-the union of its span and the auto-only span as `correctionIds`, and the auto-only hole and frames as
-`autoShadow`. Event corrections (`kind: event`) apply after the match: an edit sets
-`source: corrected` as before; a `confirmed: true` edit sets `confirmed: true` on the automatic
-event without re-measuring anything. Two consequences worth knowing: a `not_visible` range that
-splits one automatic visit leaves the second fragment `source: corrected` (the first fragment takes
-the match), and a correction that changes an event's *kind* between the two detections (a loss that
-becomes an investigation) exports as `source: corrected`, because kinds are never matched. With no
-point or range correction in force the two detections are identical and the second pass is skipped.
+**Provenance by two detections (D65, D71, D73).** `derive()` runs event detection twice under the
+same parameters from the same trial start: once over the automatic frames alone, to the later of
+its own trial end and the corrected one (D73 — never shorter than its own, so a range that turned
+an automatic investigation into the entry ending the trial still sees it; never shorter than the
+corrected one, so the visits a removed entry uncovers are found on the automatic side; a trial end
+an event correction moved is the corrected end here), once over `auto ⊕ corrections` (point and
+range corrections applied to the frames). The two lists are matched over everything both produced
+in two passes, each largest overlap first and each event matched
+at most once (ids are not stable across corrections, since they carry the start frame): first by
+kind and hole on overlapping spans, then — over what either side has left — by hole alone. An event
+only the corrected detection found is a human claim (`source: corrected`, `correctionIds` = the
+corrections inside its span, no shadow); one both found with identical values is untouched (`auto`,
+`evidenceCorrected: false`, `correctionIds: []`); one both found with any measured value different
+keeps `source: auto` with `evidenceCorrected: true`, the corrections inside the union of its span
+and the auto-only span as `correctionIds`, and the auto-only hole and frames as `autoShadow` — an
+automatic investigation that a range-created entry cut short reads so, with the whole automatic
+stay as its shadow and the range named (D73). A pair
+the second pass makes always differs in kind (a range that turned an investigation into an escape
+entry, a point that turned a loss into an investigation): the event is a human claim —
+`source: corrected`, `evidenceCorrected: false`, `correctionIds` over the union of the two spans,
+`autoShadow` = the automatic hole, frames **and kind** — and its evidence sentence ends "Was an
+automatic investigation at hole 7, frames 1100–1129, before the corrections changed its kind.",
+since the CSV shadow columns carry hole and frames only. So an `events.csv` row with
+`source = corrected` and filled `auto_*` columns is either an event edit or a kind change, and the
+sentence says which. An automatic *investigation or escape entry* with no counterpart after both
+passes that the corrected trial reached — it begins at or before the corrected trial end and ends at
+or after its start — was *removed by a correction* (a `not_visible` range over an investigation, a
+nudge that merged two visits into one; D73). The other leftovers are dropped silently: an automatic
+tracking failure with no counterpart is a loss the corrections repaired, not an erased event (its
+points count, the loss does not), and an automatic event lying entirely after the corrected trial
+end (a range ended the trial before it) or before its start was never in the corrected analysis to
+be removed from. A removed event
+has no row; the trial carries one soft flag `auto_event_removed_by_correction` per removed event
+(`frameIndex` = its start frame, `eventId` = its automatic id, the message naming the corrections
+inside its span and inside any corrected event that overlaps it — the nudge that merged two visits
+sits between them); it is counted in `correctionCount` exactly as an event `delete` is — once: when
+a delete, an edit or a reclassification already names that id, the correction counts for it and the
+removal is not counted again, and the flag says which it was (an edit that applied keeps a pinned
+row with that id; a delete, or an edit that no longer applies and is reported as orphaned, leaves
+no row). Automatic ids encode the start frame, so a merged event that starts where the removed
+visit did carries its id: that row is a different event, a correction naming the id addresses it,
+the removal is always counted, and the flag says the id now belongs to the event that absorbed it.
+The in-memory analysis result (`DerivedAnalysis.removedAutoEvents`, never persisted — the derived
+layer stays a cache, D55) lists each removed event with those correction ids as its
+`correctionIds`. Event corrections (`kind: event`) apply after
+the match: an edit sets `source: corrected` as before, and an edit of a kind-change event rebuilds
+the evidence and appends the kind sentence again, so the automatic kind survives the edit; a
+`confirmed: true` edit sets `confirmed: true` on the automatic event without re-measuring anything.
+One consequence worth knowing: a `not_visible` range that splits one automatic visit leaves the
+second fragment `source: corrected` (the first fragment takes the match). With no point or range
+correction in force the two detections are identical and the second pass is skipped.
 
 ## 6. Parameters
 
@@ -355,7 +401,7 @@ seconds applied to each frame's own timestamp (D7).
 | `trialCutoff_s`                        | s                  | 180     | The trial ends this long after the trial start without an entry: total latency blank, `escaped` false, status `review` unless the non-escape is confirmed (D63).          | O5 |
 | `targetQuadrant.holeSpan`              | holes              | 2.5     | The target quadrant reaches this many hole spacings either side of the target hole (2.5 on a 20-hole ring = 90°).               | O6 |
 | `kinematicsSmoothingWindowFrames`      | frames             | 3       | Median filter width applied to centroid positions for path length and speed only; stored track and events use raw positions.    | O9 |
-| `gapFilling.enabled`                   | on/off             | on      | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
+| `gapFilling.enabled`                   | on/off             | off     | Whether short gaps in the derived track are filled linearly; filled points are marked `filled`, drawn hollow and counted.        | O10 |
 | `gapFilling.maxDuration_s`             | s                  | 0.1     | Only gaps no longer than this (between the positioned frames either side) are filled, never when either side is within one hole radius of a hole. | O10 |
 | `kinematics.speedWindowFrames`         | frames             | 2       | Speed at a frame is the path over the centred window of this many frames either side, over the span of their timestamps.         | O11 |
 | `kinematics.duplicateTimestampFactor`  | × nominal interval | 0.25    | Consecutive frames closer in time than this fraction of the nominal interval carry a duplicate stamp: skipped for speed and the outlier test, kept for path length. | O11 |
@@ -399,6 +445,10 @@ canonical JSON of the value: object keys sorted by UTF-16 code unit, arrays in t
 whitespace, scalars exactly as `JSON.stringify` writes them, `undefined` properties dropped, hashed
 as UTF-8 bytes. The tracking hash keys the `auto` layer; the full hash keys the `derived` layer and
 stamps every export. Any other implementation (chunk 4's auto-layer writer) must match byte for byte.
+`hashParameters` first drops the two provenance keys a `parameters.json` carries beside the set
+(`PARAMETERS_PROVENANCE_KEYS`: `toolVersion` and `parametersHash`, D71); no `Parameters` value
+inside the app has them, so no stored hash changes, and a `parameters.json` read back hashes to
+the hash it names.
 
 ### Derived-layer definitions
 
@@ -418,7 +468,8 @@ stamps every export. Any other implementation (chunk 4's auto-layer writer) must
   trial start), `primaryLatency_s` (target never reached), `totalLatency_s` (no escape),
   `meanSpeed_cmPerS` (no tracked time), and — whenever the trial is `unresolved`, i.e. has no
   window — `primaryErrors`, `totalErrors`, `pathLength_cm`, `pathLengthSmoothed_cm`,
-  `targetQuadrantTime_s` and `trackedFraction` as well. A resolved trial keeps its numbers, zeros
+  `targetQuadrantTime_s`, `trackedFraction` and `escaped` (D71: `false` is a claim only a resolved
+  trial can make; a probe trial's `escaped` is null by definition, D68) as well. A resolved trial keeps its numbers, zeros
   included: `totalErrors = 0` is a measurement. `SearchStrategy` has `unclassified` for the same
   reason: no trial window, or a window with no investigation and no target visit, is nothing to
   classify over, and the reasoning says which; an override on such a trial is still honoured. On
@@ -530,6 +581,13 @@ Three tidy CSVs, `snake_case` names with unit suffixes, no comment rows, plus `p
 session file, and one XLSX with the same sheets plus `parameters` and `readme`. Every row carries
 `tool_version`, `schema_version` and `parameters_hash` (`EXPORT_SCHEMA_VERSION = 2`).
 
+`parameters.json` (`PARAMETERS_FILE_NAME` in `src/export`) is the session's parameter set with two
+provenance keys first: `toolVersion` (the build that wrote the export, as on every row) and
+`parametersHash` (the hash the set hashes to; D71, additive, the export schema stays 2). An export
+made before any analysis ran holds the literal `{}`. `hashParameters` drops the two keys before
+hashing (§6), so the file read back hashes to the hash it names and to every row's
+`parameters_hash`.
+
 **Why 2.** Export schema 1 absorbed two additive columns (`target_hole`, D62; `no_escape_confirmed`,
 D63) without a bump, on the argument that every consumer keys on header names and `tool_version`
 distinguishes the files. D65–D68 are not additive: `session_id` changes meaning (the editable name
@@ -556,11 +614,11 @@ the top of this document says exactly what changed.
 | `mean_speed_cm_per_s` | cm/s (nullable: no tracked time or no trial window) | O9 |
 | `target_quadrant_time_s` | s (nullable: no trial window, D66) | O6 |
 | `strategy`, `strategy_source` | — | `spatial \| serial \| random \| unclassified` (D58, D66); `auto \| corrected` |
-| `escaped` | bool (blank on a probe trial, D68) | O4 |
+| `escaped` | bool (blank on a probe trial, D68, and on an `unresolved` row, D71; `false` only for a resolved acquisition trial with no escape entry) | O4 |
 | `no_escape_confirmed` | bool (blank on a probe trial) | D63 — a person confirmed the animal never entered; still true when contradicted by an escape entry that ended the trial or a persistent one, with `status` review beside it (and `escaped` true only when that entry ended the trial); a non-persistent entry is noted, not a contradiction (D67) |
 | `no_escape_confirmed_by` | — (blank: none named, or not confirmed) | D68 — the reviewer behind that confirmation |
 | `status` | — | `ok \| review \| unresolved` (O5, D63); a probe trial is never `review` for not escaping (D68) |
-| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code |
+| `review_flags` | `;`-joined codes, unique, alphabetical (blank: none) | D66 — every review flag `derive()` raised on the trial; a `review` row with no flag — or only the soft ones — is an acquisition trial that never escaped and was not confirmed as a non-escape (`escaped = false`, `no_escape_confirmed = false`), which has no code. `auto_event_removed_by_correction` (D71; an automatic investigation or escape entry inside the corrected trial window, D73) and `non_persistent_entry_noted` (D67) are soft: they never set `review` on their own |
 | `tracked_fraction` | 0–1 (nullable: no trial window, D66) | — |
 | `correction_count` | count | — |
 | `hole_investigation_radius_factor`, `hole_investigation_min_duration_s`, `hole_investigation_merge_gap_s` | ×hole radius, s, s | O1 |

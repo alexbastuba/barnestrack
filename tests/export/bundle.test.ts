@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { hashParameters } from '../../src/analysis/parameters.js';
 import { TRIAL_COLUMNS } from '../../src/export/columns.js';
 import { toCsv } from '../../src/export/csv.js';
-import { buildExportBundle, exportZipName, XLSX_FILE_NAME } from '../../src/export/index.js';
+import {
+  buildExportBundle,
+  exportZipName,
+  PARAMETERS_FILE_NAME,
+  XLSX_FILE_NAME,
+} from '../../src/export/index.js';
 import { trialRows } from '../../src/export/rows.js';
 import { parseSessionDocument } from '../../src/session/session-file.js';
 import { FIXTURE_PARAMETERS, syntheticSession } from '../fixtures/synthetic-analysis.js';
@@ -14,11 +19,13 @@ const NOW = new Date('2026-09-06T11:30:00Z');
 describe('buildExportBundle', () => {
   it('offers the six documented files, individually and in the zip (D11)', async () => {
     const bundle = await buildExportBundle(session, session.toolVersion, { now: NOW });
+    // the file name is pinned through the constant, which is what the UI's manifest should use
+    expect(PARAMETERS_FILE_NAME).toBe('parameters.json');
     const expected = [
       'trials.csv',
       'events.csv',
       'quality.csv',
-      'parameters.json',
+      PARAMETERS_FILE_NAME,
       'Barnes cohort A.barnestrack.json',
       XLSX_FILE_NAME,
     ];
@@ -37,7 +44,12 @@ describe('buildExportBundle', () => {
     const bundle = await buildExportBundle(session, session.toolVersion, { now: NOW });
     const entries = await entriesOf(bundle.zip);
     const decoder = new TextDecoder();
-    expect(JSON.parse(decoder.decode(entries.get('parameters.json')))).toEqual(FIXTURE_PARAMETERS);
+    // D71: the set, with the build and the hash beside it
+    expect(JSON.parse(decoder.decode(entries.get(PARAMETERS_FILE_NAME)))).toEqual({
+      toolVersion: session.toolVersion,
+      parametersHash: hashParameters(FIXTURE_PARAMETERS),
+      ...FIXTURE_PARAMETERS,
+    });
     const parsed = parseSessionDocument(
       decoder.decode(entries.get('Barnes cohort A.barnestrack.json')),
     );
@@ -46,6 +58,19 @@ describe('buildExportBundle', () => {
     expect(parsed.session.videos.map((video) => video.id)).toEqual(
       session.videos.map((video) => video.id),
     );
+  });
+
+  it('stamps parameters.json with the tool version and the hash it hashes to (D71)', async () => {
+    const bundle = await buildExportBundle(session, 'barnestrack v9.9.9 (deadbee)', { now: NOW });
+    const text = new TextDecoder().decode((await entriesOf(bundle.zip)).get(PARAMETERS_FILE_NAME));
+    const parsed = JSON.parse(text) as { toolVersion: string; parametersHash: string };
+    // the exporting build's version, as on every row; the provenance first, so a reader sees it
+    expect(parsed.toolVersion).toBe('barnestrack v9.9.9 (deadbee)');
+    expect(Object.keys(parsed).slice(0, 2)).toEqual(['toolVersion', 'parametersHash']);
+    expect(parsed.parametersHash).toBe(hashParameters(session.parameters!));
+    // the reconciliation the two keys exist for: the file hashes to the hash it names
+    expect(hashParameters(parsed as never)).toBe(parsed.parametersHash);
+    expect(text.endsWith('\n')).toBe(true);
   });
 
   it('stamps the exporting build version on the rows, not the one in the session', async () => {
@@ -69,8 +94,9 @@ describe('buildExportBundle', () => {
     const decoder = new TextDecoder();
 
     // The reconciliation the two files exist to allow: the hash in every row is
-    // the hash of the parameter set shipped beside it, in the same ZIP.
-    const written = hashParameters(JSON.parse(decoder.decode(entries.get('parameters.json'))));
+    // the hash of the parameter set shipped beside it, in the same ZIP — read
+    // back whole, provenance keys and all, as the browser smoke test reads it.
+    const written = hashParameters(JSON.parse(decoder.decode(entries.get(PARAMETERS_FILE_NAME))));
     const rows = decoder.decode(entries.get('trials.csv')).split('\r\n').filter(Boolean).slice(1);
     const column = TRIAL_COLUMNS.findIndex((spec) => spec.header === 'parameters_hash');
     expect(column).toBeGreaterThanOrEqual(0);
@@ -84,6 +110,6 @@ describe('buildExportBundle', () => {
     const entries = await entriesOf(bundle.zip);
     const decoder = new TextDecoder();
     expect(decoder.decode(entries.get('trials.csv')).split('\r\n').filter(Boolean)).toHaveLength(1);
-    expect(decoder.decode(entries.get('parameters.json'))).toBe('{}\n');
+    expect(decoder.decode(entries.get(PARAMETERS_FILE_NAME))).toBe('{}\n');
   });
 });

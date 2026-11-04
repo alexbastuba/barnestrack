@@ -4,6 +4,7 @@
  * ZIP. Pure — it returns Blobs and never touches the DOM, so it runs in a test,
  * in a worker and in the page.
  */
+import { hashParameters } from '../analysis/parameters.js';
 import type { SessionFile } from '../contracts/session.js';
 import { serializeSessionFile, sessionFileName } from '../session/session-file.js';
 import { EVENT_COLUMNS, QUALITY_COLUMNS, TRIAL_COLUMNS } from './columns.js';
@@ -18,13 +19,19 @@ export { TRIAL_COLUMNS, EVENT_COLUMNS, QUALITY_COLUMNS } from './columns.js';
 export type { ColumnSpec } from './columns.js';
 export { csvField, csvHeaderRow, toCsv } from './csv.js';
 export { parameterRows, parametersJson } from './parameter-sheet.js';
-export type { ParameterDefinitionLookup, ParameterRow } from './parameter-sheet.js';
+export type {
+  ParameterDefinitionLookup,
+  ParameterRow,
+  ParametersProvenance,
+} from './parameter-sheet.js';
 export { eventRows, qualityRows, trialRows } from './rows.js';
 export { buildWorkbook, xlsxBytes } from './xlsx.js';
 export { crc32, zipStore } from './zip.js';
 export type { ZipEntry } from './zip.js';
 
 export const XLSX_FILE_NAME = 'barnestrack_export.xlsx';
+/** The parameter set with its provenance beside it (D11, D71); `{}` before any analysis ran. */
+export const PARAMETERS_FILE_NAME = 'parameters.json';
 const CSV_MIME = 'text/csv;charset=utf-8';
 const JSON_MIME = 'application/json;charset=utf-8';
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -79,8 +86,15 @@ export async function buildExportBundle(
     ['events.csv', toCsv(EVENT_COLUMNS, eventRows(session, toolVersion)), CSV_MIME],
     ['quality.csv', toCsv(QUALITY_COLUMNS, qualityRows(session, toolVersion)), CSV_MIME],
     [
-      'parameters.json',
-      session.parameters ? parametersJson(session.parameters) : '{}\n',
+      PARAMETERS_FILE_NAME,
+      // D71: the set with the exporting build's version and its own hash beside it, so the file
+      // says what wrote it and reconciles with every row; the literal `{}` before any analysis ran
+      session.parameters
+        ? parametersJson(session.parameters, {
+            toolVersion,
+            parametersHash: hashParameters(session.parameters),
+          })
+        : '{}\n',
       JSON_MIME,
     ],
     [sessionFileName(session.name), serializeSessionFile(session), JSON_MIME],
