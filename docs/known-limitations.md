@@ -570,20 +570,6 @@ session it is found (D39).
   set stands. Smallest fix: when an edit names an entry, resolve the trial end from the edited
   entry instead of re-detecting past it, or keep an edited entry that begins after a moved end;
   a decision, since it touches D21's rule that an entry ends the trial only inside it.
-- **A user's escape-box range that an automatic entry at the same hole overlaps reads
-  `source = auto`, evidence-corrected, and enters the review queue.** Matching runs over
-  everything both detections produced (D73, chunk 16b), so the first pass pairs the range-created
-  entry with any automatic entry at the same hole whose span overlaps it, however far apart the
-  two starts are. Measured by the chunk-16b reviewer: `in_escape_box` range from frame 900 to the
-  end, the tracker's own entry at 1473–1622 → `escape_entry 900–1622`, `source = auto`,
-  `evidence_corrected = true`, `correction_ids = r1`, shadow `{7, 1473, 1622}`, listed by the
-  Review step's queue; at the base `2e60c56` it read `corrected` and was not queued. The base
-  already read a range starting at or after the automatic entry as `auto` (offsets 0 and +5
-  frames; −5 and −2 read `corrected` there and `auto` now), so this widens an existing class.
-  D67 says a range-asserted entry carries `source: corrected` and needs no confirmation; neither
-  it nor §5 says where "the range moved the entry" ends and "the user asserted an entry the tracker
-  found later" begins. Options for Alex: accept; never pair a range-created entry in the first
-  pass; require a minimum overlap fraction before reading the pair as a move.
 - **The shipped-UI smoke flow's identity-column list predates D68.** `TRIAL_IDENTITY_COLUMNS` in
   `tests/browser/app-smoke.spec.ts:432` expects `group` sixth, but `trials.csv` has carried
   `session_name` second since D68 (chunk 12), so `load, review, correct, retune, export, reload`
