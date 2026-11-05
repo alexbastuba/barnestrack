@@ -472,6 +472,13 @@ session it is found (D39).
   detected") and what rejecting it would change, and the queue walks the costliest first, so the
   share is visible per event; the rule itself is unchanged and still wants a materiality threshold
   (uncertain frames as a share of the span) — an operational definition that needs Alex.
+- **The queue restarts at its head when the remembered position is no longer to check.** Chunk 17
+  remembers the video and event `]`, `[` or Keep last moved to (`src/ui/queue-memory.ts`,
+  `sessionStorage`), and after a reload `]` with nothing selected continues at that event while it
+  is still in the queue. If it is not — it was kept or corrected from another route, a threshold
+  change renamed it, or the queue's order changed — `]` starts from the top rather than from the
+  nearest event after it: the position's `startFrame` is stored for that case but not yet used.
+  The step opens on the remembered video either way.
 - **The action bars are a fraction of a pixel tall.** Chunk 17 rounded the three header heights
   chunk 14b named (the Reviewer hint 19.5 → 20 px, the step heading 21.25 → 22 px, the stepper
   45.75 → 45 px), so every stage now starts on a whole document pixel (620 px for the Review
