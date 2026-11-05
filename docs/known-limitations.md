@@ -488,6 +488,18 @@ session it is found (D39).
   document's `scroll-padding-bottom` is the bar's height rounded up, so nothing depends on the
   half pixel; rounding the button is a token change (`--lh-md` on `button`) with a visible effect
   on every control, which was not this chunk's call.
+- **Every correction waits on one re-derive per event still to check.** What rejecting each queued
+  event would change (chunk 17) is computed in the same task as the derive that follows a
+  correction or a threshold change, before the screen updates, because the queue's order depends
+  on it. On test50 with 25 events to check, after a Keep: 106–114 ms in Chrome on the development
+  Mac (4.2–4.6 ms each), 166 ms on the GitHub runner (6.6 ms each), and with Chrome's CPU
+  throttled 2×, 4× and 6× on the Mac 214, 427 and 640 ms. Past roughly 3× slower than the Mac
+  the page is unresponsive for more than 300 ms after every Keep, and the cost grows with the
+  queue's length and the track's. No machine slower than the runner has been measured for real.
+  If the pass throws, the analysis stands, the cards show the reason without the consequence and
+  the failure is announced. Smallest fix: compute the selected event's consequence at once and
+  the rest in idle time, re-ordering the queue when they arrive — which makes the order change
+  under the reviewer once, a behaviour that needs deciding.
 
 - **The axe scan passes with an empty allowlist on all four steps.** Not a limitation; recorded
   because two earlier entries here measured it wrongly. Chunk 15 added the Review step (with an

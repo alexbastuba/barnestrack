@@ -558,3 +558,36 @@ Track 50 (49.5), Review 58 (57.5). The selected-event boxes at 1366 × 768: vide
 clip selector 24–54, all on screen; the escape-entry card 152–545 (383 of 393 px shown, its focus
 ring's lowest 14 px clipped — it no longer scrolls inside its box). 0 console errors, 0 contrast
 failures, no untiered button.
+
+**The retune that never landed on the runner (CI run 42100952358, on `408249f`).** The whole-flow
+test passed on the Mac and failed on GitHub at the retune: after `radiusFactor.fill('3')` and
+`blur()` the event count stayed "72 investigations · …" for the full 60 s. The spec was right and
+is unchanged. The parameters panel queues a typed threshold on a 100 ms debounce, and its
+`update()` cancelled that queued edit on *every* call; the Review step calls `update()` on every
+store notification, including the one the store sends when an autosave finishes. `K` schedules
+that autosave 500 ms out, and chunk 17's consequence pass lengthened the redraw after `K`
+(166 ms on the runner, 113 ms on the Mac), which moved the test's `fill` from well before the
+save to just before it. Measured with a scratch script that drives the same steps against
+`npm run preview` at 1280 × 720 headless, wraps the page's `setTimeout`/`clearTimeout` and
+watches `.save-state` (times from the `K` keydown):
+
+- 2× CPU throttle, before the fix: autosave timer set +18 ms, `input` +459, `blur` +469, autosave
+  timer fired +518, the panel's debounce **cleared** +534 (75 ms after the input) from
+  `update` ← the step's `refresh` ← the store's `emit` after the save, `saved` shown +565. The
+  field read 1.5 again and nothing was recomputed. 3 of 3 runs at 2×; 2 of 3 at 2.5×, where the
+  notification arrived before `blur` and the field kept showing 3 with nothing computed from it;
+  0 of 3 at 1×, 1.5×, 3×, 4× and 6× (the input is before the window, or the save is already over).
+- Unthrottled, the field typed and blurred in one task N ms after the autosave timer was set:
+  dropped at N = 420, 440, 460, 480 and 500 (the debounce cleared 88, 69, 48, 30 and 19 ms after
+  the input), applied at 360, 380, 400, 520, 540, 560 and 600.
+- After the fix (`update()` treats only a different parameter object as new parameters): all 12
+  of those offsets and all 21 throttled runs apply the threshold — at 2× the save still lands at
+  +563 ms, inside the debounce, and the debounce fires at +579.
+
+The same run's second red, `track.spec.ts:142`, was the spec still asking the timing line for
+"Recomputed in" after D76 reworded it to a readout; that assertion and the same one in
+`review.spec.ts`'s `openReview` now match "N frames · N corrections · parameters ‹hash›… ·
+derive N ms". At the fix: `npx playwright test tests/browser/app-smoke.spec.ts
+tests/browser/track.spec.ts tests/browser/maze.spec.ts` after `npm run build`, **24 passed, 4
+skipped** (the sample-video tracking tests); `review.spec.ts` with `BARNESTRACK_SAMPLE_DIR`,
+**2 passed**.
