@@ -1196,14 +1196,15 @@ label {
     --maze-column: 23rem;
     /*
      * The bar as it stands under that column, measured at 1366 × 768 in
-     * Chrome on macOS: two 13 px status lines (39 px) over the 32.5 px button,
-     * the 8 px gap between the two rows, 8 px of padding above and below and
-     * the 1 px rule — 96.5 px. With one status line it is 77 px, with none
-     * 49.5 px. System fonts (D2) give other platforms line metrics a pixel or
-     * so apart; the gutter in the reserve below absorbs that, and the spec's
-     * "bar below the controls column" check runs on Linux in CI.
+     * Chrome on macOS: two 13 px status lines (40 px since chunk 17 gave the
+     * hint a 20 px line) over the 32.5 px button, the 8 px gap between the two
+     * rows, 8 px of padding above and below and the 1 px rule — 97.5 px. With
+     * one status line it is 77.5 px, with none 49.5 px. System fonts (D2) give
+     * other platforms line metrics a pixel or so apart; the gutter in the
+     * reserve below absorbs that, and the spec's "bar below the controls
+     * column" check runs on Linux in CI.
      */
-    --maze-bar: 6.03125rem;
+    --maze-bar: 6.09375rem;
     /*
      * What the controls column leaves free at the bottom of the window: the
      * bar at its tallest, the frame's scroll margin (the column starts on the
@@ -1468,10 +1469,10 @@ label {
     /*
      * The bar at its tallest under that column: two status lines (the export
      * reason, when the export is refused) over the button — the Maze bar's
-     * measured 96.5 px (chunk 14b); with the export enabled the bar is the
-     * button alone, 49.5 px.
+     * 97.5 px (chunk 14b's measurement, re-made in chunk 17). With the export
+     * enabled the status is an empty row of its own above the button, 57.5 px.
      */
-    --review-bar: 6.03125rem;
+    --review-bar: 6.09375rem;
     /* What the side column leaves free at the bottom of the window: the bar at its tallest and a gutter. */
     --review-reserve: calc(var(--review-bar) + var(--s4));
   }

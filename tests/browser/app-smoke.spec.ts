@@ -38,6 +38,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { LOAD_BUTTON_LABEL } from '../../src/demo/example-cohort-ui.js';
 import { hashParameters } from '../../src/analysis/parameters.js';
 import type { Parameters } from '../../src/contracts/parameters.js';
+import { UNSET_VIDEO } from '../fixtures/unset-video.js';
 import { column, csvRows, downloadBundle } from './bundle-download.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -397,6 +398,110 @@ test.describe('the example cohort, driven through the loader module', () => {
     );
   });
 
+  /**
+   * Chunk 17 §4.1: the Review step's action bar is the side column's footer from 1200 px (D75), so
+   * the video is never under it. Probed where chunk 14b found it covered — CI's 1920 × 1080,
+   * unscrolled — and at the laptop size, with `elementFromPoint` at the video's lowest 50 px.
+   */
+  for (const size of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+  ]) {
+    test(`the video is never under the Review action bar at ${size.width} × ${size.height}`, async ({ page }) => {
+      await page.setViewportSize(size);
+      await loadExampleViaModule(page);
+      await page.getByRole('tab', { name: /Review/ }).click();
+      await expect(page.locator('#review-export')).toBeAttached();
+      await page.waitForTimeout(400);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const probe = async (state: string): Promise<void> => {
+        const fold = await page.evaluate(() => {
+          const video = document.querySelector('#panel-review .viewport')!.getBoundingClientRect();
+          const bar = document.querySelector('#panel-review .next-step')!.getBoundingClientRect();
+          const x = Math.round((video.left + video.right) / 2);
+          const probes: { y: number; element: string; inVideo: boolean; onBar: boolean }[] = [];
+          for (const dy of [1, 25, 49]) {
+            const y = Math.round(Math.min(video.bottom - dy, window.innerHeight - 1));
+            const el = document.elementFromPoint(x, y);
+            probes.push({
+              y,
+              element: el ? `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}` : 'nothing',
+              inVideo: el?.closest('.viewport') !== null,
+              onBar: el?.closest('.next-step') !== null,
+            });
+          }
+          return {
+            scrollY: Math.round(window.scrollY),
+            video: { top: video.top, bottom: video.bottom },
+            bar: { top: bar.top, bottom: bar.bottom, left: Math.round(bar.left), right: Math.round(bar.right) },
+            probes,
+          };
+        });
+        console.log(
+          `review fold ${size.width}x${size.height} ${state} scrollY ${fold.scrollY}: video y ${fold.video.top}–${fold.video.bottom}, bar y ${fold.bar.top}–${fold.bar.bottom} x ${fold.bar.left}–${fold.bar.right}; ${fold.probes.map((p) => `y ${p.y} → ${p.element}`).join(', ')}`,
+        );
+        for (const p of fold.probes) {
+          expect(p.onBar, `${state}: y ${p.y} is under the bar (${p.element})`).toBe(false);
+          expect(p.inVideo, `${state}: y ${p.y} is not the video (${p.element})`).toBe(true);
+        }
+        // The bar sits beside the video, in the side column, never across it.
+        expect(fold.bar.left).toBeGreaterThan(0);
+      };
+      await probe('unselected');
+      await page.locator('#panel-review .timeline-surface').focus();
+      await page.keyboard.press(']');
+      await expect(page.locator('#review-selected .event-item')).toHaveCount(1);
+      await page.waitForTimeout(400);
+      await probe('selected');
+    });
+  }
+
+  /**
+   * Chunk 17 §4.4: the Maze bar's two-line state, which chunk 14b sized `--maze-reserve` for and
+   * measured by hand. A video of another size with the identity transform is unset, so the bar's
+   * status is the two-line reason; the bar must still fit the reserve and sit below the controls.
+   */
+  test('the Maze action bar shows its two-line reason beside an unset video and stays inside its reserve', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await loadExampleViaModule(page);
+    await page.evaluate((video) => {
+      const store = (globalThis as unknown as Record<string, unknown>)['__barnestrackStore'] as {
+        addVideo: (video: unknown) => unknown;
+      };
+      store.addVideo(video);
+    }, UNSET_VIDEO);
+    await page.getByRole('tab', { name: /Maze/ }).click();
+    await expect(page.locator('#panel-maze')).toBeVisible();
+    const status = page.locator('#panel-maze .next-step .action-bar-status');
+    await expect(status).toHaveText(/^The maze is set on 3 of 4 videos\. Choose each remaining video above and place the ring in its frame\.$/);
+    await page.locator('#panel-maze .viewport').evaluate((node) => node.scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(200);
+    const layout = await page.evaluate(() => {
+      const bar = document.querySelector('#panel-maze .next-step')!.getBoundingClientRect();
+      const status = document.querySelector('#panel-maze .next-step .action-bar-status')!.getBoundingClientRect();
+      const controls = document.querySelector('#panel-maze .maze-stage > .maze-controls')!.getBoundingClientRect();
+      const step = document.querySelector('#panel-maze .maze-step')!;
+      const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+      return {
+        barHeight: bar.height,
+        barTop: bar.top,
+        barBottom: bar.bottom,
+        statusHeight: status.height,
+        statusLines: Math.round(status.height / Number.parseFloat(getComputedStyle(document.querySelector('#panel-maze .next-step .action-bar-status')!).lineHeight)),
+        controlsBottom: controls.bottom,
+        reserveBar: Number.parseFloat(getComputedStyle(step).getPropertyValue('--maze-bar')) * rem,
+        innerHeight: window.innerHeight,
+      };
+    });
+    console.log(
+      `maze bar, two-line state at 1366x768: bar ${layout.barHeight} px (y ${layout.barTop}–${layout.barBottom}), status ${layout.statusHeight} px = ${layout.statusLines} lines, controls bottom ${layout.controlsBottom}, --maze-bar ${layout.reserveBar} px`,
+    );
+    expect(layout.statusLines).toBe(2);
+    expect(layout.barHeight).toBeLessThanOrEqual(layout.reserveBar + 0.5);
+    expect(layout.barBottom).toBeCloseTo(layout.innerHeight, 0);
+    expect(layout.controlsBottom).toBeLessThanOrEqual(layout.barTop + 0.5);
+  });
+
   test('has no serious or critical accessibility violations on the steps that render', async ({
     page,
   }) => {
@@ -608,5 +713,75 @@ test.describe('the whole demo flow through the shipped UI', () => {
     await expect(selectionLine).toHaveText(selectionBeforeReload ?? '');
     console.log(`shipped UI: after reload, reviewer "${await reviewerField.inputValue()}", "${await selectionLine.textContent()}"`);
     await expect(qualityHash).toHaveText(`Parameters hash: ${shownHash}`);
+  });
+
+  /**
+   * Chunk 17 §2: the queue says why an item is there and what it costs, Keep takes it off the
+   * "to check" list and the count falls, the checked filter hides it from the list but not the
+   * table, and after a reload `]` continues from the remembered position.
+   */
+  test('the queue says why and what it costs, counts down on Keep, and continues after a reload', async ({ page }) => {
+    await page.goto(PREVIEW_URL);
+    await expect(page.getByRole('heading', { name: 'BarnesTrack' })).toBeVisible();
+    await clearStoredSession(page);
+    await page.reload();
+    await page.getByRole('button', { name: LOAD_BUTTON_LABEL }).click();
+    await page.getByRole('button', { name: 'Load the results only' }).click();
+    await expect(page.locator('.video-card')).toHaveCount(3);
+    await page.getByRole('tab', { name: /Review/ }).click();
+    await expect(page.locator('#review-export')).toBeAttached();
+
+    const countOf = async (): Promise<{ toCheck: number; checked: number }> => {
+      const text = (await page.locator('#review-current-event .queue-count').textContent()) ?? '';
+      const match = /^(\d+) to check · (\d+) checked$/.exec(text);
+      expect(match, `queue count "${text}"`).not.toBeNull();
+      return { toCheck: Number(match![1]), checked: Number(match![2]) };
+    };
+    const before = await countOf();
+    expect(before.toCheck).toBeGreaterThan(1);
+    console.log(`shipped UI: timing line "${await page.locator('#panel-review .review-timing').textContent()}"`);
+
+    // 1. The first queued item, selected from the keyboard, says why and what it costs.
+    await page.locator('#panel-review .timeline-surface').focus();
+    await page.keyboard.press(']');
+    const selected = page.locator('#review-selected .event-item');
+    await expect(selected).toHaveCount(1);
+    const first = (await selected.getAttribute('data-event-id'))!;
+    const reason = (await selected.locator('.event-reason').textContent()) ?? '';
+    const consequence = (await selected.locator('.event-consequence').textContent()) ?? '';
+    expect(reason).toMatch(/^(Flagged: |Decided over \d+ uncertain frames? of \d+: )/);
+    expect(consequence).toMatch(/^If rejected: /);
+    console.log(`shipped UI: first queued ${first}: "${reason.trim()}" · "${consequence.trim()}"`);
+
+    // 2. Keep: it leaves the "to check" list, the count falls, and the selection moves on.
+    await page.keyboard.press('k');
+    await expect(page.locator('#review-current-event .queue-count')).toHaveText(`${before.toCheck - 1} to check · ${before.checked + 1} checked`);
+    await expect(selected).toHaveCount(1);
+    const following = (await selected.getAttribute('data-event-id'))!;
+    expect(following).not.toBe(first);
+    const tableRows = page.locator('#review-events-mirror tbody tr');
+    const rowsBefore = await tableRows.count();
+    const checkedFilter = page.locator('#review-events .event-filter-checked');
+    await checkedFilter.uncheck();
+    await expect(page.locator(`#review-events li.event-item[data-event-id="${first}"]`)).toHaveCount(0);
+    await expect(page.locator(`#review-events li.event-item[data-event-id="${following}"]`)).toHaveCount(1);
+    expect(await tableRows.count()).toBe(rowsBefore); // the table keeps every event (D20)
+    await checkedFilter.check();
+    await expect(page.locator(`#review-events li.event-item[data-event-id="${first}"]`)).toHaveCount(1);
+    console.log(`shipped UI: kept ${first}, count ${before.toCheck} → ${before.toCheck - 1} to check; selection moved to ${following}`);
+
+    // 3. Reload with nothing selected: `]` continues from the remembered position.
+    await page.keyboard.press('Escape');
+    await expect(selected).toHaveCount(0);
+    await expect(page.locator('.save-state.is-saved')).toBeVisible({ timeout: 30_000 });
+    await page.reload();
+    await expect(page.locator('.video-card')).toHaveCount(3, { timeout: 30_000 });
+    await page.getByRole('tab', { name: /Review/ }).click();
+    await expect(page.locator('#review-export')).toBeAttached();
+    await expect(selected).toHaveCount(0);
+    await page.locator('#panel-review .timeline-surface').focus();
+    await page.keyboard.press(']');
+    await expect(selected).toHaveAttribute('data-event-id', following);
+    console.log(`shipped UI: after reload, ] continued at ${following}`);
   });
 });

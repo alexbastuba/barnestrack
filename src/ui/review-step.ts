@@ -1416,7 +1416,8 @@ export function createReviewStep(context: AppContext): Step {
     if (ev === null) {
       selectedCard?.component.destroy();
       selectedCard = null;
-      selectedEmpty.textContent = selectionLineText();
+      // The selection line under it says what to do; this box only says it is empty (D76: once).
+      selectedEmpty.textContent = 'Nothing selected.';
       if (!selectedPanel.contains(selectedEmpty)) selectedPanel.replaceChildren(selectedEmpty);
       return;
     }
@@ -1721,11 +1722,12 @@ export function createReviewStep(context: AppContext): Step {
     for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
       control.disabled = analysis === null;
     }
+    // A readout, not a sentence (D76): the numbers, each labelled once.
     const consequenceNote = lastTiming?.consequences
-      ? ` · ${lastTiming.consequences.count} consequence${lastTiming.consequences.count === 1 ? '' : 's'} in ${lastTiming.consequences.total.toFixed(0)} ms (${lastTiming.consequences.mean.toFixed(1)} ms each, max ${lastTiming.consequences.max.toFixed(1)})`
+      ? ` · ${lastTiming.consequences.count} consequence${lastTiming.consequences.count === 1 ? '' : 's'} ${lastTiming.consequences.total.toFixed(0)} ms (${lastTiming.consequences.mean.toFixed(1)} ms each)`
       : '';
     timing.textContent = analysis && lastTiming
-      ? `${analysis.cleanedTrack.length} frames · ${currentLayer()?.entries.length ?? 0} correction${(currentLayer()?.entries.length ?? 0) === 1 ? '' : 's'} · parameters ${analysis.parametersHash.slice(0, 8)}… · recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${lastTiming.totalMs.toFixed(0)} ms with the cache write)${consequenceNote}`
+      ? `${analysis.cleanedTrack.length} frames · ${currentLayer()?.entries.length ?? 0} correction${(currentLayer()?.entries.length ?? 0) === 1 ? '' : 's'} · parameters ${analysis.parametersHash.slice(0, 8)}… · derive ${lastTiming.deriveMs.toFixed(1)} ms (${lastTiming.totalMs.toFixed(0)} ms with the cache write)${consequenceNote}`
       : blocked
         ? `Not analysed: ${blocked}.`
         : '';

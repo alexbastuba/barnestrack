@@ -74,7 +74,16 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   reading `confirmed = true`, `source = auto` and the reviewer's name; then, once
   `.save-state.is-saved` shows, a reload that brings back the three cards, the session name, the
   reviewer field, the keyboard-kept correction and the selection line. Without that wait the
-  reload finds 0 cards. It skips only when `dist/` is missing. The axe scan covers all four steps
+  reload finds 0 cards. It skips only when `dist/` is missing. (Chunk 17) A second shipped-UI test
+  walks the queue: the first item `]` selects carries a reason line and a consequence line, `K`
+  takes it off the "to check" count (N → N − 1) and moves the selection on, the "Checked events"
+  filter hides the kept card from the list while the events table keeps every row, and after a
+  reload with nothing selected `]` continues at the remembered event. Three dev-server tests
+  check layout: `elementFromPoint` at the video's lowest 50 px on the Review step is the canvas,
+  never the action bar, at 1920 × 1080 and 1366 × 768, unselected and after `]` (the bar is the
+  side column's footer from 1200 px, D75); and a 1280 × 720 video added through the store leaves
+  the Maze bar in its two-line state — the status wraps to exactly two lines, the bar fits
+  `--maze-bar` and sits below the controls column. The axe scan covers all four steps
   (Review since chunk 15, scanned with an event selected) and fails on `serious`/`critical` only; `KNOWN_VIOLATIONS` is
   **empty** since chunk 10b fixed the maze step's scroll container, so any serious or critical
   finding fails the run. It makes no network request: the results-only path never fetches, every
