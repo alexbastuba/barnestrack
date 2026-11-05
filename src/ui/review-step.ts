@@ -325,8 +325,19 @@ export function createReviewStep(context: AppContext): Step {
       queueCounts.set(video.id, toCheck.length);
       // Why each queued event is there and what it costs (chunk 17): one re-derive per queued
       // event, eagerly, because the queue's order depends on it; cached by the analysis object.
-      const input = deriveInputFor(store, video.id);
-      consequences = input ? consequencesFor(input, analysis, toCheck) : new Map();
+      // A what-if that throws must not take the trial's own numbers with it: the analysis
+      // above stands, the queue keeps its unranked order, the cards say why without what it
+      // costs, and the failure is said rather than swallowed.
+      consequences = new Map();
+      try {
+        const input = deriveInputFor(store, video.id);
+        if (input) consequences = consequencesFor(input, analysis, toCheck);
+      } catch (error) {
+        console.error('BarnesTrack: the consequences of the events to check could not be computed', error);
+        context.announce(
+          `What each event to check would change could not be computed: ${(error as Error).message}. The events and the metrics are not affected.`,
+        );
+      }
       const frames = analysis.cleanedTrack;
       reasons = new Map(
         toCheck.map((id) => {
@@ -337,7 +348,8 @@ export function createReviewStep(context: AppContext): Step {
       lastTiming = {
         deriveMs: run.deriveMs,
         totalMs,
-        consequences: toCheck.length > 0 ? consequenceTiming(consequences, toCheck) : null,
+        // None computed — nothing queued, or the pass failed — prints no consequence figure.
+        consequences: consequences.size > 0 ? consequenceTiming(consequences, toCheck) : null,
       };
       cacheKey = {
         videoId: video.id,
