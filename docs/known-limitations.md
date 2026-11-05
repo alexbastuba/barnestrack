@@ -457,7 +457,7 @@ session it is found (D39).
   usually scrolled to rather than seen. A long card — an escape entry's evidence with its flag —
   used to scroll inside its own box at 1366 × 768 (328 of 523 px shown); since chunk 17 the strip
   names the event only and the flag's sentence sits one click away under the card, so the entry
-  card is 393 px tall with 384 shown and only its focus ring's lowest 13 px clipped
+  card is 393 px tall with 383 shown and only its focus ring's lowest 14 px clipped
   (`scripts/screenshots.ts`, chunk 17).
 - **"N events to check" queues nearly every event.** `eventsToCheck` in `src/ui/review-queue.ts`
   puts an event in the queue when a review flag names it *or* any frame of its span is

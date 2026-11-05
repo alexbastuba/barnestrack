@@ -508,11 +508,11 @@ into this branch.
 `npm run build`: **14 passed** (24.7 s). What they printed at HEAD, CSS pixels:
 
 - Review fold, 1920 × 1080, unselected (scrollY 0): video y 681.5–1247, bar y 1022.5–1080 at
-  x 1151–1535 (the side column); the probes at y 1079 (the fold, where chunk 14b measured the bar
-  over the video) all land on `canvas.overlay-layer`. Selected (scrollY 620): video y 61.5–627;
-  y 626 → `div.viewport`, 602 and 578 → the canvas. At 1366 × 768: video 681.5–1142.3, bar
-  710.5–768 at x 874–1258; y 767 → the canvas (at BASE the bar covered the video's top 2 px
-  there); selected: 521 / 497 / 473 → the canvas.
+  x 1151–1535 (the side column); the probes at y 1079, 1055 and 1031 (the window's lowest 50 px,
+  where chunk 14b measured the bar over the video) all land on `canvas.overlay-layer`. Selected
+  (scrollY 620): video y 61.5–627; y 626 → `div.viewport`, 602 and 578 → the canvas. At
+  1366 × 768: video 681.5–1142.3, bar 710.5–768 at x 874–1258; y 767, 743 and 719 → the canvas
+  (at BASE the bar covered the video's top 2 px there); selected: 521 / 497 / 473 → the canvas.
 - Maze bar, two-line state (a 1280 × 720 video added, 1366 × 768, frame scrolled to the top):
   bar 97.5 px (y 670.5–768), status 40 px = 2 lines, controls column bottom 654 ≤ bar top 670.5,
   `--maze-bar` 97.5 px.
@@ -521,8 +521,9 @@ into this branch.
   consequence "If rejected: total errors 71 → 70; primary errors 29 → 28; strategy unchanged.";
   `K` takes the count 25 → 24 to check and the selection to `auto-investigation-h9-f865`; after
   Escape and a reload, `]` continues at that event. The timing line read "5539 frames ·
-  1 correction · parameters 9c3cf1d9… · derive 16.9 ms (136 ms with the cache write) ·
-  25 consequences 112 ms (4.5 ms each)".
+  1 correction · parameters 9c3cf1d9… · derive 17.8 ms (20 ms with the cache write) ·
+  25 consequences 113 ms (4.5 ms each)" (the consequences are timed on their own, after the
+  review's finding that the first cut folded them into the cache-write total).
 
 **`scripts/screenshots.ts`** now writes to `notes/screens/chunk-17/`, counts the Review step's
 first-screen prose (D76) and probes the fold. What counts as prose: the text of `p`, `caption`,
