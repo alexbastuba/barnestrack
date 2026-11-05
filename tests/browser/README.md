@@ -95,8 +95,14 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   lands; `ArrowRight` moves the selected centre by 1 px and `Shift+ArrowRight` by 10 without
   counting, and `Escape` clears the selection; and with the frame scrolled to the top of a
   1366 × 768 viewport the Platform fieldset is wholly on screen and the page does not scroll
-  sideways. It needs neither ffmpeg nor the sample videos and runs in about eight seconds, so it is
-  in `npm run test:browser:ci`.
+  sideways. Since chunk 14b (D75) the Maze step's action bar is the controls column's footer from
+  1200 px, and a further test puts every handle's press position through `elementFromPoint` at
+  1366 × 768, 1400 × 866 and 1920 × 1080, unscrolled and scrolled to the frame: a handle on screen
+  must be under the pointer on `canvas.overlay-layer`, never under any part of the bar, and at
+  1920 × 1080 unscrolled every handle must be on screen so the CI case cannot pass vacuously; the
+  scrolled checks also assert the bar's top is below the controls column's bottom. It needs neither
+  ffmpeg nor the sample videos and runs in about eight seconds, so it is in
+  `npm run test:browser:ci`.
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 

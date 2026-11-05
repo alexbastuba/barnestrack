@@ -948,13 +948,8 @@ export function createReviewStep(context: AppContext): Step {
   const toolOffButton = button('Off (Esc)', () => setTool('off'), { class: 'btn-quiet' });
   const invalidButton = button('Mark invalid (X)', () => markInvalid(), { class: 'btn-secondary' });
   const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible(), { class: 'btn-secondary' });
+  // Where to place it is in the step's Definitions, not under the button (D76: no helper text under a control).
   const escapeBoxButton = button('Entered the escape box here — ends the trial (B)', () => markEscapeBox(), { class: 'btn-secondary' });
-  const escapeBoxHint = el('span', {
-    id: uniqueId('review-escape-hint'),
-    class: 'hint',
-    text: 'The trial ends at this frame and total latency is stamped here, so place it on the frame the animal was last seen going in.',
-  });
-  escapeBoxButton.setAttribute('aria-describedby', escapeBoxHint.id);
   const addEventButton = button('Add investigation from here… (A)', () => addEventHere(), { class: 'btn-secondary' });
   // Keep, Reclassify and Delete sit on the selected event's card (`selectedPanel`), next to the
   // evidence they are decided on; the toolbar keeps the tools that work on frames and spans.
@@ -1106,7 +1101,7 @@ export function createReviewStep(context: AppContext): Step {
   const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools', 'aria-describedby': 'review-selection-line' } }, [
     selectionLine,
     el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
-    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton, escapeBoxHint]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton]),
     el('div', { class: 'tool-group' }, [
       el('span', { text: 'Event' }),
       addEventButton,
@@ -1554,14 +1549,15 @@ export function createReviewStep(context: AppContext): Step {
    * column when they do not fit. Below 1200 px the right column drops under the left (app.css).
    * The timeline stays outside, full width, on its own row.
    */
+  // The visual first, the words after it (D76): the timing line sits under the scrubber, not above the frame.
   const stage = el('div', { class: 'review-stage' }, [
     el('div', { class: 'review-stage-main' }, [
       el('div', { class: 'review-top' }, [
         el('div', { class: 'field' }, [el('label', { text: 'Video', attrs: { for: videoSelect.id } }), videoSelect]),
-        timing,
       ]),
       canvasView.element,
       scrubber.element,
+      timing,
     ]),
     el('div', { class: 'review-stage-side' }, [queueBar, selectedPanel, toolbar]),
   ]);
@@ -1719,9 +1715,7 @@ export function createReviewStep(context: AppContext): Step {
       }
     }
     note.hidden = video === null || isAttached;
-    note.textContent = video
-      ? `${video.filename} is not attached, so no frame can be shown: drop the file again on the Videos step. The track, the timeline and every correction still work.`
-      : '';
+    note.textContent = video ? `${video.filename} is not attached: drop the file on the Videos step to see its frames.` : '';
 
     const blocked = video ? analysisBlockedReason(store, video.id) : 'no video';
     for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
@@ -2238,12 +2232,11 @@ export function createReviewStep(context: AppContext): Step {
   return {
     id: 'review',
     label: 'Review & Export',
-    what:
-      'Check every event against the frames it came from, correct what the tracker got wrong, and read the metrics. ' +
-      'Every correction is stored beside the automatic values and everything is recomputed from both.',
+    what: 'Check each event against its frames, correct what the tracker got wrong, and read the metrics.',
     definitions: () => [
       el('ul', {}, [
         el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item.' }),
+        el('li', { text: '"Entered the escape box here" ends the trial at that frame and stamps total latency there, so place it on the frame the animal was last seen going in.' }),
         el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user".' }),
         el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate.' }),
         el('li', { text: 'Every threshold and metric shows its definition beside its control.' }),

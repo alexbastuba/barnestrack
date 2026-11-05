@@ -172,6 +172,7 @@ export function mountApp(
       step.body.hidden = reason !== null;
       step.refresh();
     }
+    syncScrollPadding();
     // An autosave completing must not rewrite a field the user is typing in.
     if (document.activeElement !== sessionName) sessionName.value = store.current.name;
     reviewer.refresh();
@@ -188,6 +189,21 @@ export function mountApp(
           : 'Could not save to this browser’s storage — use Save session file to keep your work';
     saveState.className = `save-state is-${state}`;
   }
+
+  /**
+   * A control focused at the foot of the window is scrolled above the shown
+   * step's sticky action bar, never under it (D72; chunk 17 §4.3): the
+   * document's `scroll-padding-bottom` is that bar's rendered height, read
+   * on every refresh and resize rather than written as a token that could
+   * drift from the bar. Nothing while no bar is shown.
+   */
+  function syncScrollPadding(): void {
+    const shown = steps.find((step) => panelFor.get(step.id)?.hidden === false);
+    const bar = shown ? panelFor.get(shown.id)?.querySelector('.next-step') : null;
+    const height = bar instanceof HTMLElement ? bar.getBoundingClientRect().height : 0;
+    document.documentElement.style.scrollPaddingBottom = height > 0 ? `${Math.ceil(height)}px` : '';
+  }
+  window.addEventListener('resize', syncScrollPadding);
 
   // ---- session controls -----------------------------------------------------
 
