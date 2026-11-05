@@ -213,19 +213,46 @@ describe('a review flag on an event', () => {
     message: 'A loss of this length at a non-target hole is not an escape (O4).',
   };
 
-  it('shows "physically unlikely — review" with the reason on the right card', () => {
+  it('shows "physically unlikely — review" on the right card, with the reason one click away under it', () => {
     const event = base.analysis.events[1]!;
     const { button } = mountCard(event, [{ ...flag, eventId: event.id }]);
     const text = button.querySelector('.event-flag')!.textContent ?? '';
     expect(text).toContain('physically unlikely');
     expect(text).toContain('review');
-    expect(text).toContain(flag.message);
+    // The sentence is in a labelled <details> in the item, not in the button (D76; a button holds no details).
+    expect(text).not.toContain(flag.message);
+    const details = button.closest('li')!.querySelector<HTMLDetailsElement>('.event-flag-details')!;
+    expect(details.hidden).toBe(false);
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')!.textContent).toBe('Flag: physically unlikely');
+    expect(details.querySelector('.event-flag-message')!.textContent).toBe(flag.message);
   });
 
   it('does not put another event’s flag on this card', () => {
     const event = base.analysis.events[1]!;
     const { button } = mountCard(event, [{ ...flag, eventId: 'some-other-event' }]);
     expect(button.querySelector('.event-flag')).toBeNull();
+    expect(button.closest('li')!.querySelector<HTMLDetailsElement>('.event-flag-details')!.hidden).toBe(true);
+  });
+
+  it('shows the reason and the consequence under the title when the step supplies them, and nothing when it does not', () => {
+    const event = base.analysis.events[1]!;
+    const list = document.createElement('ul');
+    container.append(list);
+    createEventCard(
+      list,
+      { event, flags: [], reason: 'Decided over 3 uncertain frames of 10: 3 low confidence (3 fragmented).', consequence: 'If rejected: total errors 4 → 3; strategy unchanged.' },
+      { onSeek: vi.fn() },
+    );
+    const button = list.querySelector('button')!;
+    expect(button.querySelector('.event-reason')!.textContent!.trim()).toBe('Decided over 3 uncertain frames of 10: 3 low confidence (3 fragmented).');
+    expect(button.querySelector('.event-consequence')!.textContent!.trim()).toBe('If rejected: total errors 4 → 3; strategy unchanged.');
+    // under the title, before the facts
+    expect(button.querySelector('.event-reason')!.nextElementSibling!.className).toBe('event-consequence');
+    expect(button.querySelector('.event-consequence')!.nextElementSibling!.className).toBe('event-facts');
+    const { button: plain } = mountCard(event);
+    expect(plain.querySelector('.event-reason')).toBeNull();
+    expect(plain.querySelector('.event-consequence')).toBeNull();
   });
 
   it('calls a lost-tracking flag what it is, not "physically unlikely"', () => {
@@ -323,7 +350,26 @@ describe('the event list', () => {
   it('offers the filter as labelled checkboxes, not a colour key', () => {
     mountList();
     const labels = [...container.querySelectorAll('.event-filter label')].map((n) => n.textContent);
-    expect(labels).toEqual(['Investigations', 'Escape entries', 'Tracking failures']);
+    expect(labels).toEqual(['Investigations', 'Escape entries', 'Tracking failures', 'Checked events']);
+  });
+
+  it('takes checked events out of the list and back, counting them as hidden, without touching the others', () => {
+    const corrected = correctedFixture();
+    const onAnnounce = vi.fn();
+    createEventList(container, { events: corrected.analysis.events, flags: [] }, { onSeek: vi.fn(), onAnnounce });
+    const all = corrected.analysis.events.length;
+    expect(container.querySelectorAll('ul.event-list > li')).toHaveLength(all);
+    const checked = container.querySelector<HTMLInputElement>('.event-filter-checked')!;
+    checked.checked = false;
+    checked.dispatchEvent(new Event('change'));
+    expect(container.querySelectorAll('ul.event-list > li')).toHaveLength(all - 1);
+    expect(container.querySelector(`li[data-event-id="${corrected.event.id}"]`)).toBeNull();
+    const line = container.querySelector('.event-count')!.textContent ?? '';
+    expect(line).toContain('1 event hidden by the filter');
+    expect(onAnnounce).toHaveBeenCalledWith(line);
+    checked.checked = true;
+    checked.dispatchEvent(new Event('change'));
+    expect(container.querySelectorAll('ul.event-list > li')).toHaveLength(all);
   });
 
   it('says so plainly when the filter hides everything', () => {

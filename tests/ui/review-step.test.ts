@@ -21,7 +21,13 @@ import type { SessionFile } from '../../src/contracts/session.js';
 import { isPersistentEscape } from '../../src/analysis/metrics.js';
 import { analyseAllVideos, analyseVideo } from '../../src/session/analyse.js';
 import { NO_CORRECTIONS, confirmedEventIds, editEvent, markRange, setPoint, setTrialStart } from '../../src/session/corrections.js';
-import { describeQueue, eventsToCheck } from '../../src/ui/review-queue.js';
+import { checkedCount, describeQueueCounts, eventsToCheck } from '../../src/ui/review-queue.js';
+import { recallQueuePosition } from '../../src/ui/queue-memory.js';
+import { DEFAULT_PARAMETERS, hashTrackingParameters } from '../../src/analysis/parameters.js';
+import { SESSION_SCHEMA_VERSION, type CorrectionEntry } from '../../src/contracts/session.js';
+import { IDENTITY_TRANSFORM } from '../../src/maze/similarity.js';
+import { TEST_RESOLUTION, testGeometry, testMazeMap } from '../analysis/maze-fixture.js';
+import { scriptTrack, type Segment } from '../analysis/synthetic-track.js';
 import { eventRows } from '../../src/export/rows.js';
 import { stateRuns } from '../../src/viz/quality-strip.js';
 import { SessionStore } from '../../src/session/session-store.js';
@@ -419,6 +425,11 @@ describe('the review queue', () => {
     const derived = harness.store.analysisFor(video.id)!.derived!;
     return eventsToCheck(derived.events, [], stateRuns(derived.cleanedTrack));
   };
+  /** `N to check · M checked` as the strip says it, from the derived layer. */
+  const counts = (toCheck: number): string => {
+    const video = harness.store.videos[0]!;
+    return describeQueueCounts(toCheck, checkedCount(harness.store.analysisFor(video.id)!.derived!.events));
+  };
 
   const strip = (): HTMLElement =>
     harness.step.body.querySelector<HTMLElement>('#review-current-event')!;
@@ -434,14 +445,12 @@ describe('the review queue', () => {
     expect(bar.nextElementSibling!.id).toBe('review-selected');
     expect(bar.nextElementSibling!.nextElementSibling!.classList.contains('review-tools')).toBe(true);
     expect(bar.closest('.review-stage')!.nextElementSibling!.classList.contains('timeline')).toBe(true);
-    expect(count()).toBe(describeQueue(queued().length));
+    expect(count()).toBe(counts(queued().length));
     expect(queued().length).toBeGreaterThan(0);
   });
 
   it('says what to do when nothing is selected, and hides the action hint', () => {
-    expect(stripLine()).toBe(
-      `${describeQueue(queued().length)} — press ] or click an event on the timeline`,
-    );
+    expect(stripLine()).toBe(`${counts(queued().length)} — press ] to start`);
     expect(strip().querySelector<HTMLElement>('.current-event-hint')!.hidden).toBe(true);
   });
 
@@ -467,7 +476,11 @@ describe('the review queue', () => {
     expect(line).toContain(first.kind === 'investigation' ? 'Investigation' : 'Escape entry');
     expect(line).toContain(formatHole(first.holeIndex));
     expect(line).toContain(formatSeconds(first.durationSeconds));
-    expect(line).toContain('flagged:');
+    // Why it is queued and what it costs are on the selected card, not in the strip (chunk 17).
+    expect(line).not.toContain('flagged:');
+    const selectedCard = harness.step.body.querySelector('#review-selected .event-card')!;
+    expect(selectedCard.querySelector('.event-reason')!.textContent).toMatch(/^(Flagged: |Decided over \d+ uncertain frames? of \d+: )/);
+    expect(selectedCard.querySelector('.event-consequence')!.textContent).toMatch(/^If rejected: /);
     expect(strip().querySelector<HTMLElement>('.current-event-hint')!.hidden).toBe(false);
     expect(strip().querySelector('.current-event-hint')!.textContent).toContain(
       'Relabel: H then the hole number',
@@ -507,7 +520,7 @@ describe('the review queue', () => {
       (b) => b.textContent === 'Delete event (Delete)',
     )!;
     del.click();
-    expect(stripLine()).toContain('press ] or click an event on the timeline');
+    expect(stripLine()).toContain('press ] to start');
   });
 
   it('selects and seeks to a flagged event on Next flagged', () => {
@@ -561,7 +574,7 @@ describe('the review queue', () => {
     harness.step.refresh();
 
     expect(queued().length).toBe(before.length - 1);
-    expect(count()).toBe(describeQueue(before.length - 1));
+    expect(count()).toBe(counts(before.length - 1));
   });
 
   it('keeps an event as it is: off the queue, the user’s, and in the exports', () => {
@@ -585,7 +598,7 @@ describe('the review queue', () => {
 
     // One fewer to check, and the event is the user's with the automatic values intact.
     expect(queued().length).toBe(before.length - 1);
-    expect(count()).toBe(describeQueue(before.length - 1));
+    expect(count()).toBe(counts(before.length - 1));
     const after = harness.store.analysisFor(video.id)!.derived!.events.find((e) => e.id === kept.id)!;
     expect(after.source).toBe('auto');
     expect(after.confirmed).toBe(true);
@@ -620,7 +633,7 @@ describe('the review queue', () => {
     )!;
     revert.click();
     expect(queued().length).toBe(before.length);
-    expect(count()).toBe(describeQueue(before.length));
+    expect(count()).toBe(counts(before.length));
   });
 
   it('refuses Keep on a tracking failure, and says why on screen', () => {
@@ -675,7 +688,7 @@ describe('one selection, from every route (§1)', () => {
   const events = () => harness.store.analysisFor(harness.store.videos[0]!.id)!.derived!.events;
 
   it('says in one sentence what to do while nothing is selected', () => {
-    expect(selectionSeen(harness.step).line).toMatch(/^Nothing selected — click an event card/);
+    expect(selectionSeen(harness.step).line).toBe('Nothing selected: press ] for the next event to check, or click one.');
     expect(harness.step.body.querySelector('#review-selected')!.textContent).toContain('Nothing selected');
   });
 
@@ -819,6 +832,182 @@ describe('one selection, from every route (§1)', () => {
     document.body.replaceChildren();
     const third = mount(again.store.current, { keepSelection: true });
     expect(selectionSeen(third.step).line).toMatch(/^Nothing selected/);
+  });
+});
+
+/*
+ * Chunk 17 §2: the queue says why and what it costs, walks the costliest first, and remembers
+ * where the reviewer was across a reload.
+ */
+describe('the review queue says why, what it costs, and where you were', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    harness = mount();
+  });
+
+  const selectedCard = (): HTMLElement => harness.step.body.querySelector<HTMLElement>('#review-selected .event-card')!;
+  const selectedId = (): string | null =>
+    harness.step.body.querySelector('#review-selected .event-item')?.getAttribute('data-event-id') ?? null;
+
+  it('puts a reason and a consequence on every queued card, and on none that is not queued', () => {
+    const video = harness.store.videos[0]!;
+    const derived = harness.store.analysisFor(video.id)!.derived!;
+    const queued = new Set(eventsToCheck(derived.events, derived.reviewFlags, stateRuns(derived.cleanedTrack)));
+    expect(queued.size).toBeGreaterThan(0);
+    for (const item of harness.step.body.querySelectorAll<HTMLElement>('#review-events li.event-item')) {
+      const id = item.getAttribute('data-event-id')!;
+      const reason = item.querySelector('.event-reason');
+      const consequence = item.querySelector('.event-consequence');
+      if (queued.has(id)) {
+        expect(reason?.textContent, id).toMatch(/^(Flagged: |Decided over \d+ uncertain frames? of \d+: )/);
+        expect(consequence?.textContent, id).toMatch(/^If rejected: /);
+      } else {
+        expect(reason, id).toBeNull();
+        expect(consequence, id).toBeNull();
+      }
+    }
+    // The card's keys sentence is gone: the buttons beside it and the Keyboard legend carry the keys.
+    expect(harness.step.body.querySelector('.event-how')).toBeNull();
+  });
+
+  it('walks the queue costliest first: a trial-ending event before an error-changing one', () => {
+    // The fixture's third video ends in an inferred escape entry; the queue there starts with it.
+    const select = harness.step.body.querySelector<HTMLSelectElement>('.review-top select')!;
+    select.value = harness.store.videos[2]!.id;
+    select.dispatchEvent(new Event('change'));
+    press(harness.step, ']');
+    const first = selectedId();
+    const derived = harness.store.analysisFor(harness.store.videos[2]!.id)!.derived!;
+    const entry = derived.events.find((e) => e.kind === 'escape_entry')!;
+    expect(entry, 'the fixture’s third video has no entry').toBeDefined();
+    expect(first).toBe(entry.id);
+    expect(selectedCard().querySelector('.event-consequence')!.textContent).toMatch(/total latency .* → /);
+  });
+
+  it('remembers the queue position and continues from it after a reload, even with nothing selected', () => {
+    press(harness.step, ']');
+    press(harness.step, ']');
+    const second = selectedId()!;
+    const remembered = recallQueuePosition(harness.store.current.sessionId);
+    expect(remembered).toMatchObject({ videoId: harness.store.videos[0]!.id, eventId: second });
+    // Escape drops the selection; the position stays.
+    press(harness.step, 'Escape');
+    expect(selectedId()).toBeNull();
+    harness.step.body.remove();
+    document.body.replaceChildren();
+    const again = mount(harness.store.current, { keepSelection: true });
+    expect(again.step.body.querySelector('#review-selected .event-item')).toBeNull();
+    press(again.step, ']');
+    expect(again.step.body.querySelector('#review-selected .event-item')!.getAttribute('data-event-id')).toBe(second);
+  });
+
+  it('opens on the remembered video after a reload', () => {
+    const select = harness.step.body.querySelector<HTMLSelectElement>('.review-top select')!;
+    const third = harness.store.videos[2]!.id;
+    select.value = third;
+    select.dispatchEvent(new Event('change'));
+    press(harness.step, ']');
+    harness.step.body.remove();
+    document.body.replaceChildren();
+    const again = mount(harness.store.current, { keepSelection: true });
+    expect(again.step.body.querySelector<HTMLSelectElement>('.review-top select')!.value).toBe(third);
+  });
+});
+
+/*
+ * Chunk 17 §3: the automatic events a correction erased (D71, D73), listed under the corrections
+ * with their automatic values, what erased them and the revert that brings them back.
+ */
+function scriptedSession(segments: Segment[], corrections: CorrectionEntry[] = []): SessionFile {
+  const scripted = scriptTrack(segments, { g: testGeometry() });
+  return {
+    schemaVersion: SESSION_SCHEMA_VERSION,
+    toolVersion: TOOL_VERSION,
+    sessionId: 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f',
+    name: 'scripted',
+    reviewer: null,
+    videos: [
+      {
+        id: 'vid',
+        filename: 'vid.mp4',
+        fingerprint: { byteLength: 1, durationSeconds: 1, frameCount: scripted.frames.length, sha256: 'b'.repeat(64) },
+        referenceResolution: { ...TEST_RESOLUTION },
+        mazeTransform: { ...IDENTITY_TRANSFORM },
+        metadata: {},
+        trialType: 'acquisition',
+        targetHole: null,
+      },
+    ],
+    mazeMap: testMazeMap(),
+    parameters: DEFAULT_PARAMETERS,
+    analyses: {
+      vid: {
+        auto: { parametersHash: hashTrackingParameters(DEFAULT_PARAMETERS.tracking), frames: scripted.frames },
+        corrections: { entries: corrections },
+        derived: null,
+      },
+    },
+  };
+}
+
+describe('removed by your corrections (D71, D73)', () => {
+  /** Two visits to hole 3 either side of a short excursion: two automatic investigations. */
+  const twoVisits: Segment[] = [
+    { kind: 'moveToHole', hole: 3, seconds: 0.5 },
+    { kind: 'dwell', hole: 3, seconds: 0.5 },
+    { kind: 'moveToCentre', seconds: 0.3 },
+    { kind: 'moveToHole', hole: 3, seconds: 0.3 },
+    { kind: 'dwell', hole: 3, seconds: 0.5 },
+    { kind: 'moveToCentre', seconds: 0.5 },
+  ];
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+  });
+
+  const panel = (step: Step): HTMLElement => step.body.querySelector<HTMLElement>('#review-removed-events')!;
+
+  it('says in one sentence when nothing was removed', () => {
+    const harness = mount();
+    expect(panel(harness.step).querySelector('.mirror-summary')!.textContent).toBe('No automatic event was removed by a correction.');
+    expect(panel(harness.step).querySelectorAll('li')).toHaveLength(0);
+  });
+
+  it('lists the visit a nudge merged away, with its automatic values and the nudge, and the revert brings it back (the measured case)', () => {
+    const harness = mount(scriptedSession(twoVisits));
+    const g = testGeometry();
+    const visits = harness.store.analysisFor('vid')!.derived!.events.filter((e) => e.kind === 'investigation' && e.holeIndex === 3);
+    expect(visits).toHaveLength(2);
+    const [first, second] = visits;
+    const mid = Math.floor((first!.endFrame + second!.startFrame) / 2);
+    harness.store.setCorrections(
+      'vid',
+      setPoint(NO_CORRECTIONS, mid, 'nose', { x: g.holeX[3]!, y: g.holeY[3]!, confidence: 1, valid: true }, { id: 'p', timestamp: '2026-09-06T10:00:01.000Z' }),
+    );
+    const removed = harness.store.analysisFor('vid')!.derived!.reviewFlags.filter((f) => f.code === 'auto_event_removed_by_correction');
+    expect(removed).toHaveLength(1);
+    const gone = [first!, second!].find((v) => v.id === removed[0]!.eventId)!;
+
+    const rows = panel(harness.step).querySelectorAll('li');
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.getAttribute('data-event-id')).toBe(gone.id);
+    const what = row.querySelector('.removed-event')!.textContent!;
+    expect(what).toContain('Investigation at hole 3');
+    expect(what).toContain(`frames ${gone.startFrame}–${gone.endFrame}`);
+    expect(what).toContain(`judged on the ${gone.pointUsed}`);
+    expect(row.querySelector('.hint')!.textContent).toContain(`Nose placed by hand on frame ${mid}`);
+    expect(panel(harness.step).querySelector('.mirror-summary')!.textContent).toContain('1 automatic event');
+
+    const revert = [...row.querySelectorAll('button')].find((b) => b.textContent === 'Revert that correction')!;
+    expect(revert).toBeDefined();
+    revert.click();
+    expect(harness.store.analysisFor('vid')!.corrections.entries).toEqual([]);
+    expect(harness.store.analysisFor('vid')!.derived!.events.filter((e) => e.kind === 'investigation' && e.holeIndex === 3)).toHaveLength(2);
+    expect(panel(harness.step).querySelectorAll('li')).toHaveLength(0);
+    expect(harness.said.at(-1)).toMatch(/^Reverted: Nose placed by hand on frame/);
   });
 });
 

@@ -25,6 +25,13 @@ export interface EventListProps {
   selectedId?: string | null;
   /** The ids of the escape entries a correction reclassified as tracking loss. */
   reclassified?: ReadonlySet<string>;
+  /** For each queued event, why it is queued and what it costs (`review-reasons.ts`), shown on its card. */
+  reasons?: ReadonlyMap<string, { reason: string | null; consequence: string | null }>;
+}
+
+/** A person has looked at it: kept as it stands, or corrected (the "Checked events" filter). */
+export function isChecked(event: Pick<EventRecord, 'source' | 'confirmed'>): boolean {
+  return event.confirmed || event.source === 'corrected';
 }
 
 const KINDS: readonly EventKind[] = ['investigation', 'escape_entry', 'tracking_failure'];
@@ -42,6 +49,8 @@ export function createEventList(
 ): Component<EventListProps> {
   let current = props;
   const shown = new Set<EventKind>(KINDS);
+  /** Whether kept and corrected events are in the list; the events table always has them (D20). */
+  let showChecked = true;
   const cards = new Map<string, ReturnType<typeof createEventCard>>();
   /** The ids currently in the list, in the order they are rendered. */
   let order: string[] = [];
@@ -75,6 +84,22 @@ export function createEventList(
       ]),
     );
   }
+  // Checked events in or out of the list (chunk 17, §2.2): off, the list is the work left; the
+  // table below keeps every event either way, so nothing becomes unreachable (D20).
+  const checkedInput = el('input', { id: uniqueId('event-filter-checked'), class: 'event-filter-checked' });
+  checkedInput.type = 'checkbox';
+  checkedInput.checked = true;
+  checkedInput.addEventListener('change', () => {
+    showChecked = checkedInput.checked;
+    render();
+    callbacks.onAnnounce?.(countLine());
+  });
+  filter.append(
+    el('span', { class: 'event-filter-option' }, [
+      checkedInput,
+      el('label', { text: 'Checked events', attrs: { for: checkedInput.id } }),
+    ]),
+  );
   root.append(filter);
 
   const counts = el('p', {
@@ -87,7 +112,7 @@ export function createEventList(
   container.append(root);
 
   function visible(): EventRecord[] {
-    return current.events.filter((event) => shown.has(event.kind));
+    return current.events.filter((event) => shown.has(event.kind) && (showChecked || !isChecked(event)));
   }
 
   function countLine(): string {
@@ -100,11 +125,14 @@ export function createEventList(
   // Everything a card shows, from the list's props — the same object on create
   // and on update, so an update can never drop a field the create set.
   function cardProps(event: EventRecord): EventCardProps {
+    const why = current.reasons?.get(event.id);
     return {
       event,
       flags: current.flags,
       selected: current.selectedId === event.id,
       reclassified: current.reclassified?.has(event.id) === true,
+      reason: why?.reason ?? null,
+      consequence: why?.consequence ?? null,
     };
   }
 

@@ -165,16 +165,17 @@ describe('the parameters panel tab order', () => {
 });
 
 describe('the event list tab order', () => {
-  it('runs the three filter checkboxes, then one card per event', () => {
+  it('runs the four filter checkboxes (three kinds, then checked events), then one card per event', () => {
     const { events } = mountAll();
     const order = focusable(events);
-    expect(order.slice(0, 3).map((n) => (n as HTMLInputElement).type)).toEqual([
+    expect(order.slice(0, 4).map((n) => (n as HTMLInputElement).type)).toEqual([
+      'checkbox',
       'checkbox',
       'checkbox',
       'checkbox',
     ]);
-    expect(order.slice(3)).toHaveLength(f.analysis.events.length);
-    for (const card of order.slice(3)) expect(card.tagName).toBe('BUTTON');
+    expect(order.slice(4)).toHaveLength(f.analysis.events.length);
+    for (const card of order.slice(4)) expect(card.tagName).toBe('BUTTON');
   });
 
   it('activates a card with Enter, through the platform’s own click', () => {
