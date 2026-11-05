@@ -336,7 +336,10 @@ export function createParametersPanel(
       error,
       sync() {
         const value = parameterAt(working, path);
-        if (typeof value !== 'number') return;
+        // Not a number the controls can show: the field holds what the user
+        // typed (an emptied field is `NaN` in the working set), and repainting
+        // it would wipe that and throw the slider to the middle of its range.
+        if (typeof value !== 'number' || !Number.isFinite(value)) return;
         write(value);
       },
       hasFocus: () => document.activeElement === numberInput || document.activeElement === slider,
@@ -568,24 +571,38 @@ export function createParametersPanel(
 
   return {
     update(nextProps) {
+      // New parameters, or only a re-render? The owner calls update() on every
+      // recompute and every store notification — an autosave finishing, a
+      // correction, a selection — and those arrive with the set the panel
+      // already has. Only a different set (by identity: the store replaces the
+      // object when the parameters change and when a session loads) is "new".
+      // Treating every call as new dropped a threshold typed within the
+      // debounce of an unrelated notification: the field went back to its old
+      // value, or kept the typed one while nothing was computed with it.
+      const arrived = nextProps.parameters !== current.parameters;
       current = nextProps;
-      // Incoming parameters replace the working set — except for a row the user
-      // currently has focus in. `write()` already refuses to repaint a focused
-      // control, so overwriting its working value here would leave the panel
-      // showing one number and emitting another: the user's 240 on screen, the
-      // props' 180 in the next commit. The displayed value is the working value
-      // for exactly the row being edited, and the props win everywhere else.
-      const focused = rows.find((row) => row.hasFocus());
-      const keep = focused ? structuredClone(parameterAt(working, focused.path)) : undefined;
-      // A queued edit belongs to the parameters it was typed against. Once new
-      // ones arrive it must not fire — it would emit a value the user set for a
-      // different trial, and announce it as if they had just typed it here.
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
+      if (arrived) {
+        // Incoming parameters replace the working set — except for a row the
+        // user currently has focus in. `write()` already refuses to repaint a
+        // focused control, so overwriting its working value here would leave
+        // the panel showing one number and emitting another: the user's 240 on
+        // screen, the props' 180 in the next commit. The displayed value is the
+        // working value for exactly the row being edited, and the props win
+        // everywhere else.
+        const focused = rows.find((row) => row.hasFocus());
+        const keep = focused ? structuredClone(parameterAt(working, focused.path)) : undefined;
+        // A queued edit belongs to the parameters it was typed against. Once
+        // new ones arrive it must not fire — it would apply a value the user
+        // set against another set, and announce it as if just typed here.
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        working = clone(nextProps.parameters);
+        if (focused && keep !== undefined) setAt(working, focused.path, keep);
       }
-      working = clone(nextProps.parameters);
-      if (focused && keep !== undefined) setAt(working, focused.path, keep);
+      // With the same set, the working values and any queued edit stand; the
+      // badge and the block marks are redrawn from the new analyses.
       render();
       commitInitialValidation();
     },

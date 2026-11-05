@@ -276,6 +276,37 @@ describe('a threshold change re-derives every video, through the panel', () => {
     typeParameter(harness.step, 'Merge gap', 0.8);
     expect(harness.said[harness.said.length - 1]).toMatch(/3 videos recomputed in [\d.]+ ms/);
   });
+
+  it('applies a threshold typed just before another notification lands: an autosave finishing does not drop it', () => {
+    // CI run 42100952358: the autosave that follows a Keep finished inside the
+    // 100 ms debounce of a threshold typed after it. The store's notification
+    // re-rendered the step, the panel took the re-render for new parameters and
+    // cancelled the queued edit, and the field went back to its old value.
+    const row = [...harness.step.body.querySelectorAll<HTMLElement>('#review-parameters .param-row')].find(
+      (candidate) => candidate.querySelector('label')!.textContent === 'Merge gap',
+    )!;
+    const input = row.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const hashBefore = hashParameters(harness.store.parameters);
+    input.focus();
+    input.value = '1';
+    input.dispatchEvent(new Event('input'));
+    input.blur();
+
+    // Inside the debounce: a notification that brings no new parameters, which
+    // is what the store sends when a save finishes and on every correction.
+    harness.store.setReviewer('A. Reviewer');
+    vi.advanceTimersByTime(CHANGE_DEBOUNCE_MS + 1);
+
+    expect(harness.store.parameters.holeInvestigation.mergeGap_s).toBe(1);
+    expect(input.value).toBe('1');
+    const expected = hashParameters(harness.store.parameters);
+    expect(expected).not.toBe(hashBefore);
+    for (const video of harness.store.videos) {
+      expect(harness.store.analysisFor(video.id)!.derived!.quality.parametersHash).toBe(expected);
+    }
+    expect(panel(harness.step, 'review-quality').textContent).toContain(expected);
+    expect(harness.said[harness.said.length - 1]).toContain('Merge gap set to 1');
+  });
 });
 
 describe('the quality panel follows a correction (chunk 7 acceptance)', () => {
