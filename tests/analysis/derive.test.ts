@@ -2182,6 +2182,45 @@ describe('D74 (4): a range is always a claim', () => {
     });
   });
 
+  it('covers both of the tracker’s entries when the range runs over two: the first is the shadow, the second is no removal (the review’s case)', () => {
+    // in at the target for 1.8 s (an entry that does not end the trial), back out, and later in to
+    // the end; the person marks the box from five frames into the first stay
+    const twice: Segment[] = [
+      { kind: 'dwell', seconds: 1 },
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.1 },
+      { kind: 'lost', seconds: 1.8 },
+      { kind: 'dwell', hole: 7, seconds: 0.2 },
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'dwell', seconds: 5 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.1 },
+      { kind: 'lost', seconds: 4 },
+    ];
+    const { input: plain } = inputFor(twice);
+    const autoEntries = derive(plain).events.filter((e) => e.kind === 'escape_entry');
+    expect(autoEntries).toHaveLength(2);
+    const [first, second] = autoEntries;
+    const { input } = inputFor(twice, { corrections: [escapeBoxFrom(first!.startFrame + 5)] });
+    const d = derive(input);
+    const entries = d.events.filter((e) => e.kind === 'escape_entry');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      startFrame: first!.startFrame + 5,
+      source: 'corrected',
+      correctionIds: ['r1'],
+      autoShadow: { holeIndex: 7, startFrame: first!.startFrame, endFrame: first!.endFrame },
+    });
+    expect(d.events.some((e) => e.id === second!.id)).toBe(false);
+    expect(d.removedAutoEvents).toEqual([]);
+    expect(removalFlags(d)).toEqual([]);
+    expect(d.metrics.correctionCount).toBe(1);
+    expect(d.metrics.status).toBe('ok');
+    expect(trialRowFor(input, d)['review_flags']).toBe('');
+  });
+
   it('leaves a range with no automatic entry beside it as a claim with no shadow, as before', () => {
     // the same trial, but the animal walks back into the open after the late visit: no automatic
     // entry, and the early stay is taken by its own trimmed counterpart, so nothing is left for the

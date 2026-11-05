@@ -26,7 +26,7 @@ import type { ReviewFlag } from '../../analysis/types.js';
 import { button, el, uniqueId } from '../dom.js';
 import { evidenceWording, eventWording, eventWordingLower, reclassifyRefusal } from '../event-wording.js';
 import { FLAG_LABELS, flagLabel } from '../review-reasons.js';
-import { formatCm, formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
+import { formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
 import type { Component, EventCallbacks } from './types.js';
 
 export { flagLabel };
@@ -251,13 +251,13 @@ export function createEventCard(
         el('span', { class: 'event-fact-value', text: `${value} ` }),
       ]);
 
+    // Four facts (D76: at most five items on a card). The two closest-approach distances are in the
+    // evidence sentence below and in the events table's own columns, so the card does not repeat them.
     const facts = el('span', { class: 'event-facts' }, [
       fact('From', formatTimeAndFrame(event.startTime_s, event.startFrame)),
       fact('To', formatTimeAndFrame(event.endTime_s, event.endFrame)),
       fact('Duration', formatSeconds(event.durationSeconds)),
       fact('Judged on', event.pointUsed),
-      fact('Min nose distance', formatCm(event.minNoseDistance_cm)),
-      fact('Min centroid distance', formatCm(event.minCentroidDistance_cm)),
     ]);
 
     const children: (Node | false)[] = [head];

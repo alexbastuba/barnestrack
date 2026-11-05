@@ -20,7 +20,7 @@ import {
   shadowClauses,
 } from '../../../src/ui/components/event-card.js';
 import { createEventList } from '../../../src/ui/components/event-list.js';
-import { formatCm, NOT_RECORDED } from '../../../src/ui/components/format.js';
+import { NOT_RECORDED } from '../../../src/ui/components/format.js';
 import { fixture } from './fixture.js';
 
 const base = fixture('video-test50', { corrections: [] });
@@ -72,7 +72,7 @@ describe('an event card', () => {
     expect(button.querySelector('.event-evidence')!.textContent!.trim()).toBe(event.evidence);
   });
 
-  it('names the hole, the times, the frames, the duration and both distances', () => {
+  it('names the hole, the times, the frames and the duration in four facts; the distances stay in the evidence (D76)', () => {
     const event = base.analysis.events[0]!;
     const { button } = mountCard(event);
     const text = button.textContent ?? '';
@@ -80,8 +80,16 @@ describe('an event card', () => {
     expect(text).toContain(`frame ${event.startFrame.toLocaleString()}`);
     expect(text).toContain(`frame ${event.endFrame.toLocaleString()}`);
     expect(text).toContain(event.durationSeconds.toFixed(2));
-    expect(text).toContain(formatCm(event.minNoseDistance_cm));
-    expect(text).toContain(event.minCentroidDistance_cm.toFixed(2));
+    // At most five items on a card: the closest-approach distances are the evidence sentence's and
+    // the events table's, not a fifth and sixth fact.
+    expect([...button.querySelectorAll('.event-fact-term')].map((n) => n.textContent)).toEqual([
+      'From: ',
+      'To: ',
+      'Duration: ',
+      'Judged on: ',
+    ]);
+    expect(event.evidence).toContain('Closest approach');
+    expect(text).not.toContain('Min nose distance');
   });
 
   it('says which named point the event was judged on (O16)', () => {
@@ -90,16 +98,17 @@ describe('an event card', () => {
     expect(button.textContent).toContain(event.pointUsed);
   });
 
-  it('writes an em dash for a nose distance the event never had (D55)', () => {
+  it('never prints "null" or a confident 0.00 cm for a nose distance the event never had (D55)', () => {
     // `minNoseDistance_cm` is null when the nose was never usable during the
-    // event (O16, D55). The card must not print "null", and must not print a
-    // confident 0.00 cm either — that would read as the nose touching the hole.
+    // event (O16, D55). The card no longer carries the distance as a fact (the
+    // evidence sentence says "nose not available on any frame" and the events
+    // table prints "—"), so what it must not do is print "null" or 0.00 cm.
     const event: EventRecord = { ...base.analysis.events[0]!, minNoseDistance_cm: null };
     const { button } = mountCard(event);
     const text = button.textContent ?? '';
-    expect(text).toContain(`Min nose distance: ${NOT_RECORDED}`);
     expect(text).not.toContain('null');
-    expect(text).not.toContain('Min nose distance: 0.00 cm');
+    expect(text).not.toContain('0.00 cm');
+    expect(text).not.toContain(NOT_RECORDED);
   });
 
   it('marks the target hole with a word, not only a colour', () => {
@@ -141,7 +150,6 @@ describe('an event card', () => {
 
     const name = button.textContent ?? '';
     expect(name).toContain(event.evidence);
-    expect(name).toContain(formatCm(event.minNoseDistance_cm));
     expect(name).toContain('physically unlikely');
   });
 
@@ -171,7 +179,7 @@ describe('an automatic event', () => {
     const name = button.textContent ?? '';
     expect(name).toContain(`Investigation hole ${event.holeIndex}`);
     expect(name).toContain('From: ');
-    expect(name).toMatch(/cm\s/);
+    expect(name).toMatch(/Judged on: (nose|centroid) /); // the last fact keeps its trailing space before the evidence
     expect(name).not.toMatch(/\)[A-Z]/); // no "(frame 562)Duration"
     expect(name).not.toMatch(/(auto|user)[A-Z]/); // no "autoFrom"
   });

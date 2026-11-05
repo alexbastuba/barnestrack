@@ -334,9 +334,10 @@ in three passes, each largest overlap first and each event matched
 at most once (ids are not stable across corrections, since they carry the start frame). First
 (D74 (4)): an escape entry whose defining frames are the user's `in_escape_box` range — the
 detector names these — is a human claim whatever the automatic detection found there: it is never
-offered to the same-kind pass as if it were the tracker's; the automatic escape entry it overlaps,
-if any, becomes its `autoShadow` (hole and frames, no `kind`), so that entry is neither a removal
-nor a queue item, and the claim reads `source: corrected`, `evidenceCorrected: false`,
+offered to the same-kind pass as if it were the tracker's; the earliest automatic escape entry it
+overlaps at the hole, if any, becomes its `autoShadow` (hole and frames, no `kind`), and any later
+automatic entry the range also covers is covered by the claim — so none of them is a row, a removal
+or a queue item — and the claim reads `source: corrected`, `evidenceCorrected: false`,
 `correctionIds` = the corrections inside its span (the range, and any point placed inside it). Then
 by kind and hole on overlapping spans, then — over what either side has left — by hole alone. An
 event only the corrected detection found is a human claim (`source: corrected`, `correctionIds` =

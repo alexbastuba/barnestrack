@@ -317,6 +317,8 @@ export function createReviewStep(context: AppContext): Step {
       if (analysis && cacheKey?.videoId === video.id) previousByVideo.set(video.id, analysis);
       analysis = run.analysis;
       model = timelineModel(analysis, entry.corrections);
+      // The derive and its cache write; the consequences below are timed on their own.
+      const totalMs = performance.now() - started;
       // Counted here, where the flags exist, so the selector can name a number
       // for every video this session has actually derived.
       const toCheck = eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns);
@@ -334,7 +336,7 @@ export function createReviewStep(context: AppContext): Step {
       );
       lastTiming = {
         deriveMs: run.deriveMs,
-        totalMs: performance.now() - started,
+        totalMs,
         consequences: toCheck.length > 0 ? consequenceTiming(consequences, toCheck) : null,
       };
       cacheKey = {

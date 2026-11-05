@@ -71,9 +71,14 @@ export function describeQueue(count: number): string {
   return `${count} event${count === 1 ? '' : 's'} to check`;
 }
 
-/** The events a person has already looked at: kept as they stand, or corrected. */
+/** A person has looked at it: kept as it stands, or corrected (the strip's "checked" and the list's filter). */
+export function isChecked(event: Pick<EventRecord, 'source' | 'confirmed'>): boolean {
+  return event.confirmed || event.source === 'corrected';
+}
+
+/** The events a person has already looked at. */
 export function checkedCount(events: readonly Pick<EventRecord, 'source' | 'confirmed'>[]): number {
-  return events.filter((event) => event.confirmed || event.source === 'corrected').length;
+  return events.filter(isChecked).length;
 }
 
 /** `3 to check · 9 checked`: how much is left beside how much is done (chunk 17). */

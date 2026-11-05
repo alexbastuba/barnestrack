@@ -35,9 +35,11 @@
  * (D74 (4)): an escape entry whose defining frames are the user's
  * `in_escape_box` range (`userEntryIds`, reported by the detector) is a human
  * claim whatever the automatic detection found there — it is never offered
- * to the same-kind pass as if it were the tracker's; the automatic escape
- * entry it overlaps, if any, becomes its `autoShadow` (hole and frames, no
- * kind), so that entry is neither a removal nor a confirmation request. Pass
+ * to the same-kind pass as if it were the tracker's; the earliest automatic
+ * escape entry it overlaps at the hole, if any, becomes its `autoShadow`
+ * (hole and frames, no kind), and any later one the range also covers is
+ * covered by the claim, so none of them is a removal or a confirmation
+ * request. Pass
  * 1 (D65): by kind and hole. Pass 2 (D71): over what is left, by hole alone —
  * a pair here always differs in kind, because a same-kind pair with both
  * sides free would have been taken in pass 1; a user entry pass 0 left
@@ -213,17 +215,31 @@ export function matchEvents(
   userEntryIds: ReadonlySet<string> = new Set(),
 ): MatchedEvents {
   const isUserEntry = (ci: number): boolean => userEntryIds.has(corrected[ci]!.id);
-  // pass 0 (D74 (4)): a user's range entry against the automatic escape entry it overlaps — the
-  // claim keeps the tracker's reading beside it, and the tracker's entry is consumed here
-  const userShadow = pairByOverlap(
-    autoOnly,
-    corrected,
-    isUserEntry,
-    () => true,
-    (ev, shadow) =>
-      ev.kind === 'escape_entry' && shadow.kind === 'escape_entry' && shadow.holeIndex === ev.holeIndex,
-  );
-  const usedAuto = new Set(userShadow.values());
+  // pass 0 (D74 (4)): a user's range entry against the automatic escape entries it overlaps at the
+  // hole. The earliest is the tracker's reading of the moment the person marked and stands beside
+  // the claim as its shadow; any later one the range also covers is covered by the claim too —
+  // neither a row nor a removal — so every one of them is consumed here.
+  const userShadow = new Map<number, number>();
+  const usedAuto = new Set<number>();
+  corrected.forEach((ev, ci) => {
+    if (!isUserEntry(ci) || ev.kind !== 'escape_entry') return;
+    const covered = autoOnly
+      .map((shadow, ai) => ({ shadow, ai }))
+      .filter(
+        ({ shadow, ai }) =>
+          !usedAuto.has(ai) &&
+          shadow.kind === 'escape_entry' &&
+          shadow.holeIndex === ev.holeIndex &&
+          overlapFrames(ev, shadow) > 0,
+      )
+      .sort(
+        (x, y) =>
+          x.shadow.startFrame - y.shadow.startFrame || overlapFrames(ev, y.shadow) - overlapFrames(ev, x.shadow),
+      );
+    if (covered.length === 0) return;
+    userShadow.set(ci, covered[0]!.ai);
+    for (const { ai } of covered) usedAuto.add(ai);
+  });
   // pass 1 (D65): by kind and hole; a user entry is never offered here, matched or not
   const sameKind = pairByOverlap(
     autoOnly,

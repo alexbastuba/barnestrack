@@ -498,6 +498,26 @@ describe('matchEvents (D74 (4)): a range entry is a claim, with the tracker’s 
     expect(removedAutoEvents).toEqual([]);
   });
 
+  it('covers every automatic entry the range overlaps: the earliest is the shadow, the rest are neither rows nor removals', () => {
+    // the tracker saw the animal go in twice at the target; the person marked the box from inside
+    // the first stay to the end
+    const spans = frameCorrectionSpans([escapeRange('r', 98, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(93, 146), entry(336, 455)],
+      [entry(98, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 98 },
+      new Set(['auto-escape_entry-h7-f98']),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      source: 'corrected',
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 93, endFrame: 146 },
+    });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
   it('names a point placed inside the range beside the range (D65’s rule for the ids)', () => {
     const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1), point('p', 950, 2)]);
     const { events } = matchEvents([entry(905, 2000)], [entry(900, 2000)], spans, window, user);

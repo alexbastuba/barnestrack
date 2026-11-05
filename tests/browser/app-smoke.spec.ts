@@ -420,8 +420,10 @@ test.describe('the example cohort, driven through the loader module', () => {
           const bar = document.querySelector('#panel-review .next-step')!.getBoundingClientRect();
           const x = Math.round((video.left + video.right) / 2);
           const probes: { y: number; element: string; inVideo: boolean; onBar: boolean }[] = [];
+          // The lowest 50 px of the video, or of the window when the video crosses the fold.
+          const base = Math.min(video.bottom, window.innerHeight);
           for (const dy of [1, 25, 49]) {
-            const y = Math.round(Math.min(video.bottom - dy, window.innerHeight - 1));
+            const y = Math.round(base - dy);
             const el = document.elementFromPoint(x, y);
             probes.push({
               y,

@@ -13,6 +13,7 @@
 import type { EventKind, EventRecord } from '../../contracts/events.js';
 import type { ReviewFlag } from '../../analysis/types.js';
 import { el, replaceChildren, uniqueId } from '../dom.js';
+import { isChecked } from '../review-queue.js';
 import { describeEventCounts } from './describe-diff.js';
 import { createEventCard, type EventCardProps } from './event-card.js';
 import type { Component, EventCallbacks } from './types.js';
@@ -29,10 +30,7 @@ export interface EventListProps {
   reasons?: ReadonlyMap<string, { reason: string | null; consequence: string | null }>;
 }
 
-/** A person has looked at it: kept as it stands, or corrected (the "Checked events" filter). */
-export function isChecked(event: Pick<EventRecord, 'source' | 'confirmed'>): boolean {
-  return event.confirmed || event.source === 'corrected';
-}
+export { isChecked };
 
 const KINDS: readonly EventKind[] = ['investigation', 'escape_entry', 'tracking_failure'];
 
