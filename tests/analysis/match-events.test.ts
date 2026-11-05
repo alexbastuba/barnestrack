@@ -518,6 +518,46 @@ describe('matchEvents (D74 (4)): a range entry is a claim, with the tracker’s 
     expect(removedAutoEvents).toEqual([]);
   });
 
+  it('leaves an automatic entry the range only touches to the tracker’s own corrected entry, which stays automatic (the second review’s case)', () => {
+    // the person marked the box over the first stay; the tracker's next entry, which the range
+    // ends three frames into, is still found by the corrected detection on its own
+    const spans = frameCorrectionSpans([escapeRange('r1', 98, 310, 1), point('p1', 315, 2)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(150, 250), entry(305, 2000)],
+      [entry(98, 310), entry(320, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 320 },
+      new Set(['auto-escape_entry-h7-f98']),
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ source: 'corrected', correctionIds: ['r1'], autoShadow: { holeIndex: 7, startFrame: 150, endFrame: 250 } });
+    expect(events[1]).toMatchObject({
+      source: 'auto',
+      evidenceCorrected: true,
+      correctionIds: ['r1', 'p1'],
+      autoShadow: { holeIndex: 7, startFrame: 305, endFrame: 2000 },
+    });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('gives each of two range entries the automatic entry it overlaps', () => {
+    const spans = frameCorrectionSpans([escapeRange('r1', 90, 340, 1), escapeRange('r2', 345, 2000, 2)]);
+    const both = new Set(['auto-escape_entry-h7-f90', 'auto-escape_entry-h7-f345']);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(93, 146), entry(336, 455)],
+      [entry(90, 340), entry(345, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 90 },
+      both,
+    );
+    expect(events.map((e) => e.autoShadow)).toEqual([
+      { holeIndex: 7, startFrame: 93, endFrame: 146 },
+      { holeIndex: 7, startFrame: 336, endFrame: 455 },
+    ]);
+    expect(events.map((e) => e.source)).toEqual(['corrected', 'corrected']);
+    expect(removedAutoEvents).toEqual([]);
+  });
+
   it('names a point placed inside the range beside the range (D65’s rule for the ids)', () => {
     const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1), point('p', 950, 2)]);
     const { events } = matchEvents([entry(905, 2000)], [entry(900, 2000)], spans, window, user);

@@ -2221,6 +2221,74 @@ describe('D74 (4): a range is always a claim', () => {
     expect(trialRowFor(input, d)['review_flags']).toBe('');
   });
 
+  it('leaves the tracker’s next entry, which a range only touches, automatic and evidence-corrected, and in the queue (the second review’s case)', () => {
+    // in at the target for 1.8 s, out for 0.3 s, in to the end; the person marks the box from five
+    // frames into the first stay to three frames into the second, and places the animal at the hole
+    // on three frames after that: the second entry is the tracker's own inference, not the claim's
+    const twice: Segment[] = [
+      { kind: 'dwell', seconds: 1 },
+      ...visitHoles([3]),
+      { kind: 'moveToCentre', seconds: 0.5 },
+      { kind: 'moveToHole', hole: 7, seconds: 0.5 },
+      { kind: 'dwell', hole: 7, seconds: 0.1 },
+      { kind: 'lost', seconds: 1.8 },
+      { kind: 'dwell', hole: 7, seconds: 0.3 },
+      { kind: 'lost', seconds: 4 },
+    ];
+    const { input: plain } = inputFor(twice);
+    const autoEntries = derive(plain).events.filter((e) => e.kind === 'escape_entry');
+    expect(autoEntries).toHaveLength(2);
+    const [first, second] = autoEntries;
+    const at7 = holePoint(g, 7, 1);
+    const corrections: CorrectionEntry[] = [
+      {
+        id: 'r1',
+        kind: 'range',
+        timestamp: at(1),
+        source: 'user',
+        rangeType: 'in_escape_box',
+        startFrame: first!.startFrame + 5,
+        endFrame: second!.startFrame + 3,
+      },
+    ];
+    let i = 2;
+    for (const frameIndex of [second!.startFrame + 6, second!.startFrame + 7, second!.startFrame + 8]) {
+      for (const point of ['nose', 'centroid'] as const) {
+        corrections.push({
+          id: `p${i}`,
+          kind: 'point',
+          timestamp: at(i++),
+          source: 'user',
+          frameIndex,
+          point,
+          value: { x: at7.x, y: at7.y, confidence: 1, valid: true },
+        });
+      }
+    }
+    const { input } = inputFor(twice, { corrections });
+    const d = derive(input);
+    const entries = d.events.filter((e) => e.kind === 'escape_entry');
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      startFrame: first!.startFrame + 5,
+      source: 'corrected',
+      autoShadow: { holeIndex: 7, startFrame: first!.startFrame, endFrame: first!.endFrame },
+    });
+    // the tracker's own trial-ending entry: in both detections, measured differently
+    expect(entries[1]).toMatchObject({
+      source: 'auto',
+      evidenceCorrected: true,
+      confirmed: false,
+      autoShadow: { holeIndex: 7, startFrame: second!.startFrame, endFrame: second!.endFrame },
+    });
+    expect(entries[1]!.correctionIds).toContain('r1');
+    expect(d.trial.endReason).toBe('escape');
+    expect(d.trial.endFrame).toBe(entries[1]!.startFrame);
+    // an inference until a human confirms it (D67): still to check
+    expect(eventsToCheck(d.events, d.reviewFlags, stateRuns(d.cleanedTrack))).toContain(entries[1]!.id);
+    expect(removalFlags(d).map((f) => f.eventId)).not.toContain(second!.id);
+  });
+
   it('leaves a range with no automatic entry beside it as a claim with no shadow, as before', () => {
     // the same trial, but the animal walks back into the open after the late visit: no automatic
     // entry, and the early stay is taken by its own trimmed counterpart, so nothing is left for the
