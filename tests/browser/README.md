@@ -501,3 +501,59 @@ selector of the Review shot are on screen (`docs/known-limitations.md`, "At 200 
 bar is not on the first screen"). No horizontal scroll, no untiered or multi-tier button and no contrast failure at any of
 the 20 measurements. The Maze step measured is BASE's: chunk 14's two-column stage was not merged
 into this branch.
+
+### Chunk 17 — the queue says why and what it costs; the Review bar as footer; D76 (reading rules)
+
+**`app-smoke.spec.ts`** gained the four tests described in the spec list above. After
+`npm run build`: **14 passed** (24.7 s). What they printed at HEAD, CSS pixels:
+
+- Review fold, 1920 × 1080, unselected (scrollY 0): video y 681.5–1247, bar y 1022.5–1080 at
+  x 1151–1535 (the side column); the probes at y 1079 (the fold, where chunk 14b measured the bar
+  over the video) all land on `canvas.overlay-layer`. Selected (scrollY 620): video y 61.5–627;
+  y 626 → `div.viewport`, 602 and 578 → the canvas. At 1366 × 768: video 681.5–1142.3, bar
+  710.5–768 at x 874–1258; y 767 → the canvas (at BASE the bar covered the video's top 2 px
+  there); selected: 521 / 497 / 473 → the canvas.
+- Maze bar, two-line state (a 1280 × 720 video added, 1366 × 768, frame scrolled to the top):
+  bar 97.5 px (y 670.5–768), status 40 px = 2 lines, controls column bottom 654 ≤ bar top 670.5,
+  `--maze-bar` 97.5 px.
+- The queue, shipped UI, test50: the first item `]` selects is `auto-investigation-h8-f698`,
+  reason "Decided over 42 uncertain frames of 116: 42 low confidence (42 fragmented).",
+  consequence "If rejected: total errors 71 → 70; primary errors 29 → 28; strategy unchanged.";
+  `K` takes the count 25 → 24 to check and the selection to `auto-investigation-h9-f865`; after
+  Escape and a reload, `]` continues at that event. The timing line read "5539 frames ·
+  1 correction · parameters 9c3cf1d9… · derive 16.9 ms (136 ms with the cache write) ·
+  25 consequences 112 ms (4.5 ms each)".
+
+**`scripts/screenshots.ts`** now writes to `notes/screens/chunk-17/`, counts the Review step's
+first-screen prose (D76) and probes the fold. What counts as prose: the text of `p`, `caption`,
+`.hint`, `.what`, `.empty`, `.error`, `.orphan`, `.mirror-summary`, `.event-reason`,
+`.event-consequence`, `.current-event-line`, `.selection-line` and `.event-how` whose nearest
+classified ancestor is one of those rather than a button, label, heading, table cell, summary,
+badge or event fact; closed `<details>` content is off screen; the evidence sentence, the flag
+message and the shadow clauses are the D19 evidence (D76 names the evidence strip a visual) and
+are counted beside the prose, not in it. Words are whitespace-separated runs whose box intersects
+the window. Measured on the example cohort at 100 %, before (the script's first commit against
+the unchanged Review DOM) → after:
+
+| state | prose before | prose after | evidence before → after |
+| --- | --- | --- | --- |
+| 1366 × 768, unselected (scrollY 0) | 154 | **105** | 0 → 0 |
+| 1366 × 768, after `]` (scrollY 643 → 620) | 114 | **101** | 57 → 57 |
+| 1920 × 1080, unselected | 214 | 118 | 0 → 0 |
+| 1920 × 1080, after `]` | 131 | 118 | 57 → 57 |
+
+The largest remaining items on the selected screen are the frame view's 32-word hint
+(`src/ui/canvas-view.ts`, chunk 14b's, read-only for chunk 17), the 26-word timing readout and
+the reason and consequence lines (12 and 14). What was cut: the step's what-line (33 → 16
+words), the not-attached note (27 → 15), the nothing-selected box (30 → 2; the selection line
+says it once), the card's keys sentence (11, it repeated the legend), the flag's message on the
+card (into a labelled `<details>` under it), the escape-box button's hint (25, into the step's
+Definitions), and the strip's copy of the flag's message. Header heights at 1366 × 768: the
+Reviewer hint 19.5 → 20 px, the step heading 21.25 → 22 px, the stepper 45.75 → 45 px, the
+status banner 63 px fixed, the Review stage's document top 620 px (whole). The document's
+`scroll-padding-bottom` while each step is shown: Videos 50 px (bar 49.5), Maze 78 (77.5),
+Track 50 (49.5), Review 58 (57.5). The selected-event boxes at 1366 × 768: video 62–522, card
+130–494 (all 365 px shown), evidence 368–485, actions 490–531, toolbar 543–655, queue nav 36–109,
+clip selector 24–54, all on screen; the escape-entry card 152–545 (383 of 393 px shown, its focus
+ring's lowest 14 px clipped — it no longer scrolls inside its box). 0 console errors, 0 contrast
+failures, no untiered button.
