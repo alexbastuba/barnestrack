@@ -7,10 +7,14 @@ import type { ReviewFlag } from '../../src/analysis/types.js';
 import type { EventRecord } from '../../src/contracts/events.js';
 import type { StateRun } from '../../src/viz/quality-strip.js';
 import {
+  checkedCount,
   describeQueue,
+  describeQueueCounts,
   eventsToCheck,
+  orderQueue,
   spanIsUncertain,
   stepQueue,
+  type QueueRank,
 } from '../../src/ui/review-queue.js';
 
 function event(id: string, startFrame: number, endFrame: number, source: 'auto' | 'corrected' = 'auto'): EventRecord {
@@ -127,5 +131,41 @@ describe('describeQueue', () => {
     expect(describeQueue(0)).toBe('nothing to check');
     expect(describeQueue(1)).toBe('1 event to check');
     expect(describeQueue(4)).toBe('4 events to check');
+  });
+});
+
+describe('describeQueueCounts / checkedCount (chunk 17)', () => {
+  it('says how much is left beside how much is done', () => {
+    expect(describeQueueCounts(3, 9)).toBe('3 to check · 9 checked');
+    expect(describeQueueCounts(0, 12)).toBe('0 to check · 12 checked');
+  });
+
+  it('counts kept and corrected events as checked, and nothing else', () => {
+    const events = [
+      event('a', 10, 20),
+      { ...event('b', 30, 40), confirmed: true },
+      event('c', 50, 60, 'corrected'),
+    ];
+    expect(checkedCount(events)).toBe(2);
+    expect(checkedCount([])).toBe(0);
+  });
+});
+
+describe('orderQueue (chunk 17)', () => {
+  const ranks: Record<string, QueueRank> = { a: 'none', b: 'errors', c: 'trial_end', d: 'strategy', e: 'errors' };
+  const rankOf = (id: string): QueueRank => ranks[id] ?? 'none';
+
+  it('walks the trial-ending event first, then the strategy-flipping, then the error-changing, then the rest', () => {
+    expect(orderQueue(['a', 'b', 'c', 'd', 'e'], rankOf)).toEqual(['c', 'd', 'b', 'e', 'a']);
+  });
+
+  it('is stable within a rank: the events’ own order', () => {
+    expect(orderQueue(['e', 'b'], rankOf)).toEqual(['e', 'b']);
+    expect(orderQueue(['b', 'e'], rankOf)).toEqual(['b', 'e']);
+  });
+
+  it('leaves an unranked event last and an empty queue empty', () => {
+    expect(orderQueue(['x', 'c'], rankOf)).toEqual(['c', 'x']);
+    expect(orderQueue([], rankOf)).toEqual([]);
   });
 });

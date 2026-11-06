@@ -51,6 +51,18 @@
   --t-lg: 1.0625rem;
   --t-xl: 1.375rem;
 
+  /*
+   * Line heights that are whole pixels at the default root size (chunk 17,
+   * §4.2). Body text keeps its 1.5 ratio; the 13 px hint and the 17 px step
+   * heading used to be 19.5 and 21.25 px tall, and the stepper 45.75 px, so
+   * every stage started a fraction of a pixel off the window's own grid.
+   */
+  --lh-sm: 1.25rem; /* 20 px for --t-sm */
+  --lh-md: 1.5rem; /* 24 px for --t-md */
+  --lh-lg: 1.375rem; /* 22 px for --t-lg */
+  /* The status banner is never shorter than this many lines, so a changing message cannot move the stage (§4.3). */
+  --status-lines: 2;
+
   /* Focus: one ring everywhere, 2 px solid accent, offset 2 px. */
   --focus: 2px solid var(--accent);
   --focus-offset: 2px;
@@ -109,6 +121,7 @@ h1 {
 
 h2 {
   font-size: var(--t-lg);
+  line-height: var(--lh-lg);
 }
 
 h3 {
@@ -353,6 +366,7 @@ label {
 
 .hint {
   font-size: var(--t-sm);
+  line-height: var(--lh-sm);
   color: var(--ink-soft);
 }
 
@@ -383,7 +397,8 @@ label {
 }
 
 .status {
-  min-height: 1.5rem;
+  /* Two lines of body text plus the padding and the rule: a one- or two-line message never reflows the stage (chunk 17, §4.3). */
+  min-height: calc(var(--status-lines) * 1.5 * var(--t-md) + 2 * var(--s2) + 2px);
   margin: 0 0 var(--s3);
   padding: var(--s2) var(--s3);
   background: var(--paper);
@@ -420,11 +435,13 @@ label {
 
 .step-tab {
   display: flex;
-  align-items: baseline;
+  /* Centred, not on the baseline: three font sizes on one baseline gave the row a fractional height. */
+  align-items: center;
   gap: var(--s2);
   flex: 1 1 11rem;
   text-align: left;
   padding: var(--s2) var(--s3);
+  line-height: var(--lh-md);
   border: 1px solid var(--line-strong);
   background: var(--paper);
   color: var(--ink);
@@ -454,6 +471,7 @@ label {
 
 .step-tab .step-state {
   font-size: var(--t-sm);
+  line-height: var(--lh-sm);
   color: var(--ink-soft);
   margin-left: auto;
 }
@@ -1159,12 +1177,13 @@ label {
 
 /*
  * Scrolled to the top of the window — by a focus, by a script — the frame
- * keeps a small margin above it. The page above the stage is a fraction of a
- * pixel tall (the header's 19.5 px hint line, the 21.25 px step heading, the
- * 45.75 px stepper) and the scroll offset snaps to a whole pixel, so without
- * the margin the frame's top edge lands half a pixel above the window. The
- * margin would be right on a whole-pixel page too: a border flush with the
- * window's edge reads as cut off.
+ * keeps a small margin above it. The page above the stage used to be a
+ * fraction of a pixel tall (the header's 19.5 px hint line, the 21.25 px step
+ * heading, the 45.75 px stepper — whole pixels since chunk 17's line-height
+ * tokens) and the scroll offset snaps to a whole pixel, so without the margin
+ * the frame's top edge landed half a pixel above the window. The margin is
+ * right on a whole-pixel page too: a border flush with the window's edge
+ * reads as cut off.
  */
 .maze-stage .canvas-view,
 .maze-stage .viewport {
@@ -1177,14 +1196,15 @@ label {
     --maze-column: 23rem;
     /*
      * The bar as it stands under that column, measured at 1366 × 768 in
-     * Chrome on macOS: two 13 px status lines (39 px) over the 32.5 px button,
-     * the 8 px gap between the two rows, 8 px of padding above and below and
-     * the 1 px rule — 96.5 px. With one status line it is 77 px, with none
-     * 49.5 px. System fonts (D2) give other platforms line metrics a pixel or
-     * so apart; the gutter in the reserve below absorbs that, and the spec's
-     * "bar below the controls column" check runs on Linux in CI.
+     * Chrome on macOS: two 13 px status lines (40 px since chunk 17 gave the
+     * hint a 20 px line) over the 32.5 px button, the 8 px gap between the two
+     * rows, 8 px of padding above and below and the 1 px rule — 97.5 px. With
+     * one status line it is 77.5 px, with none 49.5 px. System fonts (D2) give
+     * other platforms line metrics a pixel or so apart; the gutter in the
+     * reserve below absorbs that, and the spec's "bar below the controls
+     * column" check runs on Linux in CI.
      */
-    --maze-bar: 6.03125rem;
+    --maze-bar: 6.09375rem;
     /*
      * What the controls column leaves free at the bottom of the window: the
      * bar at its tallest, the frame's scroll margin (the column starts on the
@@ -1443,9 +1463,23 @@ label {
  * layout — the wrapper is a plain block and the children are in source order.
  */
 @media (min-width: 1200px) {
+  .review-step {
+    /* The side column, and the action bar that is its footer (D75): one value, so the two cannot drift. */
+    --review-column: 24rem;
+    /*
+     * The bar at its tallest under that column: two status lines (the export
+     * reason, when the export is refused) over the button — the Maze bar's
+     * 97.5 px (chunk 14b's measurement, re-made in chunk 17). With the export
+     * enabled the status is an empty row of its own above the button, 57.5 px.
+     */
+    --review-bar: 6.09375rem;
+    /* What the side column leaves free at the bottom of the window: the bar at its tallest and a gutter. */
+    --review-reserve: calc(var(--review-bar) + var(--s4));
+  }
+
   .review-stage {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 24rem;
+    grid-template-columns: minmax(0, 1fr) var(--review-column);
     gap: var(--s3);
     align-items: start;
   }
@@ -1461,8 +1495,20 @@ label {
     display: flex;
     flex-direction: column;
     gap: var(--s2);
-    height: calc(100vh - 3.75rem);
+    height: calc(100vh - var(--review-reserve));
     min-height: 24rem;
+  }
+
+  /*
+   * The step's action bar (D72) is the side column's footer at this width
+   * (D75, chunk 17 §4.1) — the column's width, at the right, still stuck to
+   * the bottom of the window and still the last thing in the step — so the
+   * video, in the left column, is never under it whatever is scrolled. Below
+   * 1200 px it is the full-width bar every step has.
+   */
+  .review-step > .next-step {
+    width: var(--review-column);
+    margin-left: auto;
   }
 
   .review-stage-side .review-current-event {
@@ -2224,6 +2270,55 @@ button.metric-value:hover:not(:disabled) {
   font-size: var(--t-sm);
   margin-top: var(--s1);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Why the event is in the queue and what it costs if it is wrong (chunk 17,
+ * §2.4): two lines straight under the title, in the body size — they are
+ * what the decision is made from, not a footnote to it.
+ */
+.event-reason,
+.event-consequence {
+  display: block;
+  margin-top: var(--s1);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-consequence {
+  font-weight: 600;
+}
+
+/* The flag's sentence, one click away under the card (D76). */
+.event-flag-details {
+  font-size: var(--t-sm);
+  margin: var(--s1) 0 0;
+}
+
+.event-flag-details summary {
+  cursor: pointer;
+}
+
+.event-flag-message {
+  margin: var(--s1) 0 0;
+}
+
+/* The automatic events the corrections erased (D71, chunk 17 §3). */
+.removed-events {
+  margin-top: var(--s3);
+}
+
+.removed-events-list {
+  padding-left: var(--s5);
+  font-size: var(--t-sm);
+}
+
+.removed-events-list li {
+  margin-bottom: var(--s2);
+}
+
+.metric-link {
+  display: block;
+  font-size: var(--t-sm);
 }
 
 /*

@@ -255,6 +255,30 @@ describe('the status row', () => {
     expect(note.length).toBeGreaterThan(0);
     // test50 is never flagged, so the reason falls back to the trial end reason.
     expect(note).toContain('the trial cutoff was reached');
+    expect(row('Status').querySelector('.metric-link')).toBeNull();
+  });
+
+  it('links a removed-event flag to the list under the corrections, where the event is shown in full (D71, chunk 17)', () => {
+    const removed = {
+      ...noEscape,
+      analysis: {
+        ...noEscape.analysis,
+        reviewFlags: [
+          {
+            code: 'auto_event_removed_by_correction' as const,
+            eventId: 'auto-investigation-h3-f10',
+            frameIndex: 10,
+            message: 'The automatic investigation at hole 3, frames 10–14 (0.33–0.47 s), is not found once correction p is applied: the correction removed its evidence. It has no row in events.csv and is counted as a correction.',
+          },
+        ],
+      },
+    };
+    mount(removed);
+    const link = row('Status').querySelector<HTMLAnchorElement>('.metric-link')!;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('#review-removed-events');
+    expect(link.textContent).toBe('See the events your corrections removed');
+    expect(row('Status').querySelector('.metric-note')!.textContent).toContain('is not found once correction p is applied');
   });
 
   it('reads out the review-flag messages when there are any', () => {

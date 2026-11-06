@@ -58,6 +58,17 @@ const range = (id: string, startFrame: number, endFrame: number, i: number): Cor
   endFrame,
 });
 
+/** A user's "in the escape box from here" range (D57), the one correction that creates an entry. */
+const escapeRange = (id: string, startFrame: number, endFrame: number, i: number): CorrectionEntry => ({
+  id,
+  kind: 'range',
+  timestamp: at(i),
+  source: 'user',
+  rangeType: 'in_escape_box',
+  startFrame,
+  endFrame,
+});
+
 describe('frameCorrectionSpans / correctionIdsInSpan', () => {
   it('turns points and ranges into inclusive frame spans in application order, and ignores the rest', () => {
     const entries: CorrectionEntry[] = [
@@ -337,19 +348,20 @@ describe('matchEvents (D73): what a leftover automatic event is', () => {
     expect(removedAutoEvents).toEqual([]);
   });
 
-  it('reads a range-created entry beside an automatic one five frames later as the range moving the entry, and leaves what the corrected trial never reached alone', () => {
+  it('reads a user’s range entry beside the tracker’s own entry five frames later as a claim carrying that entry, and leaves what the corrected trial never reached alone (D74 (4))', () => {
     const window = { startFrame: 0, endFrame: 900 };
-    const spans = frameCorrectionSpans([range('r', 900, 2000, 1)]);
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
     const { events, removedAutoEvents } = matchEvents(
       [entry(905, 2000), investigation(3, 1050, 1065), investigation(5, 1200, 1215)],
       [entry(900, 2000)],
       spans,
       window,
+      new Set(['auto-escape_entry-h7-f900']),
     );
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      source: 'auto',
-      evidenceCorrected: true,
+      source: 'corrected',
+      evidenceCorrected: false,
       correctionIds: ['r'],
       autoShadow: { holeIndex: 7, startFrame: 905, endFrame: 2000 },
     });
@@ -358,14 +370,28 @@ describe('matchEvents (D73): what a leftover automatic event is', () => {
     expect(removedAutoEvents).toEqual([]);
   });
 
-  it('pairs a range-created entry with the automatic investigation it replaced as a kind change, window or not', () => {
+  it('reads an entry the detector does not name as the user’s — the tracker’s own, moved by a correction — as a move', () => {
     const window = { startFrame: 0, endFrame: 900 };
     const spans = frameCorrectionSpans([range('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents([entry(905, 2000)], [entry(900, 2000)], spans, window);
+    expect(events[0]).toMatchObject({
+      source: 'auto',
+      evidenceCorrected: true,
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 905, endFrame: 2000 },
+    });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('pairs a range-created entry with the automatic investigation it replaced as a kind change, window or not', () => {
+    const window = { startFrame: 0, endFrame: 900 };
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
     const { events, removedAutoEvents } = matchEvents(
       [investigation(7, 905, 930), investigation(3, 1050, 1065), investigation(5, 1200, 1215)],
       [entry(900, 2000)],
       spans,
       window,
+      new Set(['auto-escape_entry-h7-f900']),
     );
     expect(events[0]).toMatchObject({
       source: 'corrected',
@@ -395,5 +421,146 @@ describe('matchEvents (D73): what a leftover automatic event is', () => {
       [],
     );
     expect(removedAutoEvents.map((e) => e.startFrame)).toEqual([50, 1200]);
+  });
+});
+
+/*
+ * D74 (4): a user's escape-box range is always a claim. The detector names the entries a range
+ * produced; the matcher never offers one to the same-kind pass, pairs it instead with the
+ * automatic escape entry it overlaps — the tracker's reading, kept beside the claim as its shadow —
+ * and so never reports that entry removed, and the queue (which skips `source: corrected`) never
+ * asks the person who marked the box to confirm it.
+ */
+describe('matchEvents (D74 (4)): a range entry is a claim, with the tracker’s own entry as its shadow', () => {
+  const entry = (startFrame: number, endFrame: number): EventRecord =>
+    ev({
+      id: `auto-escape_entry-h7-f${startFrame}`,
+      kind: 'escape_entry',
+      holeIndex: 7,
+      isTarget: true,
+      startFrame,
+      endFrame,
+      evidence: 'In the escape box at the target hole 7.',
+    });
+  const investigation = (hole: number, startFrame: number, endFrame: number): EventRecord =>
+    ev({ id: `auto-investigation-h${hole}-f${startFrame}`, holeIndex: hole, isTarget: hole === 7, startFrame, endFrame });
+  const window = { startFrame: 0, endFrame: 900 };
+  const user = new Set(['auto-escape_entry-h7-f900']);
+
+  it('carries the automatic entry it overlaps as its shadow, and that entry is never a removal (the measured case)', () => {
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents([entry(1473, 1622)], [entry(900, 2000)], spans, window, user);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      source: 'corrected',
+      evidenceCorrected: false,
+      confirmed: false,
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 1473, endFrame: 1622 },
+    });
+    expect(events[0]!.autoShadow).not.toHaveProperty('kind');
+    expect(events[0]!.evidence).toBe('In the escape box at the target hole 7.');
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('stays a claim with no shadow when the tracker found no entry, as before', () => {
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents([], [entry(900, 2000)], spans, window, user);
+    expect(events[0]).toMatchObject({ source: 'corrected', evidenceCorrected: false, correctionIds: ['r'] });
+    expect(events[0]!.autoShadow).toBeUndefined();
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('is a claim even when the tracker’s entry agrees with it on every value', () => {
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
+    const { events } = matchEvents([entry(900, 2000)], [entry(900, 2000)], spans, window, user);
+    expect(events[0]).toMatchObject({
+      source: 'corrected',
+      evidenceCorrected: false,
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 900, endFrame: 2000 },
+    });
+  });
+
+  it('takes the tracker’s entry, not its investigation, when both sit at the hole; the investigation keeps its own match', () => {
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [investigation(7, 870, 930), entry(1473, 1622)],
+      [investigation(7, 870, 899), entry(900, 2000)],
+      spans,
+      window,
+      user,
+    );
+    expect(events.map((e) => e.source)).toEqual(['auto', 'corrected']);
+    // the range trimmed the stay: the tracker's own event, evidence-corrected, with the whole stay as its shadow
+    expect(events[0]).toMatchObject({ evidenceCorrected: true, autoShadow: { holeIndex: 7, startFrame: 870, endFrame: 930 } });
+    expect(events[1]!.autoShadow).toEqual({ holeIndex: 7, startFrame: 1473, endFrame: 1622 });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('covers every automatic entry the range overlaps: the earliest is the shadow, the rest are neither rows nor removals', () => {
+    // the tracker saw the animal go in twice at the target; the person marked the box from inside
+    // the first stay to the end
+    const spans = frameCorrectionSpans([escapeRange('r', 98, 2000, 1)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(93, 146), entry(336, 455)],
+      [entry(98, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 98 },
+      new Set(['auto-escape_entry-h7-f98']),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      source: 'corrected',
+      correctionIds: ['r'],
+      autoShadow: { holeIndex: 7, startFrame: 93, endFrame: 146 },
+    });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('leaves an automatic entry the range only touches to the tracker’s own corrected entry, which stays automatic (the second review’s case)', () => {
+    // the person marked the box over the first stay; the tracker's next entry, which the range
+    // ends three frames into, is still found by the corrected detection on its own
+    const spans = frameCorrectionSpans([escapeRange('r1', 98, 310, 1), point('p1', 315, 2)]);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(150, 250), entry(305, 2000)],
+      [entry(98, 310), entry(320, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 320 },
+      new Set(['auto-escape_entry-h7-f98']),
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ source: 'corrected', correctionIds: ['r1'], autoShadow: { holeIndex: 7, startFrame: 150, endFrame: 250 } });
+    expect(events[1]).toMatchObject({
+      source: 'auto',
+      evidenceCorrected: true,
+      correctionIds: ['r1', 'p1'],
+      autoShadow: { holeIndex: 7, startFrame: 305, endFrame: 2000 },
+    });
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('gives each of two range entries the automatic entry it overlaps', () => {
+    const spans = frameCorrectionSpans([escapeRange('r1', 90, 340, 1), escapeRange('r2', 345, 2000, 2)]);
+    const both = new Set(['auto-escape_entry-h7-f90', 'auto-escape_entry-h7-f345']);
+    const { events, removedAutoEvents } = matchEvents(
+      [entry(93, 146), entry(336, 455)],
+      [entry(90, 340), entry(345, 2000)],
+      spans,
+      { startFrame: 0, endFrame: 90 },
+      both,
+    );
+    expect(events.map((e) => e.autoShadow)).toEqual([
+      { holeIndex: 7, startFrame: 93, endFrame: 146 },
+      { holeIndex: 7, startFrame: 336, endFrame: 455 },
+    ]);
+    expect(events.map((e) => e.source)).toEqual(['corrected', 'corrected']);
+    expect(removedAutoEvents).toEqual([]);
+  });
+
+  it('names a point placed inside the range beside the range (D65’s rule for the ids)', () => {
+    const spans = frameCorrectionSpans([escapeRange('r', 900, 2000, 1), point('p', 950, 2)]);
+    const { events } = matchEvents([entry(905, 2000)], [entry(900, 2000)], spans, window, user);
+    expect(events[0]!.correctionIds).toEqual(['r', 'p']);
   });
 });

@@ -71,6 +71,38 @@ export function describeQueue(count: number): string {
   return `${count} event${count === 1 ? '' : 's'} to check`;
 }
 
+/** A person has looked at it: kept as it stands, or corrected (the strip's "checked" and the list's filter). */
+export function isChecked(event: Pick<EventRecord, 'source' | 'confirmed'>): boolean {
+  return event.confirmed || event.source === 'corrected';
+}
+
+/** The events a person has already looked at. */
+export function checkedCount(events: readonly Pick<EventRecord, 'source' | 'confirmed'>[]): number {
+  return events.filter(isChecked).length;
+}
+
+/** `3 to check · 9 checked`: how much is left beside how much is done (chunk 17). */
+export function describeQueueCounts(toCheck: number, checked: number): string {
+  return `${toCheck} to check · ${checked} checked`;
+}
+
+/**
+ * What a queued event decides if it is wrong (`review-reasons.ts`), and the
+ * order the queue walks: the trial's end first, then the strategy, then an
+ * error count, then the rest.
+ */
+export type QueueRank = 'trial_end' | 'strategy' | 'errors' | 'none';
+
+const RANK_ORDER: Record<QueueRank, number> = { trial_end: 0, strategy: 1, errors: 2, none: 3 };
+
+/** The queue by rank, stable within a rank (the events' own order, by start frame). */
+export function orderQueue(queue: readonly string[], rankOf: (id: string) => QueueRank): string[] {
+  return queue
+    .map((id, position) => ({ id, position, rank: RANK_ORDER[rankOf(id)] }))
+    .sort((a, b) => a.rank - b.rank || a.position - b.position)
+    .map((item) => item.id);
+}
+
 /**
  * The next id after `currentId` in the queue, wrapping; `direction` is 1 for
  * the next and −1 for the previous. Null when the queue is empty. When the

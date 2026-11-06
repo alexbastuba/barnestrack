@@ -37,7 +37,7 @@ and in `examples/outputs/`.
 - Review flags: `confirmation_contradicted` (hard) and `non_persistent_entry_noted` (soft).
 
 **Changed after 0.2.0 without a version bump (D71, additive on D63's precedent).** `autoShadow`
-may carry `kind`; the two detections are matched in two passes (§5), so a kind change is a human
+may carry `kind`; the two detections are matched in three passes (§5), so a kind change is a human
 claim with the automatic event as its shadow; an automatic event the corrected detection no longer
 finds is flagged `auto_event_removed_by_correction` (soft) and counted in `correctionCount`;
 `escaped` is `null` on an unresolved acquisition row as well as on every probe row, and `false`
@@ -330,11 +330,21 @@ an automatic investigation into the entry ending the trial still sees it; never 
 corrected one, so the visits a removed entry uncovers are found on the automatic side; a trial end
 an event correction moved is the corrected end here), once over `auto ⊕ corrections` (point and
 range corrections applied to the frames). The two lists are matched over everything both produced
-in two passes, each largest overlap first and each event matched
-at most once (ids are not stable across corrections, since they carry the start frame): first by
-kind and hole on overlapping spans, then — over what either side has left — by hole alone. An event
-only the corrected detection found is a human claim (`source: corrected`, `correctionIds` = the
-corrections inside its span, no shadow); one both found with identical values is untouched (`auto`,
+in three passes, each event matched
+at most once (ids are not stable across corrections, since they carry the start frame). First
+(D74 (4)), in the corrected list's order: an escape entry whose defining frames are the user's
+`in_escape_box` range — the detector names these — is a human claim whatever the automatic
+detection found there: it is never offered to the same-kind pass as if it were the tracker's; the
+earliest automatic escape entry it overlaps at the hole, if any, becomes its `autoShadow` (hole
+and frames, no `kind`); any other automatic entry at the hole lying inside the range is covered by
+the claim — neither a row, a removal nor a queue item; one the range only touches stays free for
+the later passes, so the tracker's own next entry, which the corrected detection still finds, keeps
+its automatic reading. The claim reads `source: corrected`, `evidenceCorrected: false`,
+`correctionIds` = the corrections inside its span (the range, and any point placed inside it). Then,
+largest overlap first, by kind and hole on overlapping spans, then — over what either side has
+left — by hole alone. An
+event only the corrected detection found is a human claim (`source: corrected`, `correctionIds` =
+the corrections inside its span, no shadow); one both found with identical values is untouched (`auto`,
 `evidenceCorrected: false`, `correctionIds: []`); one both found with any measured value different
 keeps `source: auto` with `evidenceCorrected: true`, the corrections inside the union of its span
 and the auto-only span as `correctionIds`, and the auto-only hole and frames as `autoShadow` — an

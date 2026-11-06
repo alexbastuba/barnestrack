@@ -430,6 +430,93 @@ describe('update() while the user is editing', () => {
   });
 });
 
+describe('update() that brings no new parameters (a re-render, not a new set)', () => {
+  // The Review step calls update() on every store notification — an autosave
+  // finishing, a correction, a selection — and each of those arrives with the
+  // set the panel already has. CI run 42100952358: the autosave that follows a
+  // Keep finished inside the debounce of a threshold typed after it, update()
+  // cancelled the queued edit, and the threshold was never applied.
+
+  /** Types into a row the way a user does: in the field, one input event. */
+  function type(path: string, value: string): HTMLInputElement {
+    const input = numberFor(path);
+    input.focus();
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+    return input;
+  }
+
+  it('still emits an edit queued before it, after the field has lost focus', async () => {
+    const { panel, onParametersChange, onAnnounce } = mount();
+    const input = type('trialCutoff_s', '240');
+    input.blur();
+
+    panel.update({ parameters }); // the same set: a notification, not new parameters
+    expect(input.value).toBe('240');
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+
+    expect(onParametersChange).toHaveBeenCalledTimes(1);
+    expect((onParametersChange.mock.calls[0]![0] as Parameters).trialCutoff_s).toBe(240);
+    expect(onAnnounce).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('240');
+  });
+
+  it('still emits it while the field keeps focus, so the screen never shows a threshold nothing was computed with', async () => {
+    const { panel, onParametersChange } = mount();
+    const input = type('trialCutoff_s', '240');
+
+    panel.update({ parameters });
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+
+    expect(onParametersChange).toHaveBeenCalledTimes(1);
+    expect((onParametersChange.mock.calls[0]![0] as Parameters).trialCutoff_s).toBe(Number(input.value));
+  });
+
+  it('emits once however many re-renders land inside the debounce', async () => {
+    const { panel, onParametersChange } = mount();
+    type('trialCutoff_s', '240').blur();
+
+    panel.update({ parameters });
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS / 2);
+    panel.update({ parameters });
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS);
+
+    expect(onParametersChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a queued edit when a different set arrives, and shows the incoming values', async () => {
+    // The deliberate half of the rule: an edit belongs to the parameters it was
+    // typed against, so a new set — a session loaded, the parameters replaced —
+    // cancels it rather than applying a stale value to them.
+    const { panel, onParametersChange } = mount();
+    const input = type('trialCutoff_s', '240');
+    input.blur();
+
+    panel.update({ parameters: { ...parameters, noseConfidenceCutoff: 0.9 } });
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS * 5);
+
+    expect(onParametersChange).not.toHaveBeenCalled();
+    expect(input.value).toBe(String(parameters.trialCutoff_s));
+    expect(numberFor('noseConfidenceCutoff').value).toBe('0.9');
+  });
+
+  it('leaves an emptied field empty and flagged, and its slider where it was', async () => {
+    const { panel, onParametersChange } = mount();
+    const slider = numberFor('trialCutoff_s').closest('.param-row')!.querySelector<HTMLInputElement>('input[type="range"]')!;
+    const sliderBefore = slider.value;
+    const input = type('trialCutoff_s', '');
+    input.blur();
+
+    panel.update({ parameters });
+
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(slider.value).toBe(sliderBefore);
+    await vi.advanceTimersByTimeAsync(CHANGE_DEBOUNCE_MS * 5);
+    expect(onParametersChange).not.toHaveBeenCalled();
+  });
+});
+
 describe('reset block to defaults', () => {
   it('restores only its own block', async () => {
     const changed: Parameters = {

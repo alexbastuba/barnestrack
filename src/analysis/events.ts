@@ -582,6 +582,17 @@ function approachStart(pts: EventPoints, lastSeen: number, hole: number, floor: 
 export interface AutoEvents {
   events: EventRecord[];
   flags: ReviewFlag[];
+  /**
+   * D74 (4): the ids of the escape entries whose defining frames are the
+   * user's `in_escape_box` range (`byUser`). The matcher reads them so a
+   * range-asserted entry is a human claim whatever the automatic detection
+   * found there, never offered to the same-kind pass as the tracker's own.
+   * Reported here rather than inferred from the range's frames, because the
+   * entry starts at the first marked frame *inside its run* — a range that
+   * begins before the trial start, or two abutting ranges in one run, give an
+   * entry whose start is not the range's.
+   */
+  userEntryIds: ReadonlySet<string>;
   /** Start frame (position) of the persistent escape entry that ends the trial, or null. */
   persistentEscapeStartFrame: number | null;
   cutoffFrame: number | null;
@@ -609,6 +620,7 @@ export function detectAutoEvents(
     return {
       events: [],
       flags,
+      userEntryIds: new Set(),
       persistentEscapeStartFrame: null,
       cutoffFrame: null,
       endFrame: null,
@@ -685,6 +697,7 @@ export function detectAutoEvents(
     }
   }
 
+  const userEntryIds = new Set<string>();
   for (const c of classified) {
     const o = c.outcome;
     if (o.kind === 'none' || o.kind === 'investigation') continue;
@@ -718,6 +731,7 @@ export function detectAutoEvents(
       const tail = spanStart >= 0 ? ` ${noseSentence(d)}` : '';
       const ev = record(ctx, 'escape_entry', hole, start, c.run.end, d, pointUsed, `${head}${tail}`);
       events.push(ev);
+      if (o.byUser) userEntryIds.add(ev.id);
       if (unlikelyAssertion) {
         flags.push({
           code: 'physically_unlikely_entry',
@@ -753,6 +767,7 @@ export function detectAutoEvents(
   return {
     events: sortEvents(events),
     flags,
+    userEntryIds,
     persistentEscapeStartFrame,
     cutoffFrame: cutoff,
     endFrame,

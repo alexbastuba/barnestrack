@@ -85,34 +85,31 @@ session it is found (D39).
   based and the overlay has `touch-action: none`, so a finger should drag a handle as a mouse does,
   but every check was made with a mouse in Google Chrome; the 10 px hit tolerance is a mouse
   target, not a finger one.
-- **A message in the live region reflows the page.** The status banner at the top of the page is
-  as tall as its message: a one-line message where the two-line "Example cohort loaded" banner
-  stood moves everything below it up by 22.5 px, and on an unscrolled page nothing puts it back
-  (on a scrolled one Chrome's scroll anchoring returns all but half a pixel). While a maze handle
-  announced its selection on the press, that reflow happened under the held pointer and a centre
-  drag of 25 screen px committed 19 video px too far — about 4 cm at the sample rig's scale. Two
-  things now stop it: a handle is announced on release, when nothing is held, and a captured drag
-  is measured from where the viewport was at the press, through the view as it is now
-  (`src/ui/canvas-view.ts`), so a reflow under a held pointer cannot become a move while a zoom or
-  pan made mid-drag still lands the pixel under the pointer; `tests/browser/maze.spec.ts` checks an
-  unscrolled 1920 × 1080 drag and a zoom made mid-drag. What remains: a value typed in a field and
-  a handle grabbed straight after still reflows at the press, because the press takes focus, the
-  field's `change` commits and announces, and the banner shrinks — the frame then sits a line above
-  the pointer for the whole drag, though what lands is still the pointer's own travel (measured:
-  shift −22.5 px, committed Δcy 20.90 for 25 screen px at zoom 1.197). The banner reflows the page
-  on every message of a different line count, which a reader of the frame sees as a jump. The
-  plain wheel is held while a drag is held, since scrolling the page would carry the frame away
-  from the pointer holding it. The fix for the reflow itself is a fixed minimum height on the
-  banner (`#app-status` in `src/ui/app.ts` and its rule in `src/styles/app.css`), outside chunk
-  14's boundary.
+- **A message of three or more lines in the live region still reflows the page.** The status
+  banner at the top of the page used to be as tall as its message, so a one-line message where the
+  two-line "Example cohort loaded" banner stood moved everything below it up by 22.5 px; while a
+  maze handle announced its selection on the press, that reflow happened under the held pointer
+  and a centre drag of 25 screen px committed 19 video px too far. Chunk 14 stopped the drag from
+  reading the reflow as a move (a handle is announced on release; a captured drag is measured from
+  where the viewport was at the press, `src/ui/canvas-view.ts`), and chunk 17 gave the banner a
+  fixed minimum of two lines (`--status-lines` in `src/styles/app.css`, 63 px at 100 %), so a
+  one- or two-line message never moves the stage: the Review stage's document offset is a whole
+  620 px with either. What remains is a message that wraps to three lines or more — none of the
+  app's own messages does at 1366 px or wider, but a long announcement (an undo sentence plus a
+  timing clause) can at a narrow window — which still grows the banner and moves the stage by the
+  extra lines.
 - **Below 1200 px the Maze step's action bar can cover the frame at the fold.** From 1200 px the
   bar (D72) is the controls column's footer — the column's width, at the right, still stuck to
   the bottom of the window (`src/styles/app.css`, the Maze stage block) — so the frame, in the
   left column, is never under it however the page is scrolled; `tests/browser/maze.spec.ts`
   checks every handle at 1366 × 768, 1400 × 866 and 1920 × 1080. Below 1200 px the stage stacks
   and the bar is the full-width strip every step has, so a frame that crosses the bottom of the
-  window has its lowest 50 px under the bar until the page is scrolled. Not fixed here (chunk 14b);
-  the Review and Track steps' bars are full-width at every size and have the same property.
+  window has its lowest 50 px under the bar until the page is scrolled. Not fixed here (chunk 14b).
+  Since chunk 17 the Review step's bar is its side column's footer from 1200 px on the same pattern
+  (D75; `elementFromPoint` at the video's lowest 50 px lands on the canvas at 1920 × 1080 and
+  1366 × 768, `tests/browser/app-smoke.spec.ts`); below 1200 px it is full-width like the Maze
+  bar, and the Track step's bar is full-width at every size — the Track step has no canvas to
+  cover.
 - **At 1200 px and up, scrolling the frame to the top of the window puts the stage's first row
   above it.** The video selector, the click chip, the mode prompt and the scrubber share the
   stage's first row; the frame and the controls share the second, so the two start on one line.
@@ -457,10 +454,11 @@ session it is found (D39).
   `scripts/screenshots.ts`). The timeline, a full-width row under the stage, is not: retiming an
   edge by dragging means scrolling down to it. `S` / `D` with Shift + ← / → retime from the stage
   without it. The tools scroll inside their column when they do not fit, so the Trial group is
-  usually scrolled to rather than seen. A long card — an escape entry's evidence with its flag — scrolls
-  inside its own box at 1366 × 768 (328 of 523 px shown, the actions pinned at its foot), so the
-  end of its evidence sentence is scrolled to; the queue strip above it repeats the flag's message
-  in full, which is where that height goes.
+  usually scrolled to rather than seen. A long card — an escape entry's evidence with its flag —
+  used to scroll inside its own box at 1366 × 768 (328 of 523 px shown); since chunk 17 the strip
+  names the event only and the flag's sentence sits one click away under the card, so the entry
+  card is 393 px tall with 383 shown and only its focus ring's lowest 14 px clipped
+  (`scripts/screenshots.ts`, chunk 17).
 - **"N events to check" queues nearly every event.** `eventsToCheck` in `src/ui/review-queue.ts`
   puts an event in the queue when a review flag names it *or* any frame of its span is
   `low_confidence`, `ambiguous` or `not_detected`. D48 makes `partial_at_rim` / `small_blob` the
@@ -469,8 +467,39 @@ session it is found (D39).
   5 and 6 on test51 and test53 (2026-09 measurement; chunk 15's run of the example cohort shows 25
   on test50). Keep (`K`, D64; on escape entries too since chunk 15, D67) takes an event out without
   a false correction, so the queue can be emptied honestly — but one keystroke per event over
-  frames that were never doubtful. The rule wants a materiality threshold (uncertain frames as a
-  share of the span); that is an operational definition and needs Alex.
+  frames that were never doubtful. Since chunk 17 each queued card says why it is there ("Decided
+  over 31 uncertain frames of 52: 19 low confidence (12 fragmented, 7 small blob), 12 not
+  detected") and what rejecting it would change, and the queue walks the costliest first, so the
+  share is visible per event; the rule itself is unchanged and still wants a materiality threshold
+  (uncertain frames as a share of the span) — an operational definition that needs Alex.
+- **The queue restarts at its head when the remembered position is no longer to check.** Chunk 17
+  remembers the video and event `]`, `[` or Keep last moved to (`src/ui/queue-memory.ts`,
+  `sessionStorage`), and after a reload `]` with nothing selected continues at that event while it
+  is still in the queue. If it is not — it was kept or corrected from another route, a threshold
+  change renamed it, or the queue's order changed — `]` starts from the top rather than from the
+  nearest event after it: the position's `startFrame` is stored for that case but not yet used.
+  The step opens on the remembered video either way.
+- **The action bars are a fraction of a pixel tall.** Chunk 17 rounded the three header heights
+  chunk 14b named (the Reviewer hint 19.5 → 20 px, the step heading 21.25 → 22 px, the stepper
+  45.75 → 45 px), so every stage now starts on a whole document pixel (620 px for the Review
+  stage at 1366 × 768). The bars themselves were left as measured: their button is 32.5 px tall
+  (15 px text at 1.5 plus padding), so a bar is 49.5 px with no status, 57.5 px as the Review
+  bar's footer with the export enabled, 77.5 px with one status line and 97.5 px with two. The
+  document's `scroll-padding-bottom` is the bar's height rounded up, so nothing depends on the
+  half pixel; rounding the button is a token change (`--lh-md` on `button`) with a visible effect
+  on every control, which was not this chunk's call.
+- **Every correction waits on one re-derive per event still to check.** What rejecting each queued
+  event would change (chunk 17) is computed in the same task as the derive that follows a
+  correction or a threshold change, before the screen updates, because the queue's order depends
+  on it. On test50 with 25 events to check, after a Keep: 106–114 ms in Chrome on the development
+  Mac (4.2–4.6 ms each), 166 ms on the GitHub runner (6.6 ms each), and with Chrome's CPU
+  throttled 2×, 4× and 6× on the Mac 214, 427 and 640 ms. Past roughly 3× slower than the Mac
+  the page is unresponsive for more than 300 ms after every Keep, and the cost grows with the
+  queue's length and the track's. No machine slower than the runner has been measured for real.
+  If the pass throws, the analysis stands, the cards show the reason without the consequence and
+  the failure is announced. Smallest fix: compute the selected event's consequence at once and
+  the rest in idle time, re-ordering the queue when they arrive — which makes the order change
+  under the reviewer once, a behaviour that needs deciding.
 
 - **The axe scan passes with an empty allowlist on all four steps.** Not a limitation; recorded
   because two earlier entries here measured it wrongly. Chunk 15 added the Review step (with an
@@ -570,20 +599,6 @@ session it is found (D39).
   set stands. Smallest fix: when an edit names an entry, resolve the trial end from the edited
   entry instead of re-detecting past it, or keep an edited entry that begins after a moved end;
   a decision, since it touches D21's rule that an entry ends the trial only inside it.
-- **A user's escape-box range that an automatic entry at the same hole overlaps reads
-  `source = auto`, evidence-corrected, and enters the review queue.** Matching runs over
-  everything both detections produced (D73, chunk 16b), so the first pass pairs the range-created
-  entry with any automatic entry at the same hole whose span overlaps it, however far apart the
-  two starts are. Measured by the chunk-16b reviewer: `in_escape_box` range from frame 900 to the
-  end, the tracker's own entry at 1473–1622 → `escape_entry 900–1622`, `source = auto`,
-  `evidence_corrected = true`, `correction_ids = r1`, shadow `{7, 1473, 1622}`, listed by the
-  Review step's queue; at the base `2e60c56` it read `corrected` and was not queued. The base
-  already read a range starting at or after the automatic entry as `auto` (offsets 0 and +5
-  frames; −5 and −2 read `corrected` there and `auto` now), so this widens an existing class.
-  D67 says a range-asserted entry carries `source: corrected` and needs no confirmation; neither
-  it nor §5 says where "the range moved the entry" ends and "the user asserted an entry the tracker
-  found later" begins. Options for Alex: accept; never pair a range-created entry in the first
-  pass; require a minimum overlap fraction before reading the pair as a move.
 - **The shipped-UI smoke flow's identity-column list predates D68.** `TRIAL_IDENTITY_COLUMNS` in
   `tests/browser/app-smoke.spec.ts:432` expects `group` sixth, but `trials.csv` has carried
   `session_name` second since D68 (chunk 12), so `load, review, correct, retune, export, reload`

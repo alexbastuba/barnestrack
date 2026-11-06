@@ -158,6 +158,8 @@ interface MetricSpec {
   /** The threshold that shapes it, when one does, as a second paragraph. */
   also?: string;
   note?: string;
+  /** Where the note's subject is shown in full, when it is somewhere else on the step. */
+  link?: { href: string; text: string };
 }
 
 /**
@@ -286,6 +288,11 @@ function valueRows(props: MetricsCardProps): MetricSpec[] {
       definition:
         'ok when nothing needs a human; review when something was flagged, or the trial was cut off with no escape and nobody has confirmed the animal never went in; unresolved when the trial could not be bounded at all.',
       note: statusReason,
+      // D71: an event a correction erased has no row; the Corrections section lists it with its
+      // automatic values and the revert, so the flag's sentence points there (chunk 17, §3).
+      link: analysis.reviewFlags.some((flag) => flag.code === 'auto_event_removed_by_correction')
+        ? { href: '#review-removed-events', text: 'See the events your corrections removed' }
+        : undefined,
     },
     {
       name: 'Tracked fraction (trial)',
@@ -360,6 +367,7 @@ export function createMetricsCard(
           el('span', { class: 'metric-name', text: spec.name }),
           seekButton(spec),
           spec.note && el('span', { class: 'metric-note', text: spec.note }),
+          spec.link && el('a', { class: 'metric-link', text: spec.link.text, attrs: { href: spec.link.href } }),
           disclosure('Definition', [
             el('p', { text: spec.definition }),
             spec.also && el('p', { class: 'metric-note', text: spec.also }),

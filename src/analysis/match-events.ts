@@ -30,15 +30,27 @@
  *   in `removedAutoEvents` so `derive()` can flag it and count it as an event
  *   delete is counted; it gets no row (D71).
  *
- * Matching runs in two passes over everything both detections produced, each
- * largest overlap first and each event matched at most once: by kind and
- * hole, then — over what is left — by hole alone. A pair left to the second
- * pass always differs in kind, because a same-kind pair with both sides free
- * would have been taken in the first. The window plays no part in matching:
- * an automatic entry five frames after a range-created one is that range
- * moving the entry, and pass 1 reads it so. Ids are not stable across
- * corrections (they carry the start frame), which is why spans are matched
- * and not ids. Pure: no DOM, no video, no clock.
+ * Matching runs in three passes over everything both detections produced,
+ * each event matched at most once. Pass 0 (D74 (4)), in the corrected list's
+ * order: an escape entry whose defining frames are the user's
+ * `in_escape_box` range (`userEntryIds`, reported by the detector) is a human
+ * claim whatever the automatic detection found there — it is never offered
+ * to the same-kind pass as if it were the tracker's; the earliest automatic
+ * escape entry it overlaps at the hole, if any, becomes its `autoShadow`
+ * (hole and frames, no kind), any other lying inside the range is covered by
+ * the claim, and one the range only touches stays free for the later passes
+ * — so neither the shadow nor a covered entry is a removal or a confirmation
+ * request, and the tracker's own next entry keeps its automatic reading.
+ * Passes 1 and 2 go largest overlap first. Pass
+ * 1 (D65): by kind and hole. Pass 2 (D71): over what is left, by hole alone —
+ * a pair here always differs in kind, because a same-kind pair with both
+ * sides free would have been taken in pass 1; a user entry pass 0 left
+ * unpaired may take an automatic investigation here, as D73 reads it. The
+ * window plays no part in matching: an automatic entry five frames after one
+ * the tracker's own corrections moved is that correction moving the entry,
+ * and pass 1 reads it so. Ids are not stable across corrections (they carry
+ * the start frame), which is why spans are matched and not ids. Pure: no
+ * DOM, no video, no clock.
  */
 import type { EventKind, EventRecord } from '../contracts/events.js';
 import type { CorrectionEntry } from '../contracts/session.js';
@@ -193,34 +205,87 @@ export interface MatchedEvents {
  * auto-only detection, and the automatic events that no longer have a
  * counterpart. The order of `corrected` is kept. Without a `trialWindow` no
  * leftover is dropped for lying outside the corrected trial; `derive()`
- * always passes one.
+ * always passes one. `userEntryIds` names the corrected-detection entries a
+ * user's escape-box range produced (D74 (4)); `derive()` passes the
+ * detector's set, and with none every entry is read as the tracker's.
  */
 export function matchEvents(
   autoOnly: readonly EventRecord[],
   corrected: readonly EventRecord[],
   spans: readonly FrameCorrectionSpan[],
   trialWindow?: FrameWindow,
+  userEntryIds: ReadonlySet<string> = new Set(),
 ): MatchedEvents {
-  // pass 1 (D65): by kind and hole
+  const isUserEntry = (ci: number): boolean => userEntryIds.has(corrected[ci]!.id);
+  // pass 0 (D74 (4)): a user's range entry against the automatic escape entries it overlaps at the
+  // hole, in the corrected list's order. The earliest is the tracker's reading of the moment the
+  // person marked and stands beside the claim as its shadow. Any other one lying inside the range
+  // is covered by the claim — neither a row nor a removal — and is consumed here too. One the
+  // range only touches is left free: it may be the tracker's own next entry, which the corrected
+  // detection still finds and pass 1 must still read as the tracker's (D65, D67).
+  const userShadow = new Map<number, number>();
+  const usedAuto = new Set<number>();
+  corrected.forEach((ev, ci) => {
+    if (!isUserEntry(ci) || ev.kind !== 'escape_entry') return;
+    const overlapping = autoOnly
+      .map((shadow, ai) => ({ shadow, ai }))
+      .filter(
+        ({ shadow, ai }) =>
+          !usedAuto.has(ai) &&
+          shadow.kind === 'escape_entry' &&
+          shadow.holeIndex === ev.holeIndex &&
+          overlapFrames(ev, shadow) > 0,
+      )
+      .sort(
+        (x, y) =>
+          x.shadow.startFrame - y.shadow.startFrame || overlapFrames(ev, y.shadow) - overlapFrames(ev, x.shadow),
+      );
+    const [first, ...rest] = overlapping;
+    if (first === undefined) return;
+    userShadow.set(ci, first.ai);
+    usedAuto.add(first.ai);
+    for (const { shadow, ai } of rest) {
+      if (shadow.startFrame >= ev.startFrame && shadow.endFrame <= ev.endFrame) usedAuto.add(ai);
+    }
+  });
+  // pass 1 (D65): by kind and hole; a user entry is never offered here, matched or not
   const sameKind = pairByOverlap(
     autoOnly,
     corrected,
-    () => true,
-    () => true,
+    (ci) => !isUserEntry(ci),
+    (ai) => !usedAuto.has(ai),
     (ev, shadow) => shadow.kind === ev.kind && shadow.holeIndex === ev.holeIndex,
   );
-  const usedAuto = new Set(sameKind.values());
+  for (const ai of sameKind.values()) usedAuto.add(ai);
   // pass 2 (D71): over the leftovers, by hole alone — every pair here differs in kind
   const kindChange = pairByOverlap(
     autoOnly,
     corrected,
-    (ci) => !sameKind.has(ci),
+    (ci) => !userShadow.has(ci) && !sameKind.has(ci),
     (ai) => !usedAuto.has(ai),
     (ev, shadow) => shadow.holeIndex === ev.holeIndex,
   );
   for (const ai of kindChange.values()) usedAuto.add(ai);
 
   const events = corrected.map((ev, ci): EventRecord => {
+    const user = userShadow.get(ci);
+    if (user !== undefined) {
+      // D74 (4): the person who marked the box knew where the animal was; the tool keeps its own
+      // reading beside the claim, whether or not the two agree on every value
+      const shadow = autoOnly[user]!;
+      return {
+        ...ev,
+        source: 'corrected',
+        evidenceCorrected: false,
+        correctionIds: correctionIdsInSpan(spans, ev.startFrame, ev.endFrame),
+        confirmed: false,
+        autoShadow: {
+          holeIndex: shadow.holeIndex,
+          startFrame: shadow.startFrame,
+          endFrame: shadow.endFrame,
+        },
+      };
+    }
     const same = sameKind.get(ci);
     if (same !== undefined) {
       const shadow = autoOnly[same]!;

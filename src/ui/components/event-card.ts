@@ -22,11 +22,14 @@
  * evidence reads as one (`event-wording.ts`).
  */
 import type { EventKind, EventRecord } from '../../contracts/events.js';
-import type { ReviewFlag, ReviewFlagCode } from '../../analysis/types.js';
+import type { ReviewFlag } from '../../analysis/types.js';
 import { button, el, uniqueId } from '../dom.js';
 import { evidenceWording, eventWording, eventWordingLower, reclassifyRefusal } from '../event-wording.js';
-import { formatCm, formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
+import { FLAG_LABELS, flagLabel } from '../review-reasons.js';
+import { formatHole, formatSeconds, formatTimeAndFrame } from './format.js';
 import type { Component, EventCallbacks } from './types.js';
+
+export { flagLabel };
 
 export interface EventCardProps {
   event: EventRecord;
@@ -36,6 +39,13 @@ export interface EventCardProps {
   reclassified?: boolean;
   /** True when this is the step's selected event. */
   selected?: boolean;
+  /**
+   * Why the event is in the review queue and what changes if it is wrong
+   * (`review-reasons.ts`), two lines under the title; nothing when the event
+   * is not queued.
+   */
+  reason?: string | null;
+  consequence?: string | null;
   /**
    * Which actions sit beside the card. `reclassify` (the list): the one action
    * only an inferred entry has. `all` (the selected-event panel): Keep,
@@ -75,32 +85,6 @@ const KIND_WORDS: Record<EventKind, string> = {
   tracking_failure: 'Tracking failure',
 };
 
-/**
- * What each review flag is called on the card. Four of the six codes can name
- * an event, and they mean different things: only `physically_unlikely_entry` is
- * the O4 "there is no escape box there" finding, so only it may be labelled
- * "physically unlikely". Calling a lost-tracking flag or an orphaned correction
- * by that name would tell the user the animal did something impossible when the
- * tracker merely lost it.
- *
- * The label is a short noun phrase because the sentence is already in
- * `flag.message` — the card renders the badge and then the message verbatim, so
- * `stale_auto_layer` supplies its own "re-track the video before trusting the
- * parameters hash on any export" (D51, `src/analysis/derive.ts`).
- */
-const FLAG_LABELS: Record<ReviewFlagCode, string> = {
-  physically_unlikely_entry: 'physically unlikely',
-  tracking_failure_at_hole: 'lost at a hole',
-  oversized_in_trial: 'oversized foreground',
-  orphaned_correction: 'orphaned correction',
-  correction_out_of_range: 'correction out of range',
-  stale_auto_layer: 'stale automatic track',
-  no_escape_contradicted: 'contradicted non-escape',
-  confirmation_contradicted: 'contradicted confirmation',
-  non_persistent_entry_noted: 'short entry noted',
-  auto_event_removed_by_correction: 'automatic event removed',
-};
-
 const KEEP_LABEL = 'Keep (K)';
 const RECLASSIFY_LABEL = 'Not an entry — tracking loss (L)';
 const DELETE_LABEL = 'Delete event (Delete)';
@@ -132,11 +116,6 @@ export function shadowClauses(event: EventRecord): string[] {
     clauses.push(`auto: end frame ${shadow.endFrame} → user: end frame ${event.endFrame}`);
   }
   return clauses;
-}
-
-/** What a review flag is called on the card, by its code. */
-export function flagLabel(code: ReviewFlagCode): string {
-  return FLAG_LABELS[code];
 }
 
 /**
@@ -195,9 +174,17 @@ export function createEventCard(
     attrs: { 'aria-keyshortcuts': 'Delete' },
   });
 
+  // The flag's full message, one click away (D76): a button cannot hold a
+  // `<details>`, so it sits in the item under the card, and the card carries
+  // the flag's name.
+  const flagDetails = el('details', { class: 'event-flag-details' });
+  const flagSummary = el('summary');
+  const flagMessages = el('p', { class: 'event-flag-message' });
+  flagDetails.append(flagSummary, flagMessages);
+
   // On the item, not on the button: the button's className is reassigned on
   // every render, and this is what the review queue scrolls to.
-  const item = el(tag, { class: 'event-item', attrs: { 'data-event-id': props.event.id } }, [card, actions]);
+  const item = el(tag, { class: 'event-item', attrs: { 'data-event-id': props.event.id } }, [card, flagDetails, actions]);
   container.append(item);
 
   function renderActions(event: EventRecord): void {
@@ -264,16 +251,23 @@ export function createEventCard(
         el('span', { class: 'event-fact-value', text: `${value} ` }),
       ]);
 
+    // Four facts (D76: at most five items on a card). The two closest-approach distances are in the
+    // evidence sentence below and in the events table's own columns, so the card does not repeat them.
     const facts = el('span', { class: 'event-facts' }, [
       fact('From', formatTimeAndFrame(event.startTime_s, event.startFrame)),
       fact('To', formatTimeAndFrame(event.endTime_s, event.endFrame)),
       fact('Duration', formatSeconds(event.durationSeconds)),
       fact('Judged on', event.pointUsed),
-      fact('Min nose distance', formatCm(event.minNoseDistance_cm)),
-      fact('Min centroid distance', formatCm(event.minCentroidDistance_cm)),
     ]);
 
-    const children: (Node | false)[] = [head, facts];
+    const children: (Node | false)[] = [head];
+
+    // Why it is in the queue and what it costs if it is wrong, right under the
+    // title (chunk 17, §2.4): the two lines a decision is made from.
+    if (current.reason) children.push(el('span', { class: 'event-reason', text: `${current.reason} ` }));
+    if (current.consequence) children.push(el('span', { class: 'event-consequence', text: `${current.consequence} ` }));
+
+    children.push(facts);
 
     if (event.evidence) {
       children.push(el('span', { class: 'event-evidence', text: `${evidenceWording(event)} ` }));
@@ -283,27 +277,20 @@ export function createEventCard(
       children.push(el('span', { class: 'event-shadow', text: clause }));
     }
 
-    // What selecting it is for. The card is one button, so it cannot hold the
-    // controls; the tools beside the video act on the selected event, and this
-    // names their keys.
-    const keys =
-      event.kind === 'escape_entry'
-        ? 'K keeps it, L reclassifies it as tracking loss, Delete rejects it. '
-        : 'H changes the hole, K keeps it, Delete removes it. ';
-    children.push(
-      el('span', { class: 'event-how', text: current.selected ? `Keys: ${keys}` : `Select it, then: ${keys}` }),
-    );
-
-    for (const flag of flagsForEvent(flags, event.id)) {
+    // The flag's name on the card; its sentence one click away under it (D76).
+    const own = flagsForEvent(flags, event.id);
+    for (const flag of own) {
       children.push(
         el('span', { class: 'event-flag' }, [
-          el('span', {
-            class: 'badge badge-warn badge-flag',
-            text: FLAG_LABELS[flag.code],
-          }),
-          ` — review. ${flag.message}`,
+          el('span', { class: 'badge badge-warn badge-flag', text: FLAG_LABELS[flag.code] }),
+          ' — review ',
         ]),
       );
+    }
+    flagDetails.hidden = own.length === 0;
+    if (own.length > 0) {
+      flagSummary.textContent = `Flag: ${[...new Set(own.map((flag) => FLAG_LABELS[flag.code]))].join(' · ')}`;
+      flagMessages.textContent = own.map((flag) => flag.message).join(' ');
     }
 
     card.replaceChildren(...children.filter((child): child is Node => child !== false));

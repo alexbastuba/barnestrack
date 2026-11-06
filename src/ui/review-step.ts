@@ -31,7 +31,7 @@ import { nearestHoleIndex } from '../analysis/geometry.js';
 import { isPersistentEscape } from '../analysis/metrics.js';
 import type { EventRecord } from '../contracts/events.js';
 import type { Parameters } from '../contracts/parameters.js';
-import { effectiveTargetHole, type CorrectionsLayer, type VideoDescriptor } from '../contracts/session.js';
+import { effectiveTargetHole, type CorrectionEntry, type CorrectionsLayer, type VideoDescriptor } from '../contracts/session.js';
 import type { NamedPointId, TrackFrame } from '../contracts/track.js';
 import { holeCentres, ringRadius } from '../maze/ring.js';
 import { transformMap } from '../maze/similarity.js';
@@ -42,6 +42,7 @@ import {
   analyseMissing,
   analyseVideo,
   analysisBlockedReason,
+  deriveInputFor,
   type AnalysisRun,
 } from '../session/analyse.js';
 import {
@@ -78,9 +79,8 @@ import {
   createParametersPanel,
   createQualityPanel,
   describeDiff,
-  flagLabel,
-  flagsForEvent,
   formatClock,
+  formatCm,
   formatHole,
   formatSeconds,
   keepRefusal,
@@ -108,6 +108,7 @@ import {
 import { eventWording, eventWordingLower, evidenceWording, reclassifyRefusal } from './event-wording.js';
 import { formatFrameTime } from './review-format.js';
 import { forgetSelection, recallSelection, rememberSelection } from './selection-memory.js';
+import { recallQueuePosition, rememberQueuePosition } from './queue-memory.js';
 import { createActionBar } from './next-step.js';
 import { createReviewExport, type ReviewExport } from './review-export.js';
 import {
@@ -116,7 +117,14 @@ import {
   type ReviewFiguresProps,
 } from './review-figures.js';
 import { keyLegend, resolveKey, type ReviewAction } from './review-keys.js';
-import { describeQueue, eventsToCheck, stepQueue } from './review-queue.js';
+import { checkedCount, describeQueue, describeQueueCounts, eventsToCheck, orderQueue, stepQueue } from './review-queue.js';
+import {
+  consequenceTiming,
+  consequencesFor,
+  reasonFor,
+  type Consequence,
+  type ConsequenceTiming,
+} from './review-reasons.js';
 import { Scrubber } from './scrubber.js';
 import { stateRuns } from '../viz/quality-strip.js';
 import { ZOOM_STEP, frameAtTime } from './timeline-geometry.js';
@@ -175,7 +183,15 @@ export function createReviewStep(context: AppContext): Step {
     mazeMap: unknown;
     transform: unknown;
   } | null = null;
-  let lastTiming: { deriveMs: number; totalMs: number } | null = null;
+  let lastTiming: { deriveMs: number; totalMs: number; consequences: ConsequenceTiming | null } | null = null;
+  /**
+   * For the events in the queue of the video on screen: why each is there and
+   * what it costs if it is wrong (`review-reasons.ts`), computed once per
+   * derive — the consequence is a re-derive per event, cached by the
+   * analysis object — so the queue can be ordered and every card can say.
+   */
+  let consequences: ReadonlyMap<string, Consequence> = new Map();
+  let reasons: ReadonlyMap<string, { reason: string | null; consequence: string | null }> = new Map();
   let playhead = 0;
   let tool: PointTool = 'off';
   let selectedEventId: string | null = null;
@@ -301,10 +317,40 @@ export function createReviewStep(context: AppContext): Step {
       if (analysis && cacheKey?.videoId === video.id) previousByVideo.set(video.id, analysis);
       analysis = run.analysis;
       model = timelineModel(analysis, entry.corrections);
+      // The derive and its cache write; the consequences below are timed on their own.
+      const totalMs = performance.now() - started;
       // Counted here, where the flags exist, so the selector can name a number
       // for every video this session has actually derived.
-      queueCounts.set(video.id, eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns).length);
-      lastTiming = { deriveMs: run.deriveMs, totalMs: performance.now() - started };
+      const toCheck = eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns);
+      queueCounts.set(video.id, toCheck.length);
+      // Why each queued event is there and what it costs (chunk 17): one re-derive per queued
+      // event, eagerly, because the queue's order depends on it; cached by the analysis object.
+      // A what-if that throws must not take the trial's own numbers with it: the analysis
+      // above stands, the queue keeps its unranked order, the cards say why without what it
+      // costs, and the failure is said rather than swallowed.
+      consequences = new Map();
+      try {
+        const input = deriveInputFor(store, video.id);
+        if (input) consequences = consequencesFor(input, analysis, toCheck);
+      } catch (error) {
+        console.error('BarnesTrack: the consequences of the events to check could not be computed', error);
+        context.announce(
+          `What each event to check would change could not be computed: ${(error as Error).message}. The events and the metrics are not affected.`,
+        );
+      }
+      const frames = analysis.cleanedTrack;
+      reasons = new Map(
+        toCheck.map((id) => {
+          const ev = analysis!.events.find((candidate) => candidate.id === id)!;
+          return [id, { reason: reasonFor(ev, analysis!.reviewFlags, frames), consequence: consequences.get(id)?.sentence ?? null }];
+        }),
+      );
+      lastTiming = {
+        deriveMs: run.deriveMs,
+        totalMs,
+        // None computed — nothing queued, or the pass failed — prints no consequence figure.
+        consequences: consequences.size > 0 ? consequenceTiming(consequences, toCheck) : null,
+      };
       cacheKey = {
         videoId: video.id,
         auto: entry.auto,
@@ -456,10 +502,22 @@ export function createReviewStep(context: AppContext): Step {
 
   // ---- the review queue ----------------------------------------------------------------
 
-  /** The events still wanting a human on the video on screen. */
+  /**
+   * The events still wanting a human on the video on screen, the ones that
+   * decide the most first: the trial's end, then the strategy, then an error
+   * count, then the rest (chunk 17, §2.2).
+   */
   function queue(): string[] {
     if (!analysis || !model) return [];
-    return eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns);
+    return orderQueue(eventsToCheck(analysis.events, analysis.reviewFlags, model.stateRuns), (id) => consequences.get(id)?.rank ?? 'none');
+  }
+
+  /** Writes the queue position `]`, `[` and Keep continue from after a reload (`queue-memory.ts`). */
+  function rememberPosition(eventId: string): void {
+    const video = currentVideo();
+    const ev = analysis?.events.find((candidate) => candidate.id === eventId);
+    if (!video || !ev) return;
+    rememberQueuePosition(store.current.sessionId, { videoId: video.id, eventId: ev.id, startFrame: ev.startFrame });
   }
 
   /**
@@ -535,32 +593,31 @@ export function createReviewStep(context: AppContext): Step {
     stage.scrollIntoView({ block: 'start' });
   }
 
-  /** Selects the next or previous queued event and says where it sits in the queue. */
+  /**
+   * Selects the next or previous queued event and says where it sits in the
+   * queue. With nothing selected, the walk continues from the position the
+   * queue memory holds for this video when that event is still to check —
+   * after a reload, `]` goes on where the reviewer was — and from the head
+   * otherwise.
+   */
   function goToQueued(direction: 1 | -1): void {
     const ids = queue();
-    const next = stepQueue(ids, selectedEventId, direction);
+    const video = currentVideo();
+    let next: string | null = null;
+    if (selectedEventId === null && video) {
+      const remembered = recallQueuePosition(store.current.sessionId);
+      if (remembered?.videoId === video.id && ids.includes(remembered.eventId)) next = remembered.eventId;
+    }
+    if (next === null) next = stepQueue(ids, selectedEventId, direction);
     if (next === null || !analysis) {
       context.announce('Nothing to check on this video.');
       return;
     }
+    rememberPosition(next);
     selectEvent(next, { announce: `${ids.indexOf(next) + 1} of ${ids.length} to check.` });
   }
 
-  /**
-   * Why an event is in the queue, in the words the event card uses: its review
-   * flags, or — with none — the uncertain frames that put it there
-   * (`eventsToCheck`). An event nobody has questioned gets no clause at all.
-   */
-  function queueReason(ev: EventRecord): string | null {
-    const flags = analysis ? flagsForEvent(analysis.reviewFlags, ev.id) : [];
-    if (flags.length > 0) {
-      return flags.map((flag) => `${flagLabel(flag.code)} — ${flag.message}`).join(' · ');
-    }
-    if (queue().includes(ev.id)) return 'decided over frames the tracker was unsure of';
-    return null;
-  }
-
-  /** The one line under the video: which event is selected, and what to do with it. */
+  /** The one line under the video: which event is selected. Why it is queued is on its card. */
   function describeCurrentEvent(ev: EventRecord): string {
     const parts = [
       eventWording(ev, reclassified().has(ev.id)),
@@ -568,8 +625,6 @@ export function createReviewStep(context: AppContext): Step {
       `${formatClock(ev.startTime_s)}–${formatClock(ev.endTime_s)}`,
       formatSeconds(ev.durationSeconds),
     ];
-    const reason = queueReason(ev);
-    if (reason) parts.push(`flagged: ${reason}`);
     if (ev.confirmed) parts.push('confirmed by you, no change');
     else if (ev.source === 'corrected') parts.push('corrected by hand');
     return parts.join(' · ');
@@ -578,22 +633,19 @@ export function createReviewStep(context: AppContext): Step {
   /** `Selected: investigation · hole 7 · frames 1,100–1,129`, or what to do when nothing is. */
   function selectionLineText(): string {
     const ev = selectedEvent();
-    if (!ev) {
-      return 'Nothing selected — click an event card, a bar on the timeline or a row of the events table, or press E. The event tools act on the selected event.';
-    }
+    if (!ev) return 'Nothing selected: press ] for the next event to check, or click one.';
     return `Selected: ${eventWordingLower(ev, reclassified().has(ev.id))} · ${formatHole(ev.holeIndex)} · frames ${ev.startFrame.toLocaleString()}–${ev.endFrame.toLocaleString()}`;
   }
 
   function renderQueue(): void {
     const count = queue().length;
-    queueCount.textContent = describeQueue(count);
+    const counts = describeQueueCounts(count, checkedCount(analysis?.events ?? []));
+    if (counts !== queueCount.textContent) queueCount.textContent = counts;
     queuePrevious.disabled = count === 0;
     queueNext.disabled = count === 0;
 
     const ev = selectedEvent();
-    const line = ev
-      ? describeCurrentEvent(ev)
-      : `${describeQueue(count)} — press ] or click an event on the timeline`;
+    const line = ev ? describeCurrentEvent(ev) : `${counts} — press ] to start`;
     const selection = selectionLineText();
     if (selection !== selectionLine.textContent) selectionLine.textContent = selection;
     // Only when it actually changed: the strip is a polite live region, and
@@ -678,6 +730,7 @@ export function createReviewStep(context: AppContext): Step {
       selectEvent(null, { announce: 'Kept. Nothing left to check on this video.' });
       return;
     }
+    rememberPosition(following);
     selectEvent(following);
   }
 
@@ -909,13 +962,8 @@ export function createReviewStep(context: AppContext): Step {
   const toolOffButton = button('Off (Esc)', () => setTool('off'), { class: 'btn-quiet' });
   const invalidButton = button('Mark invalid (X)', () => markInvalid(), { class: 'btn-secondary' });
   const notVisibleButton = button('Not visible from here… (V)', () => paintNotVisible(), { class: 'btn-secondary' });
+  // Where to place it is in the step's Definitions, not under the button (D76: no helper text under a control).
   const escapeBoxButton = button('Entered the escape box here — ends the trial (B)', () => markEscapeBox(), { class: 'btn-secondary' });
-  const escapeBoxHint = el('span', {
-    id: uniqueId('review-escape-hint'),
-    class: 'hint',
-    text: 'The trial ends at this frame and total latency is stamped here, so place it on the frame the animal was last seen going in.',
-  });
-  escapeBoxButton.setAttribute('aria-describedby', escapeBoxHint.id);
   const addEventButton = button('Add investigation from here… (A)', () => addEventHere(), { class: 'btn-secondary' });
   // Keep, Reclassify and Delete sit on the selected event's card (`selectedPanel`), next to the
   // evidence they are decided on; the toolbar keeps the tools that work on frames and spans.
@@ -1067,7 +1115,7 @@ export function createReviewStep(context: AppContext): Step {
   const toolbar = el('div', { class: 'review-tools', attrs: { role: 'group', 'aria-label': 'Correction tools', 'aria-describedby': 'review-selection-line' } }, [
     selectionLine,
     el('div', { class: 'tool-group' }, [el('span', { text: 'Point' }), noseButton, centroidButton, toolOffButton, invalidButton]),
-    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton, escapeBoxHint]),
+    el('div', { class: 'tool-group' }, [el('span', { text: 'Range' }), notVisibleButton, escapeBoxButton]),
     el('div', { class: 'tool-group' }, [
       el('span', { text: 'Event' }),
       addEventButton,
@@ -1365,12 +1413,15 @@ export function createReviewStep(context: AppContext): Step {
   let selectedCard: { id: string; component: Component<EventCardProps> } | null = null;
 
   function selectedCardProps(ev: EventRecord): EventCardProps {
+    const why = reasons.get(ev.id);
     return {
       event: ev,
       flags: analysis?.reviewFlags ?? [],
       reclassified: reclassified().has(ev.id),
       selected: true,
       actions: 'all',
+      reason: why?.reason ?? null,
+      consequence: why?.consequence ?? null,
     };
   }
 
@@ -1379,7 +1430,8 @@ export function createReviewStep(context: AppContext): Step {
     if (ev === null) {
       selectedCard?.component.destroy();
       selectedCard = null;
-      selectedEmpty.textContent = selectionLineText();
+      // The selection line under it says what to do; this box only says it is empty (D76: once).
+      selectedEmpty.textContent = 'Nothing selected.';
       if (!selectedPanel.contains(selectedEmpty)) selectedPanel.replaceChildren(selectedEmpty);
       return;
     }
@@ -1485,10 +1537,23 @@ export function createReviewStep(context: AppContext): Step {
 
   const correctionsList = el('ol', { class: 'corrections-list' });
   const correctionsSummary = el('p', { class: 'mirror-summary' });
+  /*
+   * The automatic events a correction erased (D71, D73; chunk 17 §3): each has no row and is
+   * counted as an event delete is, so the list is where a person sees what the correction took
+   * away — the automatic values, which correction did it, and the revert that brings it back.
+   */
+  const removedSummary = el('p', { class: 'mirror-summary' });
+  const removedList = el('ol', { class: 'removed-events-list' });
+  const removedSection = el(
+    'section',
+    { id: 'review-removed-events', class: 'removed-events', attrs: { 'aria-labelledby': 'review-removed-events-heading' } },
+    [el('h4', { id: 'review-removed-events-heading', text: 'Removed by your corrections' }), removedSummary, removedList],
+  );
   const correctionsMirror = el('section', { class: 'mirror' }, [
     el('h3', { text: 'Corrections' }),
     correctionsSummary,
     correctionsList,
+    removedSection,
   ]);
 
   /*
@@ -1499,14 +1564,15 @@ export function createReviewStep(context: AppContext): Step {
    * column when they do not fit. Below 1200 px the right column drops under the left (app.css).
    * The timeline stays outside, full width, on its own row.
    */
+  // The visual first, the words after it (D76): the timing line sits under the scrubber, not above the frame.
   const stage = el('div', { class: 'review-stage' }, [
     el('div', { class: 'review-stage-main' }, [
       el('div', { class: 'review-top' }, [
         el('div', { class: 'field' }, [el('label', { text: 'Video', attrs: { for: videoSelect.id } }), videoSelect]),
-        timing,
       ]),
       canvasView.element,
       scrubber.element,
+      timing,
     ]),
     el('div', { class: 'review-stage-side' }, [queueBar, selectedPanel, toolbar]),
   ]);
@@ -1604,6 +1670,19 @@ export function createReviewStep(context: AppContext): Step {
     playhead = positionOfFrame(ev.startFrame);
   }
 
+  /**
+   * After a reload, opens the step on the video the queue was being walked on
+   * (`queue-memory.ts`), once per session; `]` then continues from the
+   * remembered event (`goToQueued`). A video no longer in the session is ignored.
+   */
+  const queueRestoreTried = new Set<number>();
+  function restoreQueueVideo(): void {
+    if (selectedVideoId !== null || queueRestoreTried.has(store.epoch)) return;
+    queueRestoreTried.add(store.epoch);
+    const remembered = recallQueuePosition(store.current.sessionId);
+    if (remembered && store.videoById(remembered.videoId)) selectedVideoId = remembered.videoId;
+  }
+
   function render(): void {
     if (deriving || sweeping) return;
     if (store.epoch !== lastEpoch) {
@@ -1618,6 +1697,7 @@ export function createReviewStep(context: AppContext): Step {
       cacheKey = null;
       stopPlaying(false);
     }
+    restoreQueueVideo();
     const video = currentVideo();
     ensureAnalysis();
     sweepMissingAnalyses();
@@ -1650,16 +1730,18 @@ export function createReviewStep(context: AppContext): Step {
       }
     }
     note.hidden = video === null || isAttached;
-    note.textContent = video
-      ? `${video.filename} is not attached, so no frame can be shown: drop the file again on the Videos step. The track, the timeline and every correction still work.`
-      : '';
+    note.textContent = video ? `${video.filename} is not attached: drop the file on the Videos step to see its frames.` : '';
 
     const blocked = video ? analysisBlockedReason(store, video.id) : 'no video';
     for (const control of [noseButton, centroidButton, toolOffButton, invalidButton, notVisibleButton, escapeBoxButton, addEventButton, holeSelect, edgeStartButton, edgeEndButton, trialStartButton, revertTrialStartButton, playButton]) {
       control.disabled = analysis === null;
     }
+    // A readout, not a sentence (D76): the numbers, each labelled once.
+    const consequenceNote = lastTiming?.consequences
+      ? ` · ${lastTiming.consequences.count} consequence${lastTiming.consequences.count === 1 ? '' : 's'} ${lastTiming.consequences.total.toFixed(0)} ms (${lastTiming.consequences.mean.toFixed(1)} ms each)`
+      : '';
     timing.textContent = analysis && lastTiming
-      ? `Recomputed in ${lastTiming.deriveMs.toFixed(1)} ms (${lastTiming.totalMs.toFixed(0)} ms with the cache write) · ${analysis.cleanedTrack.length} frames · ${currentLayer()?.entries.length ?? 0} correction${(currentLayer()?.entries.length ?? 0) === 1 ? '' : 's'} · parameters ${analysis.parametersHash.slice(0, 8)}…`
+      ? `${analysis.cleanedTrack.length} frames · ${currentLayer()?.entries.length ?? 0} correction${(currentLayer()?.entries.length ?? 0) === 1 ? '' : 's'} · parameters ${analysis.parametersHash.slice(0, 8)}… · derive ${lastTiming.deriveMs.toFixed(1)} ms (${lastTiming.totalMs.toFixed(0)} ms with the cache write)${consequenceNote}`
       : blocked
         ? `Not analysed: ${blocked}.`
         : '';
@@ -1820,13 +1902,68 @@ export function createReviewStep(context: AppContext): Step {
     replaceChildren(framesBody, rows);
   }
 
+  /** One row per automatic event the corrections erased: its automatic values, what erased it, and the revert. */
+  function renderRemoved(layer: CorrectionsLayer): void {
+    const removed = analysis?.removedAutoEvents ?? [];
+    removedSummary.textContent =
+      removed.length === 0
+        ? 'No automatic event was removed by a correction.'
+        : `${removed.length} automatic event${removed.length === 1 ? '' : 's'} the corrections erased: no row in the exports, each counted as a correction.`;
+    const byId = new Map(layer.entries.map((entry) => [entry.id, entry]));
+    replaceChildren(
+      removedList,
+      removed.map((ev) => {
+        const erasers = ev.correctionIds.flatMap((id) => {
+          const entry = byId.get(id);
+          return entry ? [entry] : [];
+        });
+        const revertOf = (entry: CorrectionEntry): HTMLButtonElement =>
+          button(
+            erasers.length === 1 ? 'Revert that correction' : `Revert: ${describeCorrection(entry)}`,
+            () => {
+              const current = currentLayer();
+              if (!current) return;
+              commit(revertCorrection(current, entry.id), `Reverted: ${describeCorrection(entry)}`, false);
+              timeline.surface.focus(); // the list was rebuilt under this button
+            },
+            { class: 'btn-quiet' },
+          );
+        return el('li', { attrs: { 'data-event-id': ev.id } }, [
+          el('span', {
+            class: 'removed-event',
+            text: `${eventWording(ev)} at ${formatHole(ev.holeIndex)}, frames ${ev.startFrame}–${ev.endFrame} (${formatClock(ev.startTime_s)}–${formatClock(ev.endTime_s)}, ${formatSeconds(ev.durationSeconds)}), judged on the ${ev.pointUsed}, min nose ${formatCm(ev.minNoseDistance_cm)}, min centroid ${formatCm(ev.minCentroidDistance_cm)}.`,
+          }),
+          ' ',
+          el('span', {
+            class: 'hint',
+            text: erasers.length === 0 ? 'Removed by the corrections in force.' : `Removed by: ${erasers.map(describeCorrection).join('; ')}.`,
+          }),
+          ' ',
+          button(
+            'Seek',
+            () => {
+              seek(positionOfFrame(ev.startFrame), true);
+              timeline.surface.focus();
+            },
+            { class: 'btn-quiet', attrs: { 'aria-label': `Seek to frame ${ev.startFrame}` } },
+          ),
+          ' ',
+          ...erasers.flatMap((entry) => [revertOf(entry), ' ']),
+        ]);
+      }),
+    );
+  }
+
   function renderCorrections(): void {
     const layer = currentLayer();
     if (!layer || !analysis) {
       correctionsSummary.textContent = 'No analysis yet.';
       replaceChildren(correctionsList, []);
+      removedSummary.textContent = 'No analysis yet.';
+      replaceChildren(removedList, []);
       return;
     }
+    renderRemoved(layer);
     const orphans = new Map(orphanedCorrections(layer, analysis.reviewFlags).map((o) => [o.entry.id, o.flag]));
     correctionsSummary.textContent =
       layer.entries.length === 0
@@ -2028,6 +2165,7 @@ export function createReviewStep(context: AppContext): Step {
       flags: analysis?.reviewFlags ?? [],
       selectedId: selectedEventId,
       reclassified: reclassified(),
+      reasons,
     };
   }
 
@@ -2110,12 +2248,11 @@ export function createReviewStep(context: AppContext): Step {
   return {
     id: 'review',
     label: 'Review & Export',
-    what:
-      'Check every event against the frames it came from, correct what the tracker got wrong, and read the metrics. ' +
-      'Every correction is stored beside the automatic values and everything is recomputed from both.',
+    what: 'Check each event against its frames, correct what the tracker got wrong, and read the metrics.',
     definitions: () => [
       el('ul', {}, [
         el('li', { text: 'Automatic values are never overwritten: a correction is a separate entry, everything downstream is recomputed, and "revert to automatic" is one action per item.' }),
+        el('li', { text: '"Entered the escape box here" ends the trial at that frame and stamps total latency there, so place it on the frame the animal was last seen going in.' }),
         el('li', { text: 'A filled marker is automatic; a diamond with a "user" badge was placed by hand; a hollow dashed marker was filled by the cleaning step. Corrected events are hatched and tagged "user".' }),
         el('li', { text: 'Times come from each frame’s own timestamp in the file, never from a nominal frame rate.' }),
         el('li', { text: 'Every threshold and metric shows its definition beside its control.' }),

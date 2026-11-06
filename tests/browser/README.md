@@ -74,7 +74,16 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   reading `confirmed = true`, `source = auto` and the reviewer's name; then, once
   `.save-state.is-saved` shows, a reload that brings back the three cards, the session name, the
   reviewer field, the keyboard-kept correction and the selection line. Without that wait the
-  reload finds 0 cards. It skips only when `dist/` is missing. The axe scan covers all four steps
+  reload finds 0 cards. It skips only when `dist/` is missing. (Chunk 17) A second shipped-UI test
+  walks the queue: the first item `]` selects carries a reason line and a consequence line, `K`
+  takes it off the "to check" count (N → N − 1) and moves the selection on, the "Checked events"
+  filter hides the kept card from the list while the events table keeps every row, and after a
+  reload with nothing selected `]` continues at the remembered event. Three dev-server tests
+  check layout: `elementFromPoint` at the video's lowest 50 px on the Review step is the canvas,
+  never the action bar, at 1920 × 1080 and 1366 × 768, unselected and after `]` (the bar is the
+  side column's footer from 1200 px, D75); and a 1280 × 720 video added through the store leaves
+  the Maze bar in its two-line state — the status wraps to exactly two lines, the bar fits
+  `--maze-bar` and sits below the controls column. The axe scan covers all four steps
   (Review since chunk 15, scanned with an event selected) and fails on `serious`/`critical` only; `KNOWN_VIOLATIONS` is
   **empty** since chunk 10b fixed the maze step's scroll container, so any serious or critical
   finding fails the run. It makes no network request: the results-only path never fetches, every
@@ -95,8 +104,14 @@ the same ZIP reader as the Vitest bundle tests (`tests/export/zip-entries.ts`) a
   lands; `ArrowRight` moves the selected centre by 1 px and `Shift+ArrowRight` by 10 without
   counting, and `Escape` clears the selection; and with the frame scrolled to the top of a
   1366 × 768 viewport the Platform fieldset is wholly on screen and the page does not scroll
-  sideways. It needs neither ffmpeg nor the sample videos and runs in about eight seconds, so it is
-  in `npm run test:browser:ci`.
+  sideways. Since chunk 14b (D75) the Maze step's action bar is the controls column's footer from
+  1200 px, and a further test puts every handle's press position through `elementFromPoint` at
+  1366 × 768, 1400 × 866 and 1920 × 1080, unscrolled and scrolled to the frame: a handle on screen
+  must be under the pointer on `canvas.overlay-layer`, never under any part of the bar, and at
+  1920 × 1080 unscrolled every handle must be on screen so the CI case cannot pass vacuously; the
+  scrolled checks also assert the bar's top is below the controls column's bottom. It needs neither
+  ffmpeg nor the sample videos and runs in about eight seconds, so it is in
+  `npm run test:browser:ci`.
 
 ## Manual — recorded here because a fresh clone has no other record (D36)
 
@@ -486,3 +501,93 @@ selector of the Review shot are on screen (`docs/known-limitations.md`, "At 200 
 bar is not on the first screen"). No horizontal scroll, no untiered or multi-tier button and no contrast failure at any of
 the 20 measurements. The Maze step measured is BASE's: chunk 14's two-column stage was not merged
 into this branch.
+
+### Chunk 17 — the queue says why and what it costs; the Review bar as footer; D76 (reading rules)
+
+**`app-smoke.spec.ts`** gained the four tests described in the spec list above. After
+`npm run build`: **14 passed** (24.7 s). What they printed at HEAD, CSS pixels:
+
+- Review fold, 1920 × 1080, unselected (scrollY 0): video y 681.5–1247, bar y 1022.5–1080 at
+  x 1151–1535 (the side column); the probes at y 1079, 1055 and 1031 (the window's lowest 50 px,
+  where chunk 14b measured the bar over the video) all land on `canvas.overlay-layer`. Selected
+  (scrollY 620): video y 61.5–627; y 626 → `div.viewport`, 602 and 578 → the canvas. At
+  1366 × 768: video 681.5–1142.3, bar 710.5–768 at x 874–1258; y 767, 743 and 719 → the canvas
+  (at BASE the bar covered the video's top 2 px there); selected: 521 / 497 / 473 → the canvas.
+- Maze bar, two-line state (a 1280 × 720 video added, 1366 × 768, frame scrolled to the top):
+  bar 97.5 px (y 670.5–768), status 40 px = 2 lines, controls column bottom 654 ≤ bar top 670.5,
+  `--maze-bar` 97.5 px.
+- The queue, shipped UI, test50: the first item `]` selects is `auto-investigation-h8-f698`,
+  reason "Decided over 42 uncertain frames of 116: 42 low confidence (42 fragmented).",
+  consequence "If rejected: total errors 71 → 70; primary errors 29 → 28; strategy unchanged.";
+  `K` takes the count 25 → 24 to check and the selection to `auto-investigation-h9-f865`; after
+  Escape and a reload, `]` continues at that event. The timing line read "5539 frames ·
+  1 correction · parameters 9c3cf1d9… · derive 17.8 ms (20 ms with the cache write) ·
+  25 consequences 113 ms (4.5 ms each)" (the consequences are timed on their own, after the
+  review's finding that the first cut folded them into the cache-write total).
+
+**`scripts/screenshots.ts`** now writes to `notes/screens/chunk-17/`, counts the Review step's
+first-screen prose (D76) and probes the fold. What counts as prose: the text of `p`, `caption`,
+`.hint`, `.what`, `.empty`, `.error`, `.orphan`, `.mirror-summary`, `.event-reason`,
+`.event-consequence`, `.current-event-line`, `.selection-line` and `.event-how` whose nearest
+classified ancestor is one of those rather than a button, label, heading, table cell, summary,
+badge or event fact; closed `<details>` content is off screen; the evidence sentence, the flag
+message and the shadow clauses are the D19 evidence (D76 names the evidence strip a visual) and
+are counted beside the prose, not in it. Words are whitespace-separated runs whose box intersects
+the window. Measured on the example cohort at 100 %, before (the script's first commit against
+the unchanged Review DOM) → after:
+
+| state | prose before | prose after | evidence before → after |
+| --- | --- | --- | --- |
+| 1366 × 768, unselected (scrollY 0) | 154 | **105** | 0 → 0 |
+| 1366 × 768, after `]` (scrollY 643 → 620) | 114 | **101** | 57 → 57 |
+| 1920 × 1080, unselected | 214 | 118 | 0 → 0 |
+| 1920 × 1080, after `]` | 131 | 118 | 57 → 57 |
+
+The largest remaining items on the selected screen are the frame view's 32-word hint
+(`src/ui/canvas-view.ts`, chunk 14b's, read-only for chunk 17), the 26-word timing readout and
+the reason and consequence lines (12 and 14). What was cut: the step's what-line (33 → 16
+words), the not-attached note (27 → 15), the nothing-selected box (30 → 2; the selection line
+says it once), the card's keys sentence (11, it repeated the legend), the flag's message on the
+card (into a labelled `<details>` under it), the escape-box button's hint (25, into the step's
+Definitions), and the strip's copy of the flag's message. Header heights at 1366 × 768: the
+Reviewer hint 19.5 → 20 px, the step heading 21.25 → 22 px, the stepper 45.75 → 45 px, the
+status banner 63 px fixed, the Review stage's document top 620 px (whole). The document's
+`scroll-padding-bottom` while each step is shown: Videos 50 px (bar 49.5), Maze 78 (77.5),
+Track 50 (49.5), Review 58 (57.5). The selected-event boxes at 1366 × 768: video 62–522, card
+130–494 (all 365 px shown), evidence 368–485, actions 490–531, toolbar 543–655, queue nav 36–109,
+clip selector 24–54, all on screen; the escape-entry card 152–545 (383 of 393 px shown, its focus
+ring's lowest 14 px clipped — it no longer scrolls inside its box). 0 console errors, 0 contrast
+failures, no untiered button.
+
+**The retune that never landed on the runner (CI run 42100952358, on `408249f`).** The whole-flow
+test passed on the Mac and failed on GitHub at the retune: after `radiusFactor.fill('3')` and
+`blur()` the event count stayed "72 investigations · …" for the full 60 s. The spec was right and
+is unchanged. The parameters panel queues a typed threshold on a 100 ms debounce, and its
+`update()` cancelled that queued edit on *every* call; the Review step calls `update()` on every
+store notification, including the one the store sends when an autosave finishes. `K` schedules
+that autosave 500 ms out, and chunk 17's consequence pass lengthened the redraw after `K`
+(166 ms on the runner, 113 ms on the Mac), which moved the test's `fill` from well before the
+save to just before it. Measured with a scratch script that drives the same steps against
+`npm run preview` at 1280 × 720 headless, wraps the page's `setTimeout`/`clearTimeout` and
+watches `.save-state` (times from the `K` keydown):
+
+- 2× CPU throttle, before the fix: autosave timer set +18 ms, `input` +459, `blur` +469, autosave
+  timer fired +518, the panel's debounce **cleared** +534 (75 ms after the input) from
+  `update` ← the step's `refresh` ← the store's `emit` after the save, `saved` shown +565. The
+  field read 1.5 again and nothing was recomputed. 3 of 3 runs at 2×; 2 of 3 at 2.5×, where the
+  notification arrived before `blur` and the field kept showing 3 with nothing computed from it;
+  0 of 3 at 1×, 1.5×, 3×, 4× and 6× (the input is before the window, or the save is already over).
+- Unthrottled, the field typed and blurred in one task N ms after the autosave timer was set:
+  dropped at N = 420, 440, 460, 480 and 500 (the debounce cleared 88, 69, 48, 30 and 19 ms after
+  the input), applied at 360, 380, 400, 520, 540, 560 and 600.
+- After the fix (`update()` treats only a different parameter object as new parameters): all 12
+  of those offsets and all 21 throttled runs apply the threshold — at 2× the save still lands at
+  +563 ms, inside the debounce, and the debounce fires at +579.
+
+The same run's second red, `track.spec.ts:142`, was the spec still asking the timing line for
+"Recomputed in" after D76 reworded it to a readout; that assertion and the same one in
+`review.spec.ts`'s `openReview` now match "N frames · N corrections · parameters ‹hash›… ·
+derive N ms". At the fix: `npx playwright test tests/browser/app-smoke.spec.ts
+tests/browser/track.spec.ts tests/browser/maze.spec.ts` after `npm run build`, **24 passed, 4
+skipped** (the sample-video tracking tests); `review.spec.ts` with `BARNESTRACK_SAMPLE_DIR`,
+**2 passed**.

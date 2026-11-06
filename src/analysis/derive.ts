@@ -195,7 +195,9 @@ export function derive(input: DeriveInput): DerivedAnalysis {
       startFrame: cleaned.track[proposal.startFrame]!.frameIndex,
       endFrame: cleaned.track[detected.endFrame]!.frameIndex,
     };
-    const matched = matchEvents(autoOnly.events, detected.events, spans, trialWindow);
+    // D74 (4): the detector names the entries a user's escape-box range produced, so the matcher
+    // reads each as a claim and keeps the tracker's own entry beside it
+    const matched = matchEvents(autoOnly.events, detected.events, spans, trialWindow, detected.userEntryIds);
     removedAutoEvents = matched.removedAutoEvents;
     return matched.events;
   };

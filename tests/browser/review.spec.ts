@@ -110,7 +110,10 @@ async function waitForSave(page: Page): Promise<void> {
 
 async function openReview(page: Page): Promise<void> {
   await page.getByRole('tab', { name: /Review/ }).click();
-  await expect(page.locator('#panel-review .review-timing')).toContainText('Recomputed in');
+  // The timing readout (D76, chunk 17): what was derived, then what the derive cost.
+  await expect(page.locator('#panel-review .review-timing')).toHaveText(
+    /^\d+ frames · \d+ corrections? · parameters [0-9a-f]{8}… · derive \d+\.\d ms \(/,
+  );
 }
 
 /** The review step's keys are read from the step; the timeline is its keyboard home. */

@@ -33,7 +33,7 @@ import { LOAD_BUTTON_LABEL } from '../src/demo/example-cohort-ui.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4317;
 const BASE_URL = `http://localhost:${PORT}/`;
-const OUT_DIR = join(ROOT, 'notes/screens/chunk-15');
+const OUT_DIR = join(ROOT, 'notes/screens/chunk-17');
 /** The regions of the selected-event Review shot, by selector. */
 const REVIEW_REGIONS = {
   video: '#panel-review .viewport',
@@ -45,6 +45,27 @@ const REVIEW_REGIONS = {
   clipSelector: '#panel-review .review-top select',
 } as const;
 
+/*
+ * D76 (chunk 17): what counts as prose on the Review step's first screen. A
+ * text node is prose when the nearest of its ancestors matching either list
+ * matches PROSE — so a sentence in a `<p>` or a `.hint` counts; the text of a
+ * button, a label, a heading or a table cell does not; and the reason and
+ * consequence lines on an event card count although the card is a button.
+ * The evidence sentence, the flag message and the shadow clauses are the D19
+ * evidence the decision is made on — D76 names the evidence strip a visual —
+ * and are counted separately, beside the prose. Text inside a closed
+ * `<details>` is one click away, not on the screen, and is not counted.
+ */
+const PROSE_SELECTOR =
+  'p, caption, .hint, .what, .empty, .error, .orphan, .mirror-summary, .event-reason, .event-consequence, .current-event-line, .selection-line, .event-how';
+const NOT_PROSE_SELECTOR =
+  'button, label, th, td, h1, h2, h3, h4, summary, select, option, input, textarea, .badge, .event-fact';
+const EVIDENCE_SELECTOR = '.event-evidence, .event-flag, .event-shadow';
+/** The word-count target D76 sets for the Review step's first screen. */
+const PROSE_WORD_LIMIT = 120;
+/** CI's screen size, at which chunk 14b found the Review bar over the video's lowest 50 px. */
+const FOLD_SIZE = { width: 1920, height: 1080 } as const;
+
 interface Box {
   top: number;
   bottom: number;
@@ -53,6 +74,135 @@ interface Box {
   inViewport: boolean;
   /** Pixels of the box actually visible after its scrolling ancestors and the window clip it. */
   shownPx: number;
+}
+
+interface ProseCount {
+  words: number;
+  evidenceWords: number;
+  /** The elements carrying the most prose words, `element · n`, largest first. */
+  top: string[];
+}
+
+/** The words of prose, and of evidence, whose text is on screen now (PROSE_SELECTOR above). */
+async function proseCount(page: Page): Promise<ProseCount> {
+  return page.evaluate(
+    ({ prose, notProse, evidence }) => {
+      const words = (text: string): number => text.split(/\s+/).filter((w) => w.length > 0).length;
+      const describe = (el: Element): string =>
+        `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${[...el.classList].slice(0, 2).map((c) => `.${c}`).join('')}`;
+      const onScreen = (node: Text): boolean => {
+        const parent = node.parentElement;
+        if (!parent || !parent.checkVisibility()) return false;
+        for (let up: Element | null = parent; up; up = up.parentElement) {
+          if (up instanceof HTMLDetailsElement && !up.open) {
+            const summary = parent.closest('summary');
+            if (!summary || summary.parentElement !== up) return false;
+          }
+        }
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        return rect.width > 0 && rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+      };
+      /** The nearest ancestor matching `yes`, unless one matching `no` comes first. */
+      const decide = (node: Text, yes: string, no: string): Element | null => {
+        for (let up = node.parentElement; up; up = up.parentElement) {
+          if (up.matches(yes)) return up;
+          if (up.matches(no)) return null;
+        }
+        return null;
+      };
+      let proseWords = 0;
+      let evidenceWords = 0;
+      const byElement = new Map<Element, number>();
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        const n = words(node.data);
+        if (n === 0 || !onScreen(node)) continue;
+        const proseElement = decide(node, prose, notProse);
+        if (proseElement) {
+          proseWords += n;
+          byElement.set(proseElement, (byElement.get(proseElement) ?? 0) + n);
+          continue;
+        }
+        if (decide(node, evidence, '.badge')) evidenceWords += n;
+      }
+      const top = [...byElement]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([el, n]) => `${describe(el)} ${n}`);
+      return { words: proseWords, evidenceWords, top };
+    },
+    { prose: PROSE_SELECTOR, notProse: NOT_PROSE_SELECTOR, evidence: EVIDENCE_SELECTOR },
+  );
+}
+
+interface FoldCheck {
+  scrollY: number;
+  video: { top: number; bottom: number; left: number; right: number } | null;
+  bar: { top: number; bottom: number; left: number; right: number } | null;
+  /** The element under the video's centre column at each of its lowest 50 px, `y → element`. */
+  under: string[];
+  /** True when a probe in the video's lowest 50 px landed on the action bar. */
+  covered: boolean;
+}
+
+/**
+ * Whether the Review step's action bar covers the video's lowest 50 px
+ * (chunk 14b's finding at 1920 × 1080; D75 for the Maze step). Probes the
+ * video's centre column 1, 25 and 49 px above its bottom edge, or at the fold
+ * when the bottom edge is below the window, with `elementFromPoint`.
+ */
+async function foldCheck(page: Page): Promise<FoldCheck> {
+  return page.evaluate(() => {
+    const box = (el: Element | null) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10, left: Math.round(r.left), right: Math.round(r.right) };
+    };
+    const video = box(document.querySelector('#panel-review .viewport'));
+    const bar = box(document.querySelector('#panel-review .next-step'));
+    const under: string[] = [];
+    let covered = false;
+    if (video && video.top < window.innerHeight) {
+      const x = Math.round((video.left + video.right) / 2);
+      // The lowest 50 px of the video, or of the window when the video crosses the fold.
+      const base = Math.min(video.bottom, window.innerHeight);
+      for (const dy of [1, 25, 49]) {
+        const y = Math.round(base - dy);
+        if (y < 0) continue;
+        const el = document.elementFromPoint(x, y);
+        const name = el
+          ? `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${[...el.classList].slice(0, 2).map((c) => `.${c}`).join('')}`
+          : 'nothing';
+        if (el && (el.closest('.next-step') !== null || /next-step|action-bar/.test(el.className))) covered = true;
+        under.push(`y ${y} → ${name}`);
+      }
+    }
+    return { scrollY: Math.round(window.scrollY), video, bar, under, covered };
+  });
+}
+
+/**
+ * The header heights chunk 14b found fractional (§4.2 of chunk 17): the
+ * Reviewer field's hint line, the step heading and the stepper, plus where
+ * the step's stage starts in the document.
+ */
+async function headerHeights(page: Page, step: Step): Promise<Record<string, number | string>> {
+  return page.evaluate((step) => {
+    const height = (selector: string): number | string => {
+      const el = document.querySelector(selector);
+      return el ? Math.round(el.getBoundingClientRect().height * 1000) / 1000 : 'absent';
+    };
+    const stage = document.querySelector(`#panel-${step} .review-stage, #panel-${step} .maze-stage`);
+    return {
+      reviewerHint: height('.app-header .hint'),
+      stepHeading: height(`#panel-${step} > h2`),
+      stepper: height('.stepper'),
+      status: height('#app-status'),
+      stageDocumentTop: stage ? Math.round((stage.getBoundingClientRect().top + window.scrollY) * 1000) / 1000 : 'absent',
+    };
+  }, step);
 }
 const SIZES = [
   { width: 1366, height: 768 },
@@ -88,6 +238,9 @@ interface Measurement {
   buttonsWithSeveralTiers: string[];
   /** axe `color-contrast` failures on the whole page (D70: ≥ 4.5:1 for text). */
   contrastFailures: string[];
+  /** The step's action bar height, CSS px, and the document's `scroll-padding-bottom` while the step is shown (§4.3 of chunk 17). */
+  barHeight: number | null;
+  scrollPaddingBottom: string;
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
@@ -115,7 +268,10 @@ async function measure(page: Page, step: Step, size: string, zoom: string, file:
       // Every visible button, the example cohort's panel included now that it is tiered.
       const ours = [...document.querySelectorAll('button')].filter(visible);
       const root = document.documentElement;
+      const bar = panel?.querySelector('.next-step') ?? null;
       return {
+        barHeight: bar ? Math.round(bar.getBoundingClientRect().height * 100) / 100 : null,
+        scrollPaddingBottom: getComputedStyle(root).scrollPaddingBottom,
         horizontalScroll: root.scrollWidth > root.clientWidth,
         scrollWidth: root.scrollWidth,
         clientWidth: root.clientWidth,
@@ -290,10 +446,34 @@ async function main(): Promise<void> {
     rings: Record<string, Ring | null>;
   }[] = [];
   const consoleErrors: string[] = [];
+  /** D76 word counts and the fold probes of the Review step, by state. */
+  const readings: { size: string; state: string; prose: ProseCount; fold: FoldCheck }[] = [];
+  let heights: Record<string, number | string> | null = null;
   try {
     await waitForServer(BASE_URL, 30_000);
     const browser = await chromium.launch({ channel: 'chrome' });
     try {
+      // The Review step at CI's size, unselected and after `]`: is the video ever under the bar?
+      {
+        const context = await browser.newContext({ viewport: { ...FOLD_SIZE }, deviceScaleFactor: 1 });
+        await context.addInitScript('globalThis.__name = (fn) => fn;');
+        const page = await context.newPage();
+        await page.goto(BASE_URL);
+        await page.locator('#panel-videos').waitFor({ state: 'visible' });
+        await page.getByRole('button', { name: LOAD_BUTTON_LABEL }).click();
+        await page.locator('.example-results-only').click();
+        await page.locator('.video-card').nth(2).waitFor({ state: 'visible' });
+        await showStep(page, 'review');
+        const size = `${FOLD_SIZE.width}x${FOLD_SIZE.height}`;
+        readings.push({ size, state: 'unselected', prose: await proseCount(page), fold: await foldCheck(page) });
+        await page.locator('#panel-review .timeline-surface').focus();
+        await page.keyboard.press(']');
+        await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
+        await page.waitForTimeout(400);
+        readings.push({ size, state: 'selected', prose: await proseCount(page), fold: await foldCheck(page) });
+        await page.screenshot({ path: join(OUT_DIR, `review-selected-${size}-100.png`) });
+        await context.close();
+      }
       for (const { width, height } of SIZES) {
         for (const zoom of ZOOMS) {
           const size = `${width}x${height}`;
@@ -325,12 +505,19 @@ async function main(): Promise<void> {
             await page.screenshot({ path: join(OUT_DIR, file) });
             results.push(await measure(page, step, size, zoomLabel, file));
           }
+          // The D76 counts and the fold probe at the laptop size, before anything is selected.
+          const laptop = width === 1366 && zoom === 1;
+          if (laptop) {
+            heights = await headerHeights(page, 'review');
+            readings.push({ size, state: 'unselected', prose: await proseCount(page), fold: await foldCheck(page) });
+          }
 
           // Review with the first queued event selected from the keyboard, as a reviewer starts.
           await page.locator('#panel-review .timeline-surface').focus();
           await page.keyboard.press(']');
           await page.locator('#review-selected .event-item').waitFor({ state: 'visible' });
           await page.waitForTimeout(400);
+          if (laptop) readings.push({ size, state: 'selected', prose: await proseCount(page), fold: await foldCheck(page) });
           const selectedFile = `review-selected-${size}-${zoomLabel}.png`;
           await page.screenshot({ path: join(OUT_DIR, selectedFile) });
           // The boxes first: focusing the card and Keep may scroll them.
@@ -382,7 +569,28 @@ async function main(): Promise<void> {
     if (server.pid !== undefined) process.kill(-server.pid, 'SIGTERM');
   }
 
-  writeFileSync(join(OUT_DIR, 'summary.json'), `${JSON.stringify({ results, selections, consoleErrors }, null, 2)}\n`);
+  writeFileSync(
+    join(OUT_DIR, 'summary.json'),
+    `${JSON.stringify({ results, selections, readings, heights, consoleErrors }, null, 2)}\n`,
+  );
+  for (const r of readings) {
+    const over = r.prose.words > PROSE_WORD_LIMIT ? ` OVER ${PROSE_WORD_LIMIT}` : '';
+    console.log(
+      `review prose ${r.size} ${r.state.padEnd(10)} scrollY ${r.fold.scrollY}: ${r.prose.words} words of prose${over} · ${r.prose.evidenceWords} words of evidence · top: ${r.prose.top.join('; ')}`,
+    );
+    const video = r.fold.video ? `video y ${r.fold.video.top}–${r.fold.video.bottom}` : 'video absent';
+    const bar = r.fold.bar ? `bar y ${r.fold.bar.top}–${r.fold.bar.bottom}, x ${r.fold.bar.left}–${r.fold.bar.right}` : 'bar absent';
+    console.log(
+      `review fold  ${r.size} ${r.state.padEnd(10)} scrollY ${r.fold.scrollY}: ${video} · ${bar} · ${r.fold.under.join(', ')}${r.fold.covered ? ' · COVERED BY THE BAR' : ' · not under the bar'}`,
+    );
+  }
+  if (heights) {
+    console.log(
+      `header heights 1366x768 100: ${Object.entries(heights)
+        .map(([k, v]) => `${k} ${v}${typeof v === 'number' && !Number.isInteger(v) ? ' (fractional)' : ''}`)
+        .join(' · ')}`,
+    );
+  }
   for (const s of selections) {
     const boxes = Object.entries(s.boxes)
       .map(([key, box]) =>
@@ -414,6 +622,7 @@ async function main(): Promise<void> {
         `primary on first screen: ${r.primaryVisibleWithoutScroll ? 'yes' : 'no '}`,
         `h-scroll: ${r.horizontalScroll ? `YES (${r.scrollWidth} > ${r.clientWidth})` : 'no'}`,
         `page ${r.pageHeight}/${r.viewportHeight}px`,
+        `bar ${r.barHeight ?? '—'}px / scroll-padding-bottom ${r.scrollPaddingBottom}`,
         `primaries [${primaries}]`,
         r.buttonsWithoutTier.length > 0 ? `UNTIERED ${JSON.stringify(r.buttonsWithoutTier)}` : '',
         r.buttonsWithSeveralTiers.length > 0 ? `MULTI-TIER ${JSON.stringify(r.buttonsWithSeveralTiers)}` : '',

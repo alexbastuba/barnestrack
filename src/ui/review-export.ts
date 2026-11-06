@@ -18,6 +18,7 @@ import {
   buildExportBundle,
   eventRows,
   exportZipName,
+  PARAMETERS_FILE_NAME,
   qualityRows,
   trialRows,
   XLSX_FILE_NAME,
@@ -31,16 +32,16 @@ import { notAnalysedCount } from './review-figures.js';
 
 /**
  * The six entries D11 names, in the order `buildExportBundle` writes them.
- * `src/export` exports the workbook's name but not `parameters.json`'s, so that
- * one literal is repeated here; `tests/ui/review-export.test.ts` pins this list
- * to the names the bundle actually writes.
+ * The workbook's and the parameter file's names come from `src/export`;
+ * `tests/ui/review-export.test.ts` pins this list to the names the bundle
+ * actually writes.
  */
 export function bundleContents(session: SessionFile): string[] {
   return [
     'trials.csv',
     'events.csv',
     'quality.csv',
-    'parameters.json',
+    PARAMETERS_FILE_NAME,
     sessionFileName(session.name),
     XLSX_FILE_NAME,
   ];

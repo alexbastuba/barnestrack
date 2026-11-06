@@ -26,7 +26,7 @@ export {
 } from './event-card.js';
 export type { EventCardProps } from './event-card.js';
 
-export { createEventList } from './event-list.js';
+export { createEventList, isChecked } from './event-list.js';
 export type { EventListProps } from './event-list.js';
 
 export { createMetricsCard, endingEscape, metricRows } from './metrics-card.js';

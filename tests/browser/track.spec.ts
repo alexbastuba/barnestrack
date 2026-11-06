@@ -139,7 +139,10 @@ test.describe('a generated maze clip, decode → track → analyse → export', 
     await expect(card.locator('.track-detail')).toContainText(`${clip.frameCount} frames`);
 
     await page.getByRole('tab', { name: /Review/ }).click();
-    await expect(page.locator('#panel-review .review-timing')).toContainText('Recomputed in');
+    // The timing readout (D76, chunk 17): what was derived, then what the derive cost.
+    await expect(page.locator('#panel-review .review-timing')).toHaveText(
+      new RegExp(`^${clip.frameCount} frames · 0 corrections · parameters [0-9a-f]{8}… · derive \\d+\\.\\d ms \\(`),
+    );
 
     // The quality panel's headline figure, read as text from its <dl>.
     const positioned = page
